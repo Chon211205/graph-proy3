@@ -1,0 +1,11 @@
+C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/lib/raylib.lib
+C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/include/raylib.h
+C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/include/rcamera.h
+C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/include/rlgl.h
+C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/include/raymath.h
+C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/lib/pkgconfig/raylib.pc
+C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/lib/cmake/raylib/raylib-config-version.cmake
+C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/lib/cmake/raylib/raylib-config-version.cmake
+C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/lib/cmake/raylib/raylib-config.cmake
+C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/lib/cmake/raylib/raylib-targets.cmake
+C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/lib/cmake/raylib/raylib-targets-debug.cmake

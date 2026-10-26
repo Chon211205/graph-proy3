@@ -1,0 +1,1928 @@
+
+---
+events:
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineSystem.cmake:212 (message)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      The system is: Windows - 10.0.26300 - AMD64
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCCompilerId.c.in"
+    candidate_directories:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/"
+    found: "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeCCompilerId.c.in"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.19041.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\deps"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot\\bin"
+        - "C:\\Python313\\Scripts\\"
+        - "C:\\Python313\\"
+        - "C:\\Program Files (x86)\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files (x86)\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Program Files\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Windows\\system32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA app\\NvDLISR"
+        - "C:\\Lisp\\"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Java\\jdk-24.0.2\\bin"
+        - "C:\\Program Files\\Java\\apache-maven-3.9.9-bin\\apache-maven-3.9.9\\bin"
+        - "C:\\Program Files\\nodejs\\"
+        - "C:\\ProgramData\\chocolatey\\bin"
+        - "C:\\Program Files\\kotlinc\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\Go\\bin"
+        - "C:\\ProgramData\\ComposerSetup\\bin"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files (x86)\\Graphviz\\bin"
+        - "C:\\Program Files\\Docker\\Docker\\resources\\bin"
+        - "C:\\Program Files\\GitHub CLI\\"
+        - "C:\\Users\\leejo\\.cargo\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\npm"
+        - "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.1.3\\bin"
+        - "C:\\msys64\\ucrt64\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\"
+        - "C:\\Users\\leejo\\go\\bin"
+        - "C:\\xampp\\php"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\Composer\\vendor\\bin"
+        - "C:\\Users\\leejo\\.bun\\bin"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\copilot-shim"
+        - "C:\\ghcup\\bin"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out"
+      ENV{INCLUDE}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\include"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.19041.0\\ucrt"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.19041.0\\um"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.19041.0\\cppwinrt"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.19041.0\\winrt"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.19041.0\\shared"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+      Compiler:  
+      Build flags: -nologo;-MD;-Brepro;-W0
+      Id flags:  
+      
+      The output was:
+      0
+      Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
+      Copyright (C) Microsoft Corporation. All rights reserved.
+      
+      Build started 10/26/2026 5:23:35 PM.
+      Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\4.3.4\\CompilerIdC\\CompilerIdC.vcxproj" on node 1 (default targets).
+      PrepareForBuild:
+        Creating directory "Debug\\".
+        Creating directory "Debug\\CompilerIdC.tlog\\".
+      InitializeBuildStatus:
+        Creating "Debug\\CompilerIdC.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+      ClCompile:
+        C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /nologo /W0 /WX- /diagnostics:column /Od /D _MBCS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"Debug\\\\" /Fd"Debug\\vc142.pdb" /external:W0 /Gd /TC /FC /errorReport:queue CMakeCCompilerId.c
+        CMakeCCompilerId.c
+      Link:
+        C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:".\\CompilerIdC.exe" /INCREMENTAL:NO /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /PDB:".\\CompilerIdC.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:".\\CompilerIdC.lib" /MACHINE:X64 Debug\\CMakeCCompilerId.obj
+        CompilerIdC.vcxproj -> C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\4.3.4\\CompilerIdC\\CompilerIdC.exe
+      PostBuildEvent:
+        for %%i in (cl.exe) do @echo CMAKE_C_COMPILER=%%~$PATH:i
+        :VCEnd
+        CMAKE_C_COMPILER=C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\Hostx64\\x64\\cl.exe
+      FinalizeBuildStatus:
+        Deleting file "Debug\\CompilerIdC.tlog\\unsuccessfulbuild".
+        Touching "Debug\\CompilerIdC.tlog\\CompilerIdC.lastbuildstate".
+      Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\4.3.4\\CompilerIdC\\CompilerIdC.vcxproj" (default targets).
+      
+      Build succeeded.
+          0 Warning(s)
+          0 Error(s)
+      
+      Time Elapsed 00:00:00.56
+      
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CompilerIdC.exe"
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CompilerIdC.vcxproj"
+      
+      The C compiler identification is MSVC, found in:
+        C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/4.3.4/CompilerIdC/CompilerIdC.exe
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:37 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:65 (__resolve_tool_path)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:103 (__resolve_linker_path)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "program"
+    variable: "_CMAKE_TOOL_WITH_PATH"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "link"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/deps/"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Program Files/Eclipse Adoptium/jdk-17.0.17.10-hotspot/bin/"
+      - "C:/Python313/Scripts/"
+      - "C:/Python313/"
+      - "C:/Program Files (x86)/Razer Chroma SDK/bin/"
+      - "C:/Program Files/Razer Chroma SDK/bin/"
+      - "C:/Program Files (x86)/Razer/ChromaBroadcast/bin/"
+      - "C:/Program Files/Razer/ChromaBroadcast/bin/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Windows/System32/config/systemprofile/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/leejo/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA app/NvDLISR/"
+      - "C:/Lisp/"
+      - "C:/Program Files/Java/jdk-24.0.2/bin/"
+      - "C:/Program Files/Java/apache-maven-3.9.9-bin/apache-maven-3.9.9/bin/"
+      - "C:/Program Files/nodejs/"
+      - "C:/ProgramData/chocolatey/bin/"
+      - "C:/Program Files/kotlinc/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/Go/bin/"
+      - "C:/ProgramData/ComposerSetup/bin/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files/Wiimm/WIT/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files (x86)/Graphviz/bin/"
+      - "C:/Program Files/Docker/Docker/resources/bin/"
+      - "C:/Program Files/GitHub CLI/"
+      - "C:/Users/leejo/.cargo/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/leejo/AppData/Roaming/npm/"
+      - "C:/Program Files/JetBrains/IntelliJ IDEA 2025.1.3/bin/"
+      - "C:/msys64/ucrt64/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/MiKTeX/miktex/bin/x64/"
+      - "C:/Users/leejo/go/bin/"
+      - "C:/xampp/php/"
+      - "C:/Users/leejo/AppData/Roaming/Composer/vendor/bin/"
+      - "C:/Users/leejo/.bun/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/copilot-shim/"
+      - "C:/ghcup/bin/"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/link.com"
+    found: "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/link.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.19041.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\deps"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot\\bin"
+        - "C:\\Python313\\Scripts\\"
+        - "C:\\Python313\\"
+        - "C:\\Program Files (x86)\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files (x86)\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Program Files\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Windows\\system32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA app\\NvDLISR"
+        - "C:\\Lisp\\"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Java\\jdk-24.0.2\\bin"
+        - "C:\\Program Files\\Java\\apache-maven-3.9.9-bin\\apache-maven-3.9.9\\bin"
+        - "C:\\Program Files\\nodejs\\"
+        - "C:\\ProgramData\\chocolatey\\bin"
+        - "C:\\Program Files\\kotlinc\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\Go\\bin"
+        - "C:\\ProgramData\\ComposerSetup\\bin"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files (x86)\\Graphviz\\bin"
+        - "C:\\Program Files\\Docker\\Docker\\resources\\bin"
+        - "C:\\Program Files\\GitHub CLI\\"
+        - "C:\\Users\\leejo\\.cargo\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\npm"
+        - "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.1.3\\bin"
+        - "C:\\msys64\\ucrt64\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\"
+        - "C:\\Users\\leejo\\go\\bin"
+        - "C:\\xampp\\php"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\Composer\\vendor\\bin"
+        - "C:\\Users\\leejo\\.bun\\bin"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\copilot-shim"
+        - "C:\\ghcup\\bin"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:37 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:65 (__resolve_tool_path)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:104 (__resolve_linker_path)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "program"
+    variable: "_CMAKE_TOOL_WITH_PATH"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "lld-link"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/deps/"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Program Files/Eclipse Adoptium/jdk-17.0.17.10-hotspot/bin/"
+      - "C:/Python313/Scripts/"
+      - "C:/Python313/"
+      - "C:/Program Files (x86)/Razer Chroma SDK/bin/"
+      - "C:/Program Files/Razer Chroma SDK/bin/"
+      - "C:/Program Files (x86)/Razer/ChromaBroadcast/bin/"
+      - "C:/Program Files/Razer/ChromaBroadcast/bin/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Windows/System32/config/systemprofile/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/leejo/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA app/NvDLISR/"
+      - "C:/Lisp/"
+      - "C:/Program Files/Java/jdk-24.0.2/bin/"
+      - "C:/Program Files/Java/apache-maven-3.9.9-bin/apache-maven-3.9.9/bin/"
+      - "C:/Program Files/nodejs/"
+      - "C:/ProgramData/chocolatey/bin/"
+      - "C:/Program Files/kotlinc/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/Go/bin/"
+      - "C:/ProgramData/ComposerSetup/bin/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files/Wiimm/WIT/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files (x86)/Graphviz/bin/"
+      - "C:/Program Files/Docker/Docker/resources/bin/"
+      - "C:/Program Files/GitHub CLI/"
+      - "C:/Users/leejo/.cargo/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/leejo/AppData/Roaming/npm/"
+      - "C:/Program Files/JetBrains/IntelliJ IDEA 2025.1.3/bin/"
+      - "C:/msys64/ucrt64/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/MiKTeX/miktex/bin/x64/"
+      - "C:/Users/leejo/go/bin/"
+      - "C:/xampp/php/"
+      - "C:/Users/leejo/AppData/Roaming/Composer/vendor/bin/"
+      - "C:/Users/leejo/.bun/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/copilot-shim/"
+      - "C:/ghcup/bin/"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/lld-link.com"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/lld-link.exe"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/lld-link"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/lld-link.com"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/lld-link.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/lld-link"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/lld-link.com"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/lld-link.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/lld-link"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/deps/lld-link.com"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/deps/lld-link.exe"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/deps/lld-link"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/lld-link.com"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/lld-link.exe"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/lld-link"
+      - "C:/Program Files/Eclipse Adoptium/jdk-17.0.17.10-hotspot/bin/lld-link.com"
+      - "C:/Program Files/Eclipse Adoptium/jdk-17.0.17.10-hotspot/bin/lld-link.exe"
+      - "C:/Program Files/Eclipse Adoptium/jdk-17.0.17.10-hotspot/bin/lld-link"
+      - "C:/Python313/Scripts/lld-link.com"
+      - "C:/Python313/Scripts/lld-link.exe"
+      - "C:/Python313/Scripts/lld-link"
+      - "C:/Python313/lld-link.com"
+      - "C:/Python313/lld-link.exe"
+      - "C:/Python313/lld-link"
+      - "C:/Program Files (x86)/Razer Chroma SDK/bin/lld-link.com"
+      - "C:/Program Files (x86)/Razer Chroma SDK/bin/lld-link.exe"
+      - "C:/Program Files (x86)/Razer Chroma SDK/bin/lld-link"
+      - "C:/Program Files/Razer Chroma SDK/bin/lld-link.com"
+      - "C:/Program Files/Razer Chroma SDK/bin/lld-link.exe"
+      - "C:/Program Files/Razer Chroma SDK/bin/lld-link"
+      - "C:/Program Files (x86)/Razer/ChromaBroadcast/bin/lld-link.com"
+      - "C:/Program Files (x86)/Razer/ChromaBroadcast/bin/lld-link.exe"
+      - "C:/Program Files (x86)/Razer/ChromaBroadcast/bin/lld-link"
+      - "C:/Program Files/Razer/ChromaBroadcast/bin/lld-link.com"
+      - "C:/Program Files/Razer/ChromaBroadcast/bin/lld-link.exe"
+      - "C:/Program Files/Razer/ChromaBroadcast/bin/lld-link"
+      - "C:/Windows/System32/lld-link.com"
+      - "C:/Windows/System32/lld-link.exe"
+      - "C:/Windows/System32/lld-link"
+      - "C:/Windows/lld-link.com"
+      - "C:/Windows/lld-link.exe"
+      - "C:/Windows/lld-link"
+      - "C:/Windows/System32/wbem/lld-link.com"
+      - "C:/Windows/System32/wbem/lld-link.exe"
+      - "C:/Windows/System32/wbem/lld-link"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/lld-link.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/lld-link.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/lld-link"
+      - "C:/Windows/System32/OpenSSH/lld-link.com"
+      - "C:/Windows/System32/OpenSSH/lld-link.exe"
+      - "C:/Windows/System32/OpenSSH/lld-link"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/lld-link.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/lld-link.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/lld-link"
+      - "C:/Windows/System32/config/systemprofile/AppData/Local/Microsoft/WindowsApps/lld-link.com"
+      - "C:/Windows/System32/config/systemprofile/AppData/Local/Microsoft/WindowsApps/lld-link.exe"
+      - "C:/Windows/System32/config/systemprofile/AppData/Local/Microsoft/WindowsApps/lld-link"
+      - "C:/Users/leejo/AppData/Local/Microsoft/WindowsApps/lld-link.com"
+      - "C:/Users/leejo/AppData/Local/Microsoft/WindowsApps/lld-link.exe"
+      - "C:/Users/leejo/AppData/Local/Microsoft/WindowsApps/lld-link"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA app/NvDLISR/lld-link.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA app/NvDLISR/lld-link.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA app/NvDLISR/lld-link"
+      - "C:/Lisp/lld-link.com"
+      - "C:/Lisp/lld-link.exe"
+      - "C:/Lisp/lld-link"
+      - "C:/Program Files/Java/jdk-24.0.2/bin/lld-link.com"
+      - "C:/Program Files/Java/jdk-24.0.2/bin/lld-link.exe"
+      - "C:/Program Files/Java/jdk-24.0.2/bin/lld-link"
+      - "C:/Program Files/Java/apache-maven-3.9.9-bin/apache-maven-3.9.9/bin/lld-link.com"
+      - "C:/Program Files/Java/apache-maven-3.9.9-bin/apache-maven-3.9.9/bin/lld-link.exe"
+      - "C:/Program Files/Java/apache-maven-3.9.9-bin/apache-maven-3.9.9/bin/lld-link"
+      - "C:/Program Files/nodejs/lld-link.com"
+      - "C:/Program Files/nodejs/lld-link.exe"
+      - "C:/Program Files/nodejs/lld-link"
+      - "C:/ProgramData/chocolatey/bin/lld-link.com"
+      - "C:/ProgramData/chocolatey/bin/lld-link.exe"
+      - "C:/ProgramData/chocolatey/bin/lld-link"
+      - "C:/Program Files/kotlinc/bin/lld-link.com"
+      - "C:/Program Files/kotlinc/bin/lld-link.exe"
+      - "C:/Program Files/kotlinc/bin/lld-link"
+      - "C:/Program Files/Git/cmd/lld-link.com"
+      - "C:/Program Files/Git/cmd/lld-link.exe"
+      - "C:/Program Files/Git/cmd/lld-link"
+      - "C:/Program Files/Go/bin/lld-link.com"
+      - "C:/Program Files/Go/bin/lld-link.exe"
+      - "C:/Program Files/Go/bin/lld-link"
+      - "C:/ProgramData/ComposerSetup/bin/lld-link.com"
+      - "C:/ProgramData/ComposerSetup/bin/lld-link.exe"
+      - "C:/ProgramData/ComposerSetup/bin/lld-link"
+      - "C:/Program Files/dotnet/lld-link.com"
+      - "C:/Program Files/dotnet/lld-link.exe"
+      - "C:/Program Files/dotnet/lld-link"
+      - "C:/Program Files/Wiimm/WIT/lld-link.com"
+      - "C:/Program Files/Wiimm/WIT/lld-link.exe"
+      - "C:/Program Files/Wiimm/WIT/lld-link"
+      - "C:/Program Files/CMake/bin/lld-link.com"
+      - "C:/Program Files/CMake/bin/lld-link.exe"
+      - "C:/Program Files/CMake/bin/lld-link"
+      - "C:/Program Files (x86)/Graphviz/bin/lld-link.com"
+      - "C:/Program Files (x86)/Graphviz/bin/lld-link.exe"
+      - "C:/Program Files (x86)/Graphviz/bin/lld-link"
+      - "C:/Program Files/Docker/Docker/resources/bin/lld-link.com"
+      - "C:/Program Files/Docker/Docker/resources/bin/lld-link.exe"
+      - "C:/Program Files/Docker/Docker/resources/bin/lld-link"
+      - "C:/Program Files/GitHub CLI/lld-link.com"
+      - "C:/Program Files/GitHub CLI/lld-link.exe"
+      - "C:/Program Files/GitHub CLI/lld-link"
+      - "C:/Users/leejo/.cargo/bin/lld-link.com"
+      - "C:/Users/leejo/.cargo/bin/lld-link.exe"
+      - "C:/Users/leejo/.cargo/bin/lld-link"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/lld-link.com"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/lld-link.exe"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/lld-link"
+      - "C:/Users/leejo/AppData/Roaming/npm/lld-link.com"
+      - "C:/Users/leejo/AppData/Roaming/npm/lld-link.exe"
+      - "C:/Users/leejo/AppData/Roaming/npm/lld-link"
+      - "C:/Program Files/JetBrains/IntelliJ IDEA 2025.1.3/bin/lld-link.com"
+      - "C:/Program Files/JetBrains/IntelliJ IDEA 2025.1.3/bin/lld-link.exe"
+      - "C:/Program Files/JetBrains/IntelliJ IDEA 2025.1.3/bin/lld-link"
+      - "C:/msys64/ucrt64/bin/lld-link.com"
+      - "C:/msys64/ucrt64/bin/lld-link.exe"
+      - "C:/msys64/ucrt64/bin/lld-link"
+      - "C:/Users/leejo/AppData/Local/Programs/MiKTeX/miktex/bin/x64/lld-link.com"
+      - "C:/Users/leejo/AppData/Local/Programs/MiKTeX/miktex/bin/x64/lld-link.exe"
+      - "C:/Users/leejo/AppData/Local/Programs/MiKTeX/miktex/bin/x64/lld-link"
+      - "C:/Users/leejo/go/bin/lld-link.com"
+      - "C:/Users/leejo/go/bin/lld-link.exe"
+      - "C:/Users/leejo/go/bin/lld-link"
+      - "C:/xampp/php/lld-link.com"
+      - "C:/xampp/php/lld-link.exe"
+      - "C:/xampp/php/lld-link"
+      - "C:/Users/leejo/AppData/Roaming/Composer/vendor/bin/lld-link.com"
+      - "C:/Users/leejo/AppData/Roaming/Composer/vendor/bin/lld-link.exe"
+      - "C:/Users/leejo/AppData/Roaming/Composer/vendor/bin/lld-link"
+      - "C:/Users/leejo/.bun/bin/lld-link.com"
+      - "C:/Users/leejo/.bun/bin/lld-link.exe"
+      - "C:/Users/leejo/.bun/bin/lld-link"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/copilot-shim/lld-link.com"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/copilot-shim/lld-link.exe"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/copilot-shim/lld-link"
+      - "C:/ghcup/bin/lld-link.com"
+      - "C:/ghcup/bin/lld-link.exe"
+      - "C:/ghcup/bin/lld-link"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/lld-link.com"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/lld-link.exe"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/lld-link"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.19041.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\deps"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot\\bin"
+        - "C:\\Python313\\Scripts\\"
+        - "C:\\Python313\\"
+        - "C:\\Program Files (x86)\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files (x86)\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Program Files\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Windows\\system32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA app\\NvDLISR"
+        - "C:\\Lisp\\"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Java\\jdk-24.0.2\\bin"
+        - "C:\\Program Files\\Java\\apache-maven-3.9.9-bin\\apache-maven-3.9.9\\bin"
+        - "C:\\Program Files\\nodejs\\"
+        - "C:\\ProgramData\\chocolatey\\bin"
+        - "C:\\Program Files\\kotlinc\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\Go\\bin"
+        - "C:\\ProgramData\\ComposerSetup\\bin"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files (x86)\\Graphviz\\bin"
+        - "C:\\Program Files\\Docker\\Docker\\resources\\bin"
+        - "C:\\Program Files\\GitHub CLI\\"
+        - "C:\\Users\\leejo\\.cargo\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\npm"
+        - "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.1.3\\bin"
+        - "C:\\msys64\\ucrt64\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\"
+        - "C:\\Users\\leejo\\go\\bin"
+        - "C:\\xampp\\php"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\Composer\\vendor\\bin"
+        - "C:\\Users\\leejo\\.bun\\bin"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\copilot-shim"
+        - "C:\\ghcup\\bin"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "program"
+    variable: "CMAKE_LINKER"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "link"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/deps/"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Program Files/Eclipse Adoptium/jdk-17.0.17.10-hotspot/bin/"
+      - "C:/Python313/Scripts/"
+      - "C:/Python313/"
+      - "C:/Program Files (x86)/Razer Chroma SDK/bin/"
+      - "C:/Program Files/Razer Chroma SDK/bin/"
+      - "C:/Program Files (x86)/Razer/ChromaBroadcast/bin/"
+      - "C:/Program Files/Razer/ChromaBroadcast/bin/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Windows/System32/config/systemprofile/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/leejo/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA app/NvDLISR/"
+      - "C:/Lisp/"
+      - "C:/Program Files/Java/jdk-24.0.2/bin/"
+      - "C:/Program Files/Java/apache-maven-3.9.9-bin/apache-maven-3.9.9/bin/"
+      - "C:/Program Files/nodejs/"
+      - "C:/ProgramData/chocolatey/bin/"
+      - "C:/Program Files/kotlinc/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/Go/bin/"
+      - "C:/ProgramData/ComposerSetup/bin/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files/Wiimm/WIT/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files (x86)/Graphviz/bin/"
+      - "C:/Program Files/Docker/Docker/resources/bin/"
+      - "C:/Program Files/GitHub CLI/"
+      - "C:/Users/leejo/.cargo/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/leejo/AppData/Roaming/npm/"
+      - "C:/Program Files/JetBrains/IntelliJ IDEA 2025.1.3/bin/"
+      - "C:/msys64/ucrt64/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/MiKTeX/miktex/bin/x64/"
+      - "C:/Users/leejo/go/bin/"
+      - "C:/xampp/php/"
+      - "C:/Users/leejo/AppData/Roaming/Composer/vendor/bin/"
+      - "C:/Users/leejo/.bun/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/copilot-shim/"
+      - "C:/ghcup/bin/"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/link.com"
+    found: "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/link.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.19041.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\deps"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot\\bin"
+        - "C:\\Python313\\Scripts\\"
+        - "C:\\Python313\\"
+        - "C:\\Program Files (x86)\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files (x86)\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Program Files\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Windows\\system32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA app\\NvDLISR"
+        - "C:\\Lisp\\"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Java\\jdk-24.0.2\\bin"
+        - "C:\\Program Files\\Java\\apache-maven-3.9.9-bin\\apache-maven-3.9.9\\bin"
+        - "C:\\Program Files\\nodejs\\"
+        - "C:\\ProgramData\\chocolatey\\bin"
+        - "C:\\Program Files\\kotlinc\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\Go\\bin"
+        - "C:\\ProgramData\\ComposerSetup\\bin"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files (x86)\\Graphviz\\bin"
+        - "C:\\Program Files\\Docker\\Docker\\resources\\bin"
+        - "C:\\Program Files\\GitHub CLI\\"
+        - "C:\\Users\\leejo\\.cargo\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\npm"
+        - "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.1.3\\bin"
+        - "C:\\msys64\\ucrt64\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\"
+        - "C:\\Users\\leejo\\go\\bin"
+        - "C:\\xampp\\php"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\Composer\\vendor\\bin"
+        - "C:\\Users\\leejo\\.bun\\bin"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\copilot-shim"
+        - "C:\\ghcup\\bin"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "program"
+    variable: "CMAKE_MT"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "mt"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/deps/"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Program Files/Eclipse Adoptium/jdk-17.0.17.10-hotspot/bin/"
+      - "C:/Python313/Scripts/"
+      - "C:/Python313/"
+      - "C:/Program Files (x86)/Razer Chroma SDK/bin/"
+      - "C:/Program Files/Razer Chroma SDK/bin/"
+      - "C:/Program Files (x86)/Razer/ChromaBroadcast/bin/"
+      - "C:/Program Files/Razer/ChromaBroadcast/bin/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Windows/System32/config/systemprofile/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/leejo/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA app/NvDLISR/"
+      - "C:/Lisp/"
+      - "C:/Program Files/Java/jdk-24.0.2/bin/"
+      - "C:/Program Files/Java/apache-maven-3.9.9-bin/apache-maven-3.9.9/bin/"
+      - "C:/Program Files/nodejs/"
+      - "C:/ProgramData/chocolatey/bin/"
+      - "C:/Program Files/kotlinc/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/Go/bin/"
+      - "C:/ProgramData/ComposerSetup/bin/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files/Wiimm/WIT/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files (x86)/Graphviz/bin/"
+      - "C:/Program Files/Docker/Docker/resources/bin/"
+      - "C:/Program Files/GitHub CLI/"
+      - "C:/Users/leejo/.cargo/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/leejo/AppData/Roaming/npm/"
+      - "C:/Program Files/JetBrains/IntelliJ IDEA 2025.1.3/bin/"
+      - "C:/msys64/ucrt64/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/MiKTeX/miktex/bin/x64/"
+      - "C:/Users/leejo/go/bin/"
+      - "C:/xampp/php/"
+      - "C:/Users/leejo/AppData/Roaming/Composer/vendor/bin/"
+      - "C:/Users/leejo/.bun/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/copilot-shim/"
+      - "C:/ghcup/bin/"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/mt.com"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/mt.exe"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/mt"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/mt.com"
+    found: "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/mt.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.19041.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\deps"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot\\bin"
+        - "C:\\Python313\\Scripts\\"
+        - "C:\\Python313\\"
+        - "C:\\Program Files (x86)\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files (x86)\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Program Files\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Windows\\system32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA app\\NvDLISR"
+        - "C:\\Lisp\\"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Java\\jdk-24.0.2\\bin"
+        - "C:\\Program Files\\Java\\apache-maven-3.9.9-bin\\apache-maven-3.9.9\\bin"
+        - "C:\\Program Files\\nodejs\\"
+        - "C:\\ProgramData\\chocolatey\\bin"
+        - "C:\\Program Files\\kotlinc\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\Go\\bin"
+        - "C:\\ProgramData\\ComposerSetup\\bin"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files (x86)\\Graphviz\\bin"
+        - "C:\\Program Files\\Docker\\Docker\\resources\\bin"
+        - "C:\\Program Files\\GitHub CLI\\"
+        - "C:\\Users\\leejo\\.cargo\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\npm"
+        - "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.1.3\\bin"
+        - "C:\\msys64\\ucrt64\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\"
+        - "C:\\Users\\leejo\\go\\bin"
+        - "C:\\xampp\\php"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\Composer\\vendor\\bin"
+        - "C:\\Users\\leejo\\.bun\\bin"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\copilot-shim"
+        - "C:\\ghcup\\bin"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "program"
+    variable: "CMAKE_AR"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "lib"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/deps/"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Program Files/Eclipse Adoptium/jdk-17.0.17.10-hotspot/bin/"
+      - "C:/Python313/Scripts/"
+      - "C:/Python313/"
+      - "C:/Program Files (x86)/Razer Chroma SDK/bin/"
+      - "C:/Program Files/Razer Chroma SDK/bin/"
+      - "C:/Program Files (x86)/Razer/ChromaBroadcast/bin/"
+      - "C:/Program Files/Razer/ChromaBroadcast/bin/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Windows/System32/config/systemprofile/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/leejo/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA app/NvDLISR/"
+      - "C:/Lisp/"
+      - "C:/Program Files/Java/jdk-24.0.2/bin/"
+      - "C:/Program Files/Java/apache-maven-3.9.9-bin/apache-maven-3.9.9/bin/"
+      - "C:/Program Files/nodejs/"
+      - "C:/ProgramData/chocolatey/bin/"
+      - "C:/Program Files/kotlinc/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/Go/bin/"
+      - "C:/ProgramData/ComposerSetup/bin/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files/Wiimm/WIT/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files (x86)/Graphviz/bin/"
+      - "C:/Program Files/Docker/Docker/resources/bin/"
+      - "C:/Program Files/GitHub CLI/"
+      - "C:/Users/leejo/.cargo/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/leejo/AppData/Roaming/npm/"
+      - "C:/Program Files/JetBrains/IntelliJ IDEA 2025.1.3/bin/"
+      - "C:/msys64/ucrt64/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/MiKTeX/miktex/bin/x64/"
+      - "C:/Users/leejo/go/bin/"
+      - "C:/xampp/php/"
+      - "C:/Users/leejo/AppData/Roaming/Composer/vendor/bin/"
+      - "C:/Users/leejo/.bun/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/copilot-shim/"
+      - "C:/ghcup/bin/"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/lib.com"
+    found: "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/lib.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.19041.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\deps"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot\\bin"
+        - "C:\\Python313\\Scripts\\"
+        - "C:\\Python313\\"
+        - "C:\\Program Files (x86)\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files (x86)\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Program Files\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Windows\\system32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA app\\NvDLISR"
+        - "C:\\Lisp\\"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Java\\jdk-24.0.2\\bin"
+        - "C:\\Program Files\\Java\\apache-maven-3.9.9-bin\\apache-maven-3.9.9\\bin"
+        - "C:\\Program Files\\nodejs\\"
+        - "C:\\ProgramData\\chocolatey\\bin"
+        - "C:\\Program Files\\kotlinc\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\Go\\bin"
+        - "C:\\ProgramData\\ComposerSetup\\bin"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files (x86)\\Graphviz\\bin"
+        - "C:\\Program Files\\Docker\\Docker\\resources\\bin"
+        - "C:\\Program Files\\GitHub CLI\\"
+        - "C:\\Users\\leejo\\.cargo\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\npm"
+        - "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.1.3\\bin"
+        - "C:\\msys64\\ucrt64\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\"
+        - "C:\\Users\\leejo\\go\\bin"
+        - "C:\\xampp\\php"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\Composer\\vendor\\bin"
+        - "C:\\Users\\leejo\\.bun\\bin"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\copilot-shim"
+        - "C:\\ghcup\\bin"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCXXCompilerId.cpp.in"
+    candidate_directories:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/"
+    found: "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeCXXCompilerId.cpp.in"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.19041.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\deps"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot\\bin"
+        - "C:\\Python313\\Scripts\\"
+        - "C:\\Python313\\"
+        - "C:\\Program Files (x86)\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files (x86)\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Program Files\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Windows\\system32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA app\\NvDLISR"
+        - "C:\\Lisp\\"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Java\\jdk-24.0.2\\bin"
+        - "C:\\Program Files\\Java\\apache-maven-3.9.9-bin\\apache-maven-3.9.9\\bin"
+        - "C:\\Program Files\\nodejs\\"
+        - "C:\\ProgramData\\chocolatey\\bin"
+        - "C:\\Program Files\\kotlinc\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\Go\\bin"
+        - "C:\\ProgramData\\ComposerSetup\\bin"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files (x86)\\Graphviz\\bin"
+        - "C:\\Program Files\\Docker\\Docker\\resources\\bin"
+        - "C:\\Program Files\\GitHub CLI\\"
+        - "C:\\Users\\leejo\\.cargo\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\npm"
+        - "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.1.3\\bin"
+        - "C:\\msys64\\ucrt64\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\"
+        - "C:\\Users\\leejo\\go\\bin"
+        - "C:\\xampp\\php"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\Composer\\vendor\\bin"
+        - "C:\\Users\\leejo\\.bun\\bin"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\copilot-shim"
+        - "C:\\ghcup\\bin"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out"
+      ENV{INCLUDE}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\include"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.19041.0\\ucrt"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.19041.0\\um"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.19041.0\\cppwinrt"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.19041.0\\winrt"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.19041.0\\shared"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+      Compiler:  
+      Build flags: -nologo;-MD;-Brepro;-W0
+      Id flags:  
+      
+      The output was:
+      0
+      Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
+      Copyright (C) Microsoft Corporation. All rights reserved.
+      
+      Build started 10/26/2026 5:23:36 PM.
+      Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\4.3.4\\CompilerIdCXX\\CompilerIdCXX.vcxproj" on node 1 (default targets).
+      PrepareForBuild:
+        Creating directory "Debug\\".
+        Creating directory "Debug\\CompilerIdCXX.tlog\\".
+      InitializeBuildStatus:
+        Creating "Debug\\CompilerIdCXX.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+      ClCompile:
+        C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /nologo /W0 /WX- /diagnostics:column /Od /D _MBCS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"Debug\\\\" /Fd"Debug\\vc142.pdb" /external:W0 /Gd /TP /FC /errorReport:queue CMakeCXXCompilerId.cpp
+        CMakeCXXCompilerId.cpp
+      Link:
+        C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:".\\CompilerIdCXX.exe" /INCREMENTAL:NO /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /PDB:".\\CompilerIdCXX.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:".\\CompilerIdCXX.lib" /MACHINE:X64 Debug\\CMakeCXXCompilerId.obj
+        CompilerIdCXX.vcxproj -> C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\4.3.4\\CompilerIdCXX\\CompilerIdCXX.exe
+      PostBuildEvent:
+        for %%i in (cl.exe) do @echo CMAKE_CXX_COMPILER=%%~$PATH:i
+        :VCEnd
+        CMAKE_CXX_COMPILER=C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\Hostx64\\x64\\cl.exe
+      FinalizeBuildStatus:
+        Deleting file "Debug\\CompilerIdCXX.tlog\\unsuccessfulbuild".
+        Touching "Debug\\CompilerIdCXX.tlog\\CompilerIdCXX.lastbuildstate".
+      Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\4.3.4\\CompilerIdCXX\\CompilerIdCXX.vcxproj" (default targets).
+      
+      Build succeeded.
+          0 Warning(s)
+          0 Error(s)
+      
+      Time Elapsed 00:00:00.56
+      
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CompilerIdCXX.exe"
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CompilerIdCXX.vcxproj"
+      
+      The CXX compiler identification is MSVC, found in:
+        C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/4.3.4/CompilerIdCXX/CompilerIdCXX.exe
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:37 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:65 (__resolve_tool_path)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:104 (__resolve_linker_path)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "program"
+    variable: "_CMAKE_TOOL_WITH_PATH"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "lld-link"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/deps/"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Program Files/Eclipse Adoptium/jdk-17.0.17.10-hotspot/bin/"
+      - "C:/Python313/Scripts/"
+      - "C:/Python313/"
+      - "C:/Program Files (x86)/Razer Chroma SDK/bin/"
+      - "C:/Program Files/Razer Chroma SDK/bin/"
+      - "C:/Program Files (x86)/Razer/ChromaBroadcast/bin/"
+      - "C:/Program Files/Razer/ChromaBroadcast/bin/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Windows/System32/config/systemprofile/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/leejo/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA app/NvDLISR/"
+      - "C:/Lisp/"
+      - "C:/Program Files/Java/jdk-24.0.2/bin/"
+      - "C:/Program Files/Java/apache-maven-3.9.9-bin/apache-maven-3.9.9/bin/"
+      - "C:/Program Files/nodejs/"
+      - "C:/ProgramData/chocolatey/bin/"
+      - "C:/Program Files/kotlinc/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/Go/bin/"
+      - "C:/ProgramData/ComposerSetup/bin/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files/Wiimm/WIT/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files (x86)/Graphviz/bin/"
+      - "C:/Program Files/Docker/Docker/resources/bin/"
+      - "C:/Program Files/GitHub CLI/"
+      - "C:/Users/leejo/.cargo/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/leejo/AppData/Roaming/npm/"
+      - "C:/Program Files/JetBrains/IntelliJ IDEA 2025.1.3/bin/"
+      - "C:/msys64/ucrt64/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/MiKTeX/miktex/bin/x64/"
+      - "C:/Users/leejo/go/bin/"
+      - "C:/xampp/php/"
+      - "C:/Users/leejo/AppData/Roaming/Composer/vendor/bin/"
+      - "C:/Users/leejo/.bun/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/copilot-shim/"
+      - "C:/ghcup/bin/"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/lld-link.com"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/lld-link.exe"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/lld-link"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/lld-link.com"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/lld-link.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/lld-link"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/lld-link.com"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/lld-link.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/lld-link"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/deps/lld-link.com"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/deps/lld-link.exe"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/deps/lld-link"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/lld-link.com"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/lld-link.exe"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/lld-link"
+      - "C:/Program Files/Eclipse Adoptium/jdk-17.0.17.10-hotspot/bin/lld-link.com"
+      - "C:/Program Files/Eclipse Adoptium/jdk-17.0.17.10-hotspot/bin/lld-link.exe"
+      - "C:/Program Files/Eclipse Adoptium/jdk-17.0.17.10-hotspot/bin/lld-link"
+      - "C:/Python313/Scripts/lld-link.com"
+      - "C:/Python313/Scripts/lld-link.exe"
+      - "C:/Python313/Scripts/lld-link"
+      - "C:/Python313/lld-link.com"
+      - "C:/Python313/lld-link.exe"
+      - "C:/Python313/lld-link"
+      - "C:/Program Files (x86)/Razer Chroma SDK/bin/lld-link.com"
+      - "C:/Program Files (x86)/Razer Chroma SDK/bin/lld-link.exe"
+      - "C:/Program Files (x86)/Razer Chroma SDK/bin/lld-link"
+      - "C:/Program Files/Razer Chroma SDK/bin/lld-link.com"
+      - "C:/Program Files/Razer Chroma SDK/bin/lld-link.exe"
+      - "C:/Program Files/Razer Chroma SDK/bin/lld-link"
+      - "C:/Program Files (x86)/Razer/ChromaBroadcast/bin/lld-link.com"
+      - "C:/Program Files (x86)/Razer/ChromaBroadcast/bin/lld-link.exe"
+      - "C:/Program Files (x86)/Razer/ChromaBroadcast/bin/lld-link"
+      - "C:/Program Files/Razer/ChromaBroadcast/bin/lld-link.com"
+      - "C:/Program Files/Razer/ChromaBroadcast/bin/lld-link.exe"
+      - "C:/Program Files/Razer/ChromaBroadcast/bin/lld-link"
+      - "C:/Windows/System32/lld-link.com"
+      - "C:/Windows/System32/lld-link.exe"
+      - "C:/Windows/System32/lld-link"
+      - "C:/Windows/lld-link.com"
+      - "C:/Windows/lld-link.exe"
+      - "C:/Windows/lld-link"
+      - "C:/Windows/System32/wbem/lld-link.com"
+      - "C:/Windows/System32/wbem/lld-link.exe"
+      - "C:/Windows/System32/wbem/lld-link"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/lld-link.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/lld-link.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/lld-link"
+      - "C:/Windows/System32/OpenSSH/lld-link.com"
+      - "C:/Windows/System32/OpenSSH/lld-link.exe"
+      - "C:/Windows/System32/OpenSSH/lld-link"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/lld-link.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/lld-link.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/lld-link"
+      - "C:/Windows/System32/config/systemprofile/AppData/Local/Microsoft/WindowsApps/lld-link.com"
+      - "C:/Windows/System32/config/systemprofile/AppData/Local/Microsoft/WindowsApps/lld-link.exe"
+      - "C:/Windows/System32/config/systemprofile/AppData/Local/Microsoft/WindowsApps/lld-link"
+      - "C:/Users/leejo/AppData/Local/Microsoft/WindowsApps/lld-link.com"
+      - "C:/Users/leejo/AppData/Local/Microsoft/WindowsApps/lld-link.exe"
+      - "C:/Users/leejo/AppData/Local/Microsoft/WindowsApps/lld-link"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA app/NvDLISR/lld-link.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA app/NvDLISR/lld-link.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA app/NvDLISR/lld-link"
+      - "C:/Lisp/lld-link.com"
+      - "C:/Lisp/lld-link.exe"
+      - "C:/Lisp/lld-link"
+      - "C:/Program Files/Java/jdk-24.0.2/bin/lld-link.com"
+      - "C:/Program Files/Java/jdk-24.0.2/bin/lld-link.exe"
+      - "C:/Program Files/Java/jdk-24.0.2/bin/lld-link"
+      - "C:/Program Files/Java/apache-maven-3.9.9-bin/apache-maven-3.9.9/bin/lld-link.com"
+      - "C:/Program Files/Java/apache-maven-3.9.9-bin/apache-maven-3.9.9/bin/lld-link.exe"
+      - "C:/Program Files/Java/apache-maven-3.9.9-bin/apache-maven-3.9.9/bin/lld-link"
+      - "C:/Program Files/nodejs/lld-link.com"
+      - "C:/Program Files/nodejs/lld-link.exe"
+      - "C:/Program Files/nodejs/lld-link"
+      - "C:/ProgramData/chocolatey/bin/lld-link.com"
+      - "C:/ProgramData/chocolatey/bin/lld-link.exe"
+      - "C:/ProgramData/chocolatey/bin/lld-link"
+      - "C:/Program Files/kotlinc/bin/lld-link.com"
+      - "C:/Program Files/kotlinc/bin/lld-link.exe"
+      - "C:/Program Files/kotlinc/bin/lld-link"
+      - "C:/Program Files/Git/cmd/lld-link.com"
+      - "C:/Program Files/Git/cmd/lld-link.exe"
+      - "C:/Program Files/Git/cmd/lld-link"
+      - "C:/Program Files/Go/bin/lld-link.com"
+      - "C:/Program Files/Go/bin/lld-link.exe"
+      - "C:/Program Files/Go/bin/lld-link"
+      - "C:/ProgramData/ComposerSetup/bin/lld-link.com"
+      - "C:/ProgramData/ComposerSetup/bin/lld-link.exe"
+      - "C:/ProgramData/ComposerSetup/bin/lld-link"
+      - "C:/Program Files/dotnet/lld-link.com"
+      - "C:/Program Files/dotnet/lld-link.exe"
+      - "C:/Program Files/dotnet/lld-link"
+      - "C:/Program Files/Wiimm/WIT/lld-link.com"
+      - "C:/Program Files/Wiimm/WIT/lld-link.exe"
+      - "C:/Program Files/Wiimm/WIT/lld-link"
+      - "C:/Program Files/CMake/bin/lld-link.com"
+      - "C:/Program Files/CMake/bin/lld-link.exe"
+      - "C:/Program Files/CMake/bin/lld-link"
+      - "C:/Program Files (x86)/Graphviz/bin/lld-link.com"
+      - "C:/Program Files (x86)/Graphviz/bin/lld-link.exe"
+      - "C:/Program Files (x86)/Graphviz/bin/lld-link"
+      - "C:/Program Files/Docker/Docker/resources/bin/lld-link.com"
+      - "C:/Program Files/Docker/Docker/resources/bin/lld-link.exe"
+      - "C:/Program Files/Docker/Docker/resources/bin/lld-link"
+      - "C:/Program Files/GitHub CLI/lld-link.com"
+      - "C:/Program Files/GitHub CLI/lld-link.exe"
+      - "C:/Program Files/GitHub CLI/lld-link"
+      - "C:/Users/leejo/.cargo/bin/lld-link.com"
+      - "C:/Users/leejo/.cargo/bin/lld-link.exe"
+      - "C:/Users/leejo/.cargo/bin/lld-link"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/lld-link.com"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/lld-link.exe"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/lld-link"
+      - "C:/Users/leejo/AppData/Roaming/npm/lld-link.com"
+      - "C:/Users/leejo/AppData/Roaming/npm/lld-link.exe"
+      - "C:/Users/leejo/AppData/Roaming/npm/lld-link"
+      - "C:/Program Files/JetBrains/IntelliJ IDEA 2025.1.3/bin/lld-link.com"
+      - "C:/Program Files/JetBrains/IntelliJ IDEA 2025.1.3/bin/lld-link.exe"
+      - "C:/Program Files/JetBrains/IntelliJ IDEA 2025.1.3/bin/lld-link"
+      - "C:/msys64/ucrt64/bin/lld-link.com"
+      - "C:/msys64/ucrt64/bin/lld-link.exe"
+      - "C:/msys64/ucrt64/bin/lld-link"
+      - "C:/Users/leejo/AppData/Local/Programs/MiKTeX/miktex/bin/x64/lld-link.com"
+      - "C:/Users/leejo/AppData/Local/Programs/MiKTeX/miktex/bin/x64/lld-link.exe"
+      - "C:/Users/leejo/AppData/Local/Programs/MiKTeX/miktex/bin/x64/lld-link"
+      - "C:/Users/leejo/go/bin/lld-link.com"
+      - "C:/Users/leejo/go/bin/lld-link.exe"
+      - "C:/Users/leejo/go/bin/lld-link"
+      - "C:/xampp/php/lld-link.com"
+      - "C:/xampp/php/lld-link.exe"
+      - "C:/xampp/php/lld-link"
+      - "C:/Users/leejo/AppData/Roaming/Composer/vendor/bin/lld-link.com"
+      - "C:/Users/leejo/AppData/Roaming/Composer/vendor/bin/lld-link.exe"
+      - "C:/Users/leejo/AppData/Roaming/Composer/vendor/bin/lld-link"
+      - "C:/Users/leejo/.bun/bin/lld-link.com"
+      - "C:/Users/leejo/.bun/bin/lld-link.exe"
+      - "C:/Users/leejo/.bun/bin/lld-link"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/copilot-shim/lld-link.com"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/copilot-shim/lld-link.exe"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/copilot-shim/lld-link"
+      - "C:/ghcup/bin/lld-link.com"
+      - "C:/ghcup/bin/lld-link.exe"
+      - "C:/ghcup/bin/lld-link"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/lld-link.com"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/lld-link.exe"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/lld-link"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.19041.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\deps"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot\\bin"
+        - "C:\\Python313\\Scripts\\"
+        - "C:\\Python313\\"
+        - "C:\\Program Files (x86)\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files (x86)\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Program Files\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Windows\\system32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA app\\NvDLISR"
+        - "C:\\Lisp\\"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Java\\jdk-24.0.2\\bin"
+        - "C:\\Program Files\\Java\\apache-maven-3.9.9-bin\\apache-maven-3.9.9\\bin"
+        - "C:\\Program Files\\nodejs\\"
+        - "C:\\ProgramData\\chocolatey\\bin"
+        - "C:\\Program Files\\kotlinc\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\Go\\bin"
+        - "C:\\ProgramData\\ComposerSetup\\bin"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files (x86)\\Graphviz\\bin"
+        - "C:\\Program Files\\Docker\\Docker\\resources\\bin"
+        - "C:\\Program Files\\GitHub CLI\\"
+        - "C:\\Users\\leejo\\.cargo\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\npm"
+        - "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.1.3\\bin"
+        - "C:\\msys64\\ucrt64\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\"
+        - "C:\\Users\\leejo\\go\\bin"
+        - "C:\\xampp\\php"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\Composer\\vendor\\bin"
+        - "C:\\Users\\leejo\\.bun\\bin"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\copilot-shim"
+        - "C:\\ghcup\\bin"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineRCCompiler.cmake:40 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/Platform/Windows-MSVC.cmake:592 (enable_language)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/Platform/Windows-MSVC.cmake:565 (__windows_compiler_msvc_enable_rc)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/Platform/Windows-MSVC-C.cmake:5 (__windows_compiler_msvc)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeCInformation.cmake:48 (include)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "program"
+    variable: "CMAKE_RC_COMPILER"
+    description: "RC compiler"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "rc"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/deps/"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Program Files/Eclipse Adoptium/jdk-17.0.17.10-hotspot/bin/"
+      - "C:/Python313/Scripts/"
+      - "C:/Python313/"
+      - "C:/Program Files (x86)/Razer Chroma SDK/bin/"
+      - "C:/Program Files/Razer Chroma SDK/bin/"
+      - "C:/Program Files (x86)/Razer/ChromaBroadcast/bin/"
+      - "C:/Program Files/Razer/ChromaBroadcast/bin/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Windows/System32/config/systemprofile/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/leejo/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA app/NvDLISR/"
+      - "C:/Lisp/"
+      - "C:/Program Files/Java/jdk-24.0.2/bin/"
+      - "C:/Program Files/Java/apache-maven-3.9.9-bin/apache-maven-3.9.9/bin/"
+      - "C:/Program Files/nodejs/"
+      - "C:/ProgramData/chocolatey/bin/"
+      - "C:/Program Files/kotlinc/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/Go/bin/"
+      - "C:/ProgramData/ComposerSetup/bin/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files/Wiimm/WIT/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files (x86)/Graphviz/bin/"
+      - "C:/Program Files/Docker/Docker/resources/bin/"
+      - "C:/Program Files/GitHub CLI/"
+      - "C:/Users/leejo/.cargo/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/leejo/AppData/Roaming/npm/"
+      - "C:/Program Files/JetBrains/IntelliJ IDEA 2025.1.3/bin/"
+      - "C:/msys64/ucrt64/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/MiKTeX/miktex/bin/x64/"
+      - "C:/Users/leejo/go/bin/"
+      - "C:/xampp/php/"
+      - "C:/Users/leejo/AppData/Roaming/Composer/vendor/bin/"
+      - "C:/Users/leejo/.bun/bin/"
+      - "C:/Users/leejo/AppData/Local/Programs/Microsoft VS Code/bin/copilot-shim/"
+      - "C:/ghcup/bin/"
+      - "C:/Users/leejo/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+      - "C:/Program Files/bin/"
+      - "C:/Program Files/sbin/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/bin/"
+      - "C:/Program Files (x86)/sbin/"
+      - "C:/Program Files (x86)/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/CMake/sbin/"
+      - "C:/Program Files/CMake/"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/bin/"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/sbin/"
+      - "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/rc.com"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/rc.exe"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/rc"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/rc.com"
+    found: "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/rc.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.19041.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\deps"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot\\bin"
+        - "C:\\Python313\\Scripts\\"
+        - "C:\\Python313\\"
+        - "C:\\Program Files (x86)\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files\\Razer Chroma SDK\\bin"
+        - "C:\\Program Files (x86)\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Program Files\\Razer\\ChromaBroadcast\\bin"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Windows\\system32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA app\\NvDLISR"
+        - "C:\\Lisp\\"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Java\\jdk-24.0.2\\bin"
+        - "C:\\Program Files\\Java\\apache-maven-3.9.9-bin\\apache-maven-3.9.9\\bin"
+        - "C:\\Program Files\\nodejs\\"
+        - "C:\\ProgramData\\chocolatey\\bin"
+        - "C:\\Program Files\\kotlinc\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\Go\\bin"
+        - "C:\\ProgramData\\ComposerSetup\\bin"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files (x86)\\Graphviz\\bin"
+        - "C:\\Program Files\\Docker\\Docker\\resources\\bin"
+        - "C:\\Program Files\\GitHub CLI\\"
+        - "C:\\Users\\leejo\\.cargo\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\npm"
+        - "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.1.3\\bin"
+        - "C:\\msys64\\ucrt64\\bin"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\"
+        - "C:\\Users\\leejo\\go\\bin"
+        - "C:\\xampp\\php"
+        - "C:\\Users\\leejo\\AppData\\Roaming\\Composer\\vendor\\bin"
+        - "C:\\Users\\leejo\\.bun\\bin"
+        - "C:\\Program Files\\Wiimm\\WIT"
+        - "C:\\Users\\leejo\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\copilot-shim"
+        - "C:\\ghcup\\bin"
+        - "C:\\Users\\leejo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "C:/Program Files"
+        - "C:/Program Files (x86)"
+        - "C:/Program Files/CMake"
+        - "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out"
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    checks:
+      - "Detecting C compiler ABI info"
+    directories:
+      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-7pfjgq"
+      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-7pfjgq"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: " -nologo -MD -Brepro -W0"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+    buildResult:
+      variable: "CMAKE_C_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-7pfjgq'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_735ba.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
+        Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
+        Copyright (C) Microsoft Corporation. All rights reserved.
+        
+        Build started 10/26/2026 5:23:37 PM.
+        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7pfjgq\\cmTC_735ba.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7pfjgq\\Debug\\".
+          Creating directory "cmTC_735ba.dir\\Debug\\cmTC_735ba.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_735ba.dir\\Debug\\cmTC_735ba.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_735ba.dir\\Debug\\\\" /Fd"cmTC_735ba.dir\\Debug\\vc142.pdb" /external:W0 /TC /errorReport:queue  -Brepro -Brepro "C:\\Program Files\\CMake\\share\\cmake-4.3\\Modules\\CMakeCCompilerABI.c"
+          CMakeCCompilerABI.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7pfjgq\\Debug\\cmTC_735ba.exe" /INCREMENTAL /ILK:"cmTC_735ba.dir\\Debug\\cmTC_735ba.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-7pfjgq/Debug/cmTC_735ba.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-7pfjgq/Debug/cmTC_735ba.lib" /MACHINE:X64  /machine:x64 cmTC_735ba.dir\\Debug\\CMakeCCompilerABI.obj
+          cmTC_735ba.vcxproj -> C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7pfjgq\\Debug\\cmTC_735ba.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_735ba.dir\\Debug\\cmTC_735ba.tlog\\unsuccessfulbuild".
+          Touching "cmTC_735ba.dir\\Debug\\cmTC_735ba.tlog\\cmTC_735ba.lastbuildstate".
+        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7pfjgq\\cmTC_735ba.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.47
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:253 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed C implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|"|[0-9]+>[ 	-]*Build:[ 	0-9]+ ms[ 	]*)?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?))("|,| |$)]
+        linker tool for 'C': C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/HostX64/x64/link.exe
+        implicit libs: []
+        implicit objs: []
+        implicit dirs: []
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/Internal/CMakeDetermineLinkerId.cmake:38 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:299 (cmake_determine_linker_id)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Running the C compiler's linker: "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/HostX64/x64/link.exe" "-v"
+      Microsoft (R) Incremental Linker Version 14.29.30159.0
+      Copyright (C) Microsoft Corporation.  All rights reserved.
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    checks:
+      - "Detecting CXX compiler ABI info"
+    directories:
+      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-pkel40"
+      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-pkel40"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_CXX_FLAGS_DEBUG: " -nologo -MD -Brepro -W0"
+      CMAKE_CXX_SCAN_FOR_MODULES: "OFF"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+    buildResult:
+      variable: "CMAKE_CXX_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-pkel40'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_52bba.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
+        Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
+        Copyright (C) Microsoft Corporation. All rights reserved.
+        
+        Build started 10/26/2026 5:23:38 PM.
+        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-pkel40\\cmTC_52bba.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-pkel40\\Debug\\".
+          Creating directory "cmTC_52bba.dir\\Debug\\cmTC_52bba.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_52bba.dir\\Debug\\cmTC_52bba.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_52bba.dir\\Debug\\\\" /Fd"cmTC_52bba.dir\\Debug\\vc142.pdb" /external:W0 /TP /errorReport:queue  -Brepro -Brepro "C:\\Program Files\\CMake\\share\\cmake-4.3\\Modules\\CMakeCXXCompilerABI.cpp"
+          CMakeCXXCompilerABI.cpp
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-pkel40\\Debug\\cmTC_52bba.exe" /INCREMENTAL /ILK:"cmTC_52bba.dir\\Debug\\cmTC_52bba.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-pkel40/Debug/cmTC_52bba.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-pkel40/Debug/cmTC_52bba.lib" /MACHINE:X64  /machine:x64 cmTC_52bba.dir\\Debug\\CMakeCXXCompilerABI.obj
+          cmTC_52bba.vcxproj -> C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-pkel40\\Debug\\cmTC_52bba.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_52bba.dir\\Debug\\cmTC_52bba.tlog\\unsuccessfulbuild".
+          Touching "cmTC_52bba.dir\\Debug\\cmTC_52bba.tlog\\cmTC_52bba.lastbuildstate".
+        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-pkel40\\cmTC_52bba.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.47
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:253 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed CXX implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|"|[0-9]+>[ 	-]*Build:[ 	0-9]+ ms[ 	]*)?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?))("|,| |$)]
+        linker tool for 'CXX': C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/HostX64/x64/link.exe
+        implicit libs: []
+        implicit objs: []
+        implicit dirs: []
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/Internal/CMakeDetermineLinkerId.cmake:38 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:299 (cmake_determine_linker_id)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Running the CXX compiler's linker: "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.29.30133/bin/HostX64/x64/link.exe" "-v"
+      Microsoft (R) Incremental Linker Version 14.29.30159.0
+      Copyright (C) Microsoft Corporation.  All rights reserved.
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CheckCCompilerFlag.cmake:105 (cmake_check_compiler_flag)"
+      - "cmake/AddIfFlagCompiles.cmake:3 (CHECK_C_COMPILER_FLAG)"
+      - "cmake/CompilerFlags.cmake:5 (add_if_flag_compiles)"
+      - "CMakeLists.txt:27 (include)"
+    checks:
+      - "Performing Test COMPILER_HAS_THOSE_TOGGLES"
+    directories:
+      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-4rdhgp"
+      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-4rdhgp"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: " -nologo -MD -Brepro -W0"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/leejo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/raylib-sys-6.0.0/raylib/cmake"
+    buildResult:
+      variable: "COMPILER_HAS_THOSE_TOGGLES"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-4rdhgp'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_0c788.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
+        Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
+        Copyright (C) Microsoft Corporation. All rights reserved.
+        
+        Build started 10/26/2026 5:23:39 PM.
+        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4rdhgp\\cmTC_0c788.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4rdhgp\\Debug\\".
+          Creating directory "cmTC_0c788.dir\\Debug\\cmTC_0c788.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_0c788.dir\\Debug\\cmTC_0c788.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D COMPILER_HAS_THOSE_TOGGLES /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_0c788.dir\\Debug\\\\" /Fd"cmTC_0c788.dir\\Debug\\vc142.pdb" /external:W0 /TC /errorReport:queue  -Brepro -Brepro -Werror=pointer-arith "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4rdhgp\\src.c"
+        cl : command line error D8021: invalid numeric argument '/Werror=pointer-arith' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4rdhgp\\cmTC_0c788.vcxproj]
+        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4rdhgp\\cmTC_0c788.vcxproj" (default targets) -- FAILED.
+        
+        Build FAILED.
+        
+        "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4rdhgp\\cmTC_0c788.vcxproj" (default target) (1) ->
+        (ClCompile target) -> 
+          cl : command line error D8021: invalid numeric argument '/Werror=pointer-arith' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4rdhgp\\cmTC_0c788.vcxproj]
+        
+            0 Warning(s)
+            1 Error(s)
+        
+        Time Elapsed 00:00:00.29
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CheckCSourceCompiles.cmake:103 (cmake_check_source_compiles)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/FindThreads.cmake:160 (check_c_source_compiles)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/FindThreads.cmake:226 (_threads_check_libc)"
+      - "src/external/glfw/CMakeLists.txt:60 (find_package)"
+    checks:
+      - "Performing Test CMAKE_HAVE_LIBC_PTHREAD"
+    directories:
+      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-u77biy"
+      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-u77biy"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: " -nologo -MD -Brepro -W0"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/leejo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/raylib-sys-6.0.0/raylib/cmake;C:/Users/leejo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/raylib-sys-6.0.0/raylib/src/external/glfw/CMake/modules"
+    buildResult:
+      variable: "CMAKE_HAVE_LIBC_PTHREAD"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-u77biy'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_3fa7d.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
+        Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
+        Copyright (C) Microsoft Corporation. All rights reserved.
+        
+        Build started 10/26/2026 5:23:40 PM.
+        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\cmTC_3fa7d.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\Debug\\".
+          Creating directory "cmTC_3fa7d.dir\\Debug\\cmTC_3fa7d.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_3fa7d.dir\\Debug\\cmTC_3fa7d.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D CMAKE_HAVE_LIBC_PTHREAD /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_3fa7d.dir\\Debug\\\\" /Fd"cmTC_3fa7d.dir\\Debug\\vc142.pdb" /external:W0 /TC /errorReport:queue  -Brepro -Brepro "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\src.c"
+          src.c
+        C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\src.c(1,10): fatal error C1083: Cannot open include file: 'pthread.h': No such file or directory [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\cmTC_3fa7d.vcxproj]
+        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\cmTC_3fa7d.vcxproj" (default targets) -- FAILED.
+        
+        Build FAILED.
+        
+        "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\cmTC_3fa7d.vcxproj" (default target) (1) ->
+        (ClCompile target) -> 
+          C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\src.c(1,10): fatal error C1083: Cannot open include file: 'pthread.h': No such file or directory [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\cmTC_3fa7d.vcxproj]
+        
+            0 Warning(s)
+            1 Error(s)
+        
+        Time Elapsed 00:00:00.33
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CheckLibraryExists.cmake:154 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/FindThreads.cmake:175 (check_library_exists)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/FindThreads.cmake:238 (_threads_check_lib)"
+      - "src/external/glfw/CMakeLists.txt:60 (find_package)"
+    checks:
+      - "Looking for pthread_create in pthreads"
+    directories:
+      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ofq10a"
+      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ofq10a"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: " -nologo -MD -Brepro -W0"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/leejo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/raylib-sys-6.0.0/raylib/cmake;C:/Users/leejo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/raylib-sys-6.0.0/raylib/src/external/glfw/CMake/modules"
+    buildResult:
+      variable: "CMAKE_HAVE_PTHREADS_CREATE"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ofq10a'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_40dda.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
+        Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
+        Copyright (C) Microsoft Corporation. All rights reserved.
+        
+        Build started 10/26/2026 5:23:41 PM.
+        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\cmTC_40dda.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\Debug\\".
+          Creating directory "cmTC_40dda.dir\\Debug\\cmTC_40dda.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_40dda.dir\\Debug\\cmTC_40dda.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D CHECK_FUNCTION_EXISTS=pthread_create /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_40dda.dir\\Debug\\\\" /Fd"cmTC_40dda.dir\\Debug\\vc142.pdb" /external:W0 /TC /errorReport:queue  -Brepro -Brepro "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\CheckFunctionExists.c"
+          CheckFunctionExists.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\Debug\\cmTC_40dda.exe" /INCREMENTAL /ILK:"cmTC_40dda.dir\\Debug\\cmTC_40dda.ilk" /NOLOGO pthreads.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ofq10a/Debug/cmTC_40dda.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ofq10a/Debug/cmTC_40dda.lib" /MACHINE:X64  /machine:x64 cmTC_40dda.dir\\Debug\\CheckFunctionExists.obj
+        LINK : fatal error LNK1104: cannot open file 'pthreads.lib' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\cmTC_40dda.vcxproj]
+        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\cmTC_40dda.vcxproj" (default targets) -- FAILED.
+        
+        Build FAILED.
+        
+        "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\cmTC_40dda.vcxproj" (default target) (1) ->
+        (Link target) -> 
+          LINK : fatal error LNK1104: cannot open file 'pthreads.lib' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\cmTC_40dda.vcxproj]
+        
+            0 Warning(s)
+            1 Error(s)
+        
+        Time Elapsed 00:00:00.37
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/CheckLibraryExists.cmake:154 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/FindThreads.cmake:175 (check_library_exists)"
+      - "C:/Program Files/CMake/share/cmake-4.3/Modules/FindThreads.cmake:239 (_threads_check_lib)"
+      - "src/external/glfw/CMakeLists.txt:60 (find_package)"
+    checks:
+      - "Looking for pthread_create in pthread"
+    directories:
+      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ln8xfa"
+      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ln8xfa"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: " -nologo -MD -Brepro -W0"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/leejo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/raylib-sys-6.0.0/raylib/cmake;C:/Users/leejo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/raylib-sys-6.0.0/raylib/src/external/glfw/CMake/modules"
+    buildResult:
+      variable: "CMAKE_HAVE_PTHREAD_CREATE"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ln8xfa'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_d8dc5.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
+        Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
+        Copyright (C) Microsoft Corporation. All rights reserved.
+        
+        Build started 10/26/2026 5:23:41 PM.
+        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\cmTC_d8dc5.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\Debug\\".
+          Creating directory "cmTC_d8dc5.dir\\Debug\\cmTC_d8dc5.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_d8dc5.dir\\Debug\\cmTC_d8dc5.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D CHECK_FUNCTION_EXISTS=pthread_create /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_d8dc5.dir\\Debug\\\\" /Fd"cmTC_d8dc5.dir\\Debug\\vc142.pdb" /external:W0 /TC /errorReport:queue  -Brepro -Brepro "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\CheckFunctionExists.c"
+          CheckFunctionExists.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\Debug\\cmTC_d8dc5.exe" /INCREMENTAL /ILK:"cmTC_d8dc5.dir\\Debug\\cmTC_d8dc5.ilk" /NOLOGO pthread.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ln8xfa/Debug/cmTC_d8dc5.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ln8xfa/Debug/cmTC_d8dc5.lib" /MACHINE:X64  /machine:x64 cmTC_d8dc5.dir\\Debug\\CheckFunctionExists.obj
+        LINK : fatal error LNK1104: cannot open file 'pthread.lib' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\cmTC_d8dc5.vcxproj]
+        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\cmTC_d8dc5.vcxproj" (default targets) -- FAILED.
+        
+        Build FAILED.
+        
+        "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\cmTC_d8dc5.vcxproj" (default target) (1) ->
+        (Link target) -> 
+          LINK : fatal error LNK1104: cannot open file 'pthread.lib' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\cmTC_d8dc5.vcxproj]
+        
+            0 Warning(s)
+            1 Error(s)
+        
+        Time Elapsed 00:00:00.41
+        
+      exitCode: 1
+...

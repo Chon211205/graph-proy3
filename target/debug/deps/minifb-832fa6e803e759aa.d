@@ -1,0 +1,12 @@
+C:\Users\leejo\Desktop\graph-proy3\target\debug\deps\minifb-832fa6e803e759aa.d: C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\lib.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\error.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\icon.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\key.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\key_handler.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\os\mod.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\os\windows\mod.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\rate.rs
+
+C:\Users\leejo\Desktop\graph-proy3\target\debug\deps\libminifb-832fa6e803e759aa.rmeta: C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\lib.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\error.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\icon.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\key.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\key_handler.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\os\mod.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\os\windows\mod.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\rate.rs
+
+C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\lib.rs:
+C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\error.rs:
+C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\icon.rs:
+C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\key.rs:
+C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\key_handler.rs:
+C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\os\mod.rs:
+C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\os\windows\mod.rs:
+C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\minifb-0.28.0\src\rate.rs:

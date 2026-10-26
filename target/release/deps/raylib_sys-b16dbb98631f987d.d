@@ -1,0 +1,14 @@
+C:\Users\leejo\Desktop\graph-proy3\target\release\deps\raylib_sys-b16dbb98631f987d.d: C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\lib.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\color.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\math.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\matrix_quat_math.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\vector_math.rs C:\Users\leejo\Desktop\graph-proy3\target\release\build\raylib-sys-75c69a2acbd29e83\out/bindings.rs
+
+C:\Users\leejo\Desktop\graph-proy3\target\release\deps\libraylib_sys-b16dbb98631f987d.rlib: C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\lib.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\color.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\math.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\matrix_quat_math.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\vector_math.rs C:\Users\leejo\Desktop\graph-proy3\target\release\build\raylib-sys-75c69a2acbd29e83\out/bindings.rs
+
+C:\Users\leejo\Desktop\graph-proy3\target\release\deps\libraylib_sys-b16dbb98631f987d.rmeta: C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\lib.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\color.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\math.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\matrix_quat_math.rs C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\vector_math.rs C:\Users\leejo\Desktop\graph-proy3\target\release\build\raylib-sys-75c69a2acbd29e83\out/bindings.rs
+
+C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\lib.rs:
+C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\color.rs:
+C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\math.rs:
+C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\matrix_quat_math.rs:
+C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\raylib-sys-6.0.0\src\vector_math.rs:
+C:\Users\leejo\Desktop\graph-proy3\target\release\build\raylib-sys-75c69a2acbd29e83\out/bindings.rs:
+
+# env-dep:OUT_DIR=C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\release\\build\\raylib-sys-75c69a2acbd29e83\\out

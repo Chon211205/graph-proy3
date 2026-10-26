@@ -1,0 +1,1 @@
+C:\Users\leejo\Desktop\graph-proy3\target\release\graph-proy3.exe: C:\Users\leejo\Desktop\graph-proy3\src\framebuffer.rs C:\Users\leejo\Desktop\graph-proy3\src\main.rs C:\Users\leejo\Desktop\graph-proy3\src\obj_loader.rs C:\Users\leejo\Desktop\graph-proy3\src\triangle.rs
