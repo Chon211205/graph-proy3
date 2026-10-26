@@ -9,6 +9,9 @@ use triangle::{draw_triangle, ScreenVertex};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
+const MAX_SPEED: f32 = 0.028;
+const ACCELERATION: f32 = 0.0035;
+const DRAG: f32 = 0.86;
 
 fn screen_size() -> (usize, usize) {
     #[cfg(target_os = "windows")]
@@ -82,7 +85,15 @@ fn pack(rgb: [u8; 3], brightness: f32) -> u32 {
     (channel(rgb[0]) << 16) | (channel(rgb[1]) << 8) | channel(rgb[2])
 }
 
-fn render(model: &Model, framebuffer: &mut Framebuffer, yaw: f32) {
+fn render(
+    model: &Model,
+    framebuffer: &mut Framebuffer,
+    ship_x: f32,
+    ship_y: f32,
+    yaw: f32,
+    pitch: f32,
+    roll: f32,
+) {
     framebuffer.clear(0x172234);
 
     let mut min = model.vertices[0];
@@ -106,13 +117,7 @@ fn render(model: &Model, framebuffer: &mut Framebuffer, yaw: f32) {
 
     let initial = Vec3::new(1.05, 0.85, -1.55).normalize();
 
-    let (sin, cos) = yaw.sin_cos();
-
-    let camera = Vec3::new(
-        initial.x * cos - initial.z * sin,
-        initial.y,
-        initial.x * sin + initial.z * cos,
-    );
+    let camera = initial;
 
     let right = Vec3::new(0.0, 1.0, 0.0).cross(camera).normalize();
 
@@ -126,7 +131,28 @@ fn render(model: &Model, framebuffer: &mut Framebuffer, yaw: f32) {
         .map(|vertex| {
             let v = vertex.sub(center);
 
-            Vec3::new(v.dot(right), v.dot(up), v.dot(camera))
+            let v = Vec3::new(v.dot(right), v.dot(up), v.dot(camera));
+
+            let (sin_yaw, cos_yaw) = yaw.sin_cos();
+            let v = Vec3::new(
+                v.x * cos_yaw + v.z * sin_yaw,
+                v.y,
+                -v.x * sin_yaw + v.z * cos_yaw,
+            );
+
+            let (sin_pitch, cos_pitch) = pitch.sin_cos();
+            let v = Vec3::new(
+                v.x,
+                v.y * cos_pitch - v.z * sin_pitch,
+                v.y * sin_pitch + v.z * cos_pitch,
+            );
+
+            let (sin_roll, cos_roll) = roll.sin_cos();
+            Vec3::new(
+                v.x * cos_roll - v.y * sin_roll,
+                v.x * sin_roll + v.y * cos_roll,
+                v.z,
+            )
         })
         .collect();
 
@@ -143,9 +169,9 @@ fn render(model: &Model, framebuffer: &mut Framebuffer, yaw: f32) {
         y1 = y1.max(vertex.y);
     }
 
-    let scale_x = (WIDTH as f32 * 0.84) / (x1 - x0).max(0.001);
+    let scale_x = (WIDTH as f32 * 0.48) / (x1 - x0).max(0.001);
 
-    let scale_y = (HEIGHT as f32 * 0.82) / (y1 - y0).max(0.001);
+    let scale_y = (HEIGHT as f32 * 0.48) / (y1 - y0).max(0.001);
 
     let scale = scale_x.min(scale_y);
 
@@ -155,9 +181,9 @@ fn render(model: &Model, framebuffer: &mut Framebuffer, yaw: f32) {
     let screen: Vec<ScreenVertex> = camera_coords
         .iter()
         .map(|vertex| ScreenVertex {
-            x: WIDTH as f32 * 0.5 + (vertex.x - mx) * scale,
+            x: WIDTH as f32 * (0.5 + ship_x * 0.28) + (vertex.x - mx) * scale,
 
-            y: HEIGHT as f32 * 0.5 - (vertex.y - my) * scale,
+            y: HEIGHT as f32 * (0.5 + ship_y * 0.25) - (vertex.y - my) * scale,
 
             z: vertex.z,
         })
@@ -166,9 +192,9 @@ fn render(model: &Model, framebuffer: &mut Framebuffer, yaw: f32) {
     for face in &model.faces {
         let [i0, i1, i2] = face.indices;
 
-        let v0 = model.vertices[i0];
-        let v1 = model.vertices[i1];
-        let v2 = model.vertices[i2];
+        let v0 = camera_coords[i0];
+        let v1 = camera_coords[i1];
+        let v2 = camera_coords[i2];
 
         let normal = v1.sub(v0).cross(v2.sub(v0)).normalize();
 
@@ -190,19 +216,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Modelo: {}", path);
     println!("Vertices: {}", model.vertices.len());
     println!("Triangulos: {}", model.faces.len());
+    println!("Controles: WASD/flechas = mover, Q/E = giro, P = captura, F11 = fullscreen");
 
     let mut fullscreen = false;
     let mut window = create_window(fullscreen)?;
 
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
 
-    let mut yaw = 0.0;
+    let mut ship_x: f32 = 0.0;
+    let mut ship_y: f32 = 0.0;
+    let mut velocity_x: f32 = 0.0;
+    let mut velocity_y: f32 = 0.0;
+    let mut yaw: f32 = 0.0;
+    let mut pitch: f32 = 0.0;
+    let mut roll: f32 = 0.0;
+    let mut barrel_roll: f32 = 0.0;
 
-    render(&model, &mut framebuffer, yaw);
+    render(&model, &mut framebuffer, ship_x, ship_y, yaw, pitch, roll);
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        let mut changed = false;
-
         if window.is_key_pressed(Key::F11, KeyRepeat::No) {
             fullscreen = !fullscreen;
             window = create_window(fullscreen)?;
@@ -216,21 +248,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
 
-        if window.is_key_down(Key::Left) {
-            yaw -= 0.025;
-            changed = true;
+        let horizontal = (window.is_key_down(Key::D) || window.is_key_down(Key::Right)) as i8
+            - (window.is_key_down(Key::A) || window.is_key_down(Key::Left)) as i8;
+        let vertical = (window.is_key_down(Key::S) || window.is_key_down(Key::Down)) as i8
+            - (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8;
+
+        velocity_x = (velocity_x + horizontal as f32 * ACCELERATION).clamp(-MAX_SPEED, MAX_SPEED);
+        velocity_y = (velocity_y + vertical as f32 * ACCELERATION).clamp(-MAX_SPEED, MAX_SPEED);
+
+        if horizontal == 0 {
+            velocity_x *= DRAG;
+        }
+        if vertical == 0 {
+            velocity_y *= DRAG;
         }
 
-        if window.is_key_down(Key::Right) {
-            yaw += 0.025;
-            changed = true;
+        ship_x = (ship_x + velocity_x).clamp(-1.0, 1.0);
+        ship_y = (ship_y + velocity_y).clamp(-1.0, 1.0);
+
+        if ship_x.abs() >= 1.0 {
+            velocity_x = 0.0;
+        }
+        if ship_y.abs() >= 1.0 {
+            velocity_y = 0.0;
         }
 
-        if changed {
-            render(&model, &mut framebuffer, yaw);
+        if window.is_key_down(Key::Q) {
+            barrel_roll -= 0.10;
+        }
+        if window.is_key_down(Key::E) {
+            barrel_roll += 0.10;
         }
 
-        if window.is_key_pressed(Key::S, KeyRepeat::No) {
+        let target_yaw = velocity_x * 6.0;
+        let target_pitch = -velocity_y * 12.0;
+        let target_roll = barrel_roll - velocity_x * 18.0;
+
+        yaw += (target_yaw - yaw) * 0.14;
+        pitch += (target_pitch - pitch) * 0.14;
+        roll += (target_roll - roll) * 0.18;
+
+        render(&model, &mut framebuffer, ship_x, ship_y, yaw, pitch, roll);
+
+        if window.is_key_pressed(Key::P, KeyRepeat::No) {
             framebuffer.save_png("captura.png")?;
             println!("Captura guardada: captura.png");
         }
