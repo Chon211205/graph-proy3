@@ -7,3 +7,6 @@ edition = "2024"
 minifb = "0.28"
 png = "0.17"
 raylib = "6.0.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }

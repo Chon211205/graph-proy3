@@ -302,6 +302,7 @@ dependencies = [
  "minifb",
  "png",
  "raylib",
+ "windows-sys",
 ]
 
 [[package]]

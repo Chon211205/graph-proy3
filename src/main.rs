@@ -3,12 +3,58 @@ mod obj_loader;
 mod triangle;
 
 use framebuffer::Framebuffer;
-use minifb::{Key, KeyRepeat, Window, WindowOptions};
+use minifb::{Key, KeyRepeat, ScaleMode, Window, WindowOptions};
 use obj_loader::{load_obj, Model, Vec3};
 use triangle::{draw_triangle, ScreenVertex};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
+
+fn screen_size() -> (usize, usize) {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN,
+        };
+
+        // GetSystemMetrics is safe for these read-only screen metrics.
+        let width = unsafe { GetSystemMetrics(SM_CXSCREEN) };
+        let height = unsafe { GetSystemMetrics(SM_CYSCREEN) };
+
+        if width > 0 && height > 0 {
+            return (width as usize, height as usize);
+        }
+    }
+
+    (WIDTH, HEIGHT)
+}
+
+fn create_window(fullscreen: bool) -> Result<Window, minifb::Error> {
+    let (width, height) = if fullscreen {
+        screen_size()
+    } else {
+        (WIDTH, HEIGHT)
+    };
+
+    let mut window = Window::new(
+        "LAB 4 - Nave Espacial OBJ | Rust | F11: pantalla completa",
+        width,
+        height,
+        WindowOptions {
+            borderless: fullscreen,
+            resize: !fullscreen,
+            scale_mode: ScaleMode::AspectRatioStretch,
+            ..WindowOptions::default()
+        },
+    )?;
+
+    if fullscreen {
+        window.set_position(0, 0);
+    }
+
+    window.set_target_fps(60);
+    Ok(window)
+}
 
 fn color_for_material(name: &str) -> [u8; 3] {
     let n = name.to_ascii_lowercase();
@@ -31,20 +77,12 @@ fn color_for_material(name: &str) -> [u8; 3] {
 }
 
 fn pack(rgb: [u8; 3], brightness: f32) -> u32 {
-    let channel = |v: u8| {
-        (v as f32 * brightness).clamp(0.0, 255.0) as u32
-    };
+    let channel = |v: u8| (v as f32 * brightness).clamp(0.0, 255.0) as u32;
 
-    (channel(rgb[0]) << 16)
-        | (channel(rgb[1]) << 8)
-        | channel(rgb[2])
+    (channel(rgb[0]) << 16) | (channel(rgb[1]) << 8) | channel(rgb[2])
 }
 
-fn render(
-    model: &Model,
-    framebuffer: &mut Framebuffer,
-    yaw: f32,
-) {
+fn render(model: &Model, framebuffer: &mut Framebuffer, yaw: f32) {
     framebuffer.clear(0x172234);
 
     let mut min = model.vertices[0];
@@ -76,9 +114,7 @@ fn render(
         initial.x * sin + initial.z * cos,
     );
 
-    let right = Vec3::new(0.0, 1.0, 0.0)
-        .cross(camera)
-        .normalize();
+    let right = Vec3::new(0.0, 1.0, 0.0).cross(camera).normalize();
 
     let up = camera.cross(right).normalize();
 
@@ -90,11 +126,7 @@ fn render(
         .map(|vertex| {
             let v = vertex.sub(center);
 
-            Vec3::new(
-                v.dot(right),
-                v.dot(up),
-                v.dot(camera),
-            )
+            Vec3::new(v.dot(right), v.dot(up), v.dot(camera))
         })
         .collect();
 
@@ -111,11 +143,9 @@ fn render(
         y1 = y1.max(vertex.y);
     }
 
-    let scale_x =
-        (WIDTH as f32 * 0.84) / (x1 - x0).max(0.001);
+    let scale_x = (WIDTH as f32 * 0.84) / (x1 - x0).max(0.001);
 
-    let scale_y =
-        (HEIGHT as f32 * 0.82) / (y1 - y0).max(0.001);
+    let scale_y = (HEIGHT as f32 * 0.82) / (y1 - y0).max(0.001);
 
     let scale = scale_x.min(scale_y);
 
@@ -125,11 +155,9 @@ fn render(
     let screen: Vec<ScreenVertex> = camera_coords
         .iter()
         .map(|vertex| ScreenVertex {
-            x: WIDTH as f32 * 0.5
-                + (vertex.x - mx) * scale,
+            x: WIDTH as f32 * 0.5 + (vertex.x - mx) * scale,
 
-            y: HEIGHT as f32 * 0.5
-                - (vertex.y - my) * scale,
+            y: HEIGHT as f32 * 0.5 - (vertex.y - my) * scale,
 
             z: vertex.z,
         })
@@ -142,26 +170,13 @@ fn render(
         let v1 = model.vertices[i1];
         let v2 = model.vertices[i2];
 
-        let normal = v1
-            .sub(v0)
-            .cross(v2.sub(v0))
-            .normalize();
+        let normal = v1.sub(v0).cross(v2.sub(v0)).normalize();
 
-        let brightness =
-            0.53 + 0.47 * normal.dot(light).abs();
+        let brightness = 0.53 + 0.47 * normal.dot(light).abs();
 
-        let color = pack(
-            color_for_material(&face.material),
-            brightness,
-        );
+        let color = pack(color_for_material(&face.material), brightness);
 
-        draw_triangle(
-            framebuffer,
-            screen[i0],
-            screen[i1],
-            screen[i2],
-            color,
-        );
+        draw_triangle(framebuffer, screen[i0], screen[i1], screen[i2], color);
     }
 }
 
@@ -170,21 +185,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .unwrap_or_else(|| "assets/nave.obj".to_string());
 
-    let model = load_obj(&path)
-        .map_err(|e| format!("Error al cargar {}: {}", path, e))?;
+    let model = load_obj(&path).map_err(|e| format!("Error al cargar {}: {}", path, e))?;
 
     println!("Modelo: {}", path);
     println!("Vertices: {}", model.vertices.len());
     println!("Triangulos: {}", model.faces.len());
 
-    let mut window = Window::new(
-        "LAB 4 - Nave Espacial OBJ | Rust",
-        WIDTH,
-        HEIGHT,
-        WindowOptions::default(),
-    )?;
-
-    window.set_target_fps(60);
+    let mut fullscreen = false;
+    let mut window = create_window(fullscreen)?;
 
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
 
@@ -194,6 +202,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let mut changed = false;
+
+        if window.is_key_pressed(Key::F11, KeyRepeat::No) {
+            fullscreen = !fullscreen;
+            window = create_window(fullscreen)?;
+            println!(
+                "Pantalla completa: {}",
+                if fullscreen {
+                    "activada"
+                } else {
+                    "desactivada"
+                }
+            );
+        }
 
         if window.is_key_down(Key::Left) {
             yaw -= 0.025;
@@ -214,11 +235,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Captura guardada: captura.png");
         }
 
-        window.update_with_buffer(
-            &framebuffer.pixels,
-            WIDTH,
-            HEIGHT,
-        )?;
+        window.update_with_buffer(&framebuffer.pixels, WIDTH, HEIGHT)?;
     }
 
     Ok(())
