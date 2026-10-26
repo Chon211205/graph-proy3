@@ -87,8 +87,8 @@ CMAKE = None
 -- Compiling with the flags:
 --   PLATFORM=PLATFORM_DESKTOP
 --   GRAPHICS=GRAPHICS_API_OPENGL_33
--- Configuring done (7.0s)
--- Generating done (0.3s)
+-- Configuring done (6.2s)
+-- Generating done (0.2s)
 -- Build files have been written to: C:/Users/leejo/Desktop/graph-proy3/target/release/build/raylib-sys-75c69a2acbd29e83/out/build
 Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
 Copyright (C) Microsoft Corporation. All rights reserved.

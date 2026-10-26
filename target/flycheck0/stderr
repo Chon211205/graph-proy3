@@ -1,1 +1,265 @@
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.08s
+   0.068526700s  INFO prepare_target{force=false package_id=graph-proy3 v0.1.0 (C:\Users\leejo\Desktop\graph-proy3) target="graph-proy3"}: cargo::core::compiler::fingerprint: fingerprint error for graph-proy3 v0.1.0 (C:\Users\leejo\Desktop\graph-proy3)/Check { test: false }/TargetInner { name: "graph-proy3", doc: true, ..: with_path("C:\\Users\\leejo\\Desktop\\graph-proy3\\src\\main.rs", Edition2024) }
+   0.068561400s  INFO prepare_target{force=false package_id=graph-proy3 v0.1.0 (C:\Users\leejo\Desktop\graph-proy3) target="graph-proy3"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\leejo\Desktop\graph-proy3\target\debug\.fingerprint\graph-proy3-1323e908eb49ed6f\bin-graph-proy3`
+
+Caused by:
+    The system cannot find the file specified. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+   0.080952200s  INFO prepare_target{force=false package_id=raylib v6.0.0 target="raylib"}: cargo::core::compiler::fingerprint: fingerprint error for raylib v6.0.0/Check { test: false }/TargetInner { ..: lib_target("raylib", ["lib"], "C:\\Users\\leejo\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\raylib-6.0.0\\src\\lib.rs", Edition2024) }
+   0.080980000s  INFO prepare_target{force=false package_id=raylib v6.0.0 target="raylib"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\leejo\Desktop\graph-proy3\target\debug\.fingerprint\raylib-1d96f7356ff6abf9\lib-raylib`
+
+Caused by:
+    The system cannot find the file specified. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_filter_source_repo
+  12: git_libgit2_prerelease
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: <unknown>
+  17: git_midx_writer_dump
+  18: git_filter_source_repo
+  19: git_midx_writer_dump
+  20: BaseThreadInitThunk
+  21: RtlUserThreadStart
+   0.081398300s  INFO prepare_target{force=false package_id=raylib-sys v6.0.0 target="raylib_sys"}: cargo::core::compiler::fingerprint: fingerprint error for raylib-sys v6.0.0/Check { test: false }/TargetInner { ..: lib_target("raylib_sys", ["lib"], "C:\\Users\\leejo\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\raylib-sys-6.0.0\\src\\lib.rs", Edition2024) }
+   0.081411000s  INFO prepare_target{force=false package_id=raylib-sys v6.0.0 target="raylib_sys"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\leejo\Desktop\graph-proy3\target\debug\.fingerprint\raylib-sys-f85cf0125697ee4d\lib-raylib_sys`
+
+Caused by:
+    The system cannot find the file specified. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_filter_source_repo
+  12: git_filter_source_repo
+  13: git_libgit2_prerelease
+  14: <unknown>
+  15: <unknown>
+  16: <unknown>
+  17: <unknown>
+  18: git_midx_writer_dump
+  19: git_filter_source_repo
+  20: git_midx_writer_dump
+  21: BaseThreadInitThunk
+  22: RtlUserThreadStart
+   0.082201000s  INFO prepare_target{force=false package_id=raylib-sys v6.0.0 target="build-script-build"}: cargo::core::compiler::fingerprint: fingerprint error for raylib-sys v6.0.0/RunCustomBuild/TargetInner { ..: custom_build_target("build-script-build", "C:\\Users\\leejo\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\raylib-sys-6.0.0\\build.rs", Edition2024) }
+   0.082215200s  INFO prepare_target{force=false package_id=raylib-sys v6.0.0 target="build-script-build"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\leejo\Desktop\graph-proy3\target\debug\.fingerprint\raylib-sys-c99b2beeb01530c0\run-build-script-build-script-build`
+
+Caused by:
+    The system cannot find the file specified. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_filter_source_repo
+  12: git_filter_source_repo
+  13: git_filter_source_repo
+  14: git_filter_source_repo
+  15: git_libgit2_prerelease
+  16: <unknown>
+  17: <unknown>
+  18: <unknown>
+  19: <unknown>
+  20: git_midx_writer_dump
+  21: git_filter_source_repo
+  22: git_midx_writer_dump
+  23: BaseThreadInitThunk
+  24: RtlUserThreadStart
+   0.091233200s  INFO prepare_target{force=false package_id=graph-proy3 v0.1.0 (C:\Users\leejo\Desktop\graph-proy3) target="graph-proy3"}: cargo::core::compiler::fingerprint: fingerprint error for graph-proy3 v0.1.0 (C:\Users\leejo\Desktop\graph-proy3)/Check { test: true }/TargetInner { name: "graph-proy3", doc: true, ..: with_path("C:\\Users\\leejo\\Desktop\\graph-proy3\\src\\main.rs", Edition2024) }
+   0.091252400s  INFO prepare_target{force=false package_id=graph-proy3 v0.1.0 (C:\Users\leejo\Desktop\graph-proy3) target="graph-proy3"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\leejo\Desktop\graph-proy3\target\debug\.fingerprint\graph-proy3-d276e5f0cf97cc2e\test-bin-graph-proy3`
+
+Caused by:
+    The system cannot find the file specified. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+   Compiling raylib-sys v6.0.0
+error: failed to run custom build command for `raylib-sys v6.0.0`
+note: To improve backtraces for build dependencies, set the CARGO_PROFILE_DEV_BUILD_OVERRIDE_DEBUG=true environment variable to enable debug information generation.
+
+Caused by:
+  process didn't exit successfully: `C:\Users\leejo\Desktop\graph-proy3\target\debug\build\raylib-sys-91e4b118f3802d5d\build-script-build` (exit code: 101)
+  --- stdout
+  cargo:rerun-if-changed=build.rs
+  cargo:rerun-if-changed=binding/binding.h
+  CMAKE_TOOLCHAIN_FILE_x86_64-pc-windows-msvc = None
+  CMAKE_TOOLCHAIN_FILE_x86_64_pc_windows_msvc = None
+  HOST_CMAKE_TOOLCHAIN_FILE = None
+  CMAKE_TOOLCHAIN_FILE = None
+  CMAKE_GENERATOR_x86_64-pc-windows-msvc = None
+  CMAKE_GENERATOR_x86_64_pc_windows_msvc = None
+  HOST_CMAKE_GENERATOR = None
+  CMAKE_GENERATOR = None
+  CMAKE_PREFIX_PATH_x86_64-pc-windows-msvc = None
+  CMAKE_PREFIX_PATH_x86_64_pc_windows_msvc = None
+  HOST_CMAKE_PREFIX_PATH = None
+  CMAKE_PREFIX_PATH = None
+  CMAKE_x86_64-pc-windows-msvc = None
+  CMAKE_x86_64_pc_windows_msvc = None
+  HOST_CMAKE = None
+  CMAKE = None
+  -- Selecting Windows SDK version 10.0.19041.0 to target Windows 10.0.26300.
+  -- Testing if -Werror=pointer-arith can be used -- Failed
+  -- Testing if -Werror=implicit-function-declaration can be used -- Failed
+  -- Testing if -fno-strict-aliasing can be used -- Failed
+  -- Using raylib's GLFW
+  -- Including Win32 support
+  -- Audio Backend: miniaudio
+  -- Building raylib static library
+  -- SUPPORT_MODULE_RSHAPES=ON
+  -- SUPPORT_MODULE_RTEXTURES=ON
+  -- SUPPORT_MODULE_RTEXT=ON
+  -- SUPPORT_MODULE_RMODELS=ON
+  -- SUPPORT_MODULE_RAUDIO=ON
+  -- SUPPORT_TRACELOG=ON
+  -- SUPPORT_CAMERA_SYSTEM=ON
+  -- SUPPORT_GESTURES_SYSTEM=ON
+  -- SUPPORT_RPRAND_GENERATOR=ON
+  -- SUPPORT_MOUSE_GESTURES=ON
+  -- SUPPORT_SSH_KEYBOARD_RPI=ON
+  -- SUPPORT_WINMM_HIGHRES_TIMER=ON
+  -- SUPPORT_SCREEN_CAPTURE=ON
+  -- SUPPORT_COMPRESSION_API=ON
+  -- SUPPORT_AUTOMATION_EVENTS=ON
+  -- SUPPORT_CLIPBOARD_IMAGE=ON
+  -- SUPPORT_QUADS_DRAW_MODE=ON
+  -- SUPPORT_FILEFORMAT_PNG=ON
+  -- SUPPORT_FILEFORMAT_GIF=ON
+  -- SUPPORT_FILEFORMAT_QOI=ON
+  -- SUPPORT_FILEFORMAT_DDS=ON
+  -- SUPPORT_IMAGE_EXPORT=ON
+  -- SUPPORT_IMAGE_GENERATION=ON
+  -- SUPPORT_FILEFORMAT_TTF=ON
+  -- SUPPORT_FILEFORMAT_FNT=ON
+  -- SUPPORT_FILEFORMAT_OBJ=ON
+  -- SUPPORT_FILEFORMAT_MTL=ON
+  -- SUPPORT_FILEFORMAT_IQM=ON
+  -- SUPPORT_FILEFORMAT_GLTF=ON
+  -- SUPPORT_FILEFORMAT_VOX=ON
+  -- SUPPORT_FILEFORMAT_M3D=ON
+  -- SUPPORT_MESH_GENERATION=ON
+  -- SUPPORT_FILEFORMAT_WAV=ON
+  -- SUPPORT_FILEFORMAT_OGG=ON
+  -- SUPPORT_FILEFORMAT_MP3=ON
+  -- SUPPORT_FILEFORMAT_QOA=ON
+  -- SUPPORT_FILEFORMAT_XM=ON
+  -- SUPPORT_FILEFORMAT_MOD=ON
+  -- Generated build type: Debug
+  -- Compiling with the flags:
+  --   PLATFORM=PLATFORM_DESKTOP
+  --   GRAPHICS=GRAPHICS_API_OPENGL_33
+  -- Configuring done (0.2s)
+  -- Generating done (1.5s)
+  -- Build files have been written to: C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build
+  Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
+  Copyright (C) Microsoft Corporation. All rights reserved.
+
+    1>Checking Build System
+    win32_window.c
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Microsoft\VC\v160\Microsoft.CppCommon.targets(687,5): error MSB6003: The specified task executable "CL.exe" could not be run. System.IO.IOException: The requested operation cannot be performed on a file with a user-mapped section open. [C:\Users\leejo\Desktop\graph-proy3\target\debug\build\raylib-sys-c99b2beeb01530c0\out\build\raylib\external\glfw\src\glfw.vcxproj]
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Microsoft\VC\v160\Microsoft.CppCommon.targets(687,5): error MSB6003:  [C:\Users\leejo\Desktop\graph-proy3\target\debug\build\raylib-sys-c99b2beeb01530c0\out\build\raylib\external\glfw\src\glfw.vcxproj]
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Microsoft\VC\v160\Microsoft.CppCommon.targets(687,5): error MSB6003:    at System.IO.__Error.WinIOError(Int32 errorCode, String maybeFullPath) [C:\Users\leejo\Desktop\graph-proy3\target\debug\build\raylib-sys-c99b2beeb01530c0\out\build\raylib\external\glfw\src\glfw.vcxproj]
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Microsoft\VC\v160\Microsoft.CppCommon.targets(687,5): error MSB6003:    at System.IO.FileStream.Init(String path, FileMode mode, FileAccess access, Int32 rights, Boolean useRights, FileShare share, Int32 bufferSize, FileOptions options, SECURITY_ATTRIBUTES secAttrs, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost) [C:\Users\leejo\Desktop\graph-proy3\target\debug\build\raylib-sys-c99b2beeb01530c0\out\build\raylib\external\glfw\src\glfw.vcxproj]
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Microsoft\VC\v160\Microsoft.CppCommon.targets(687,5): error MSB6003:    at System.IO.FileStream..ctor(String path, FileMode mode, FileAccess access, FileShare share, Int32 bufferSize, FileOptions options, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost) [C:\Users\leejo\Desktop\graph-proy3\target\debug\build\raylib-sys-c99b2beeb01530c0\out\build\raylib\external\glfw\src\glfw.vcxproj]
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Microsoft\VC\v160\Microsoft.CppCommon.targets(687,5): error MSB6003:    at System.IO.StreamWriter.CreateFile(String path, Boolean append, Boolean checkHost) [C:\Users\leejo\Desktop\graph-proy3\target\debug\build\raylib-sys-c99b2beeb01530c0\out\build\raylib\external\glfw\src\glfw.vcxproj]
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Microsoft\VC\v160\Microsoft.CppCommon.targets(687,5): error MSB6003:    at System.IO.StreamWriter..ctor(String path, Boolean append, Encoding encoding, Int32 bufferSize, Boolean checkHost) [C:\Users\leejo\Desktop\graph-proy3\target\debug\build\raylib-sys-c99b2beeb01530c0\out\build\raylib\external\glfw\src\glfw.vcxproj]
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Microsoft\VC\v160\Microsoft.CppCommon.targets(687,5): error MSB6003:    at System.IO.File.InternalWriteAllText(String path, String contents, Encoding encoding, Boolean checkHost) [C:\Users\leejo\Desktop\graph-proy3\target\debug\build\raylib-sys-c99b2beeb01530c0\out\build\raylib\external\glfw\src\glfw.vcxproj]
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Microsoft\VC\v160\Microsoft.CppCommon.targets(687,5): error MSB6003:    at System.IO.File.WriteAllText(String path, String contents, Encoding encoding) [C:\Users\leejo\Desktop\graph-proy3\target\debug\build\raylib-sys-c99b2beeb01530c0\out\build\raylib\external\glfw\src\glfw.vcxproj]
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Microsoft\VC\v160\Microsoft.CppCommon.targets(687,5): error MSB6003:    at Microsoft.Build.Utilities.CanonicalTrackedInputFiles.SaveTlog(DependencyFilter includeInTLog) [C:\Users\leejo\Desktop\graph-proy3\target\debug\build\raylib-sys-c99b2beeb01530c0\out\build\raylib\external\glfw\src\glfw.vcxproj]
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Microsoft\VC\v160\Microsoft.CppCommon.targets(687,5): error MSB6003:    at Microsoft.Build.CPPTasks.CL.PostExecuteTool(Int32 exitCode) [C:\Users\leejo\Desktop\graph-proy3\target\debug\build\raylib-sys-c99b2beeb01530c0\out\build\raylib\external\glfw\src\glfw.vcxproj]
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Microsoft\VC\v160\Microsoft.CppCommon.targets(687,5): error MSB6003:    at Microsoft.Build.CPPTasks.TrackedVCToolTask.ExecuteTool(String pathToTool, String responseFileCommands, String commandLineCommands) [C:\Users\leejo\Desktop\graph-proy3\target\debug\build\raylib-sys-c99b2beeb01530c0\out\build\raylib\external\glfw\src\glfw.vcxproj]
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Microsoft\VC\v160\Microsoft.CppCommon.targets(687,5): error MSB6003:    at Microsoft.Build.Utilities.ToolTask.Execute() [C:\Users\leejo\Desktop\graph-proy3\target\debug\build\raylib-sys-c99b2beeb01530c0\out\build\raylib\external\glfw\src\glfw.vcxproj]
+
+  --- stderr
+  running: "cmake" "C:\\Users\\leejo\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\raylib-sys-6.0.0\\./raylib" "-B" "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build" "-G" "Visual Studio 16 2019" "-Thost=x64" "-Ax64" "-DCMAKE_BUILD_TYPE=Debug" "-DBUILD_EXAMPLES=OFF" "-DCUSTOMIZE_BUILD=ON" "-DENABLE_ASAN=OFF" "-DENABLE_UBSAN=OFF" "-DENABLE_MSAN=OFF" "-DWITH_PIC=OFF" "-DBUILD_SHARED_LIBS=OFF" "-DUSE_EXTERNAL_GLFW=OFF" "-DGLFW_BUILD_WAYLAND=OFF" "-DGLFW_BUILD_X11=ON" "-DINCLUDE_EVERYTHING=OFF" "-DUSE_AUDIO=ON" "-DSUPPORT_MODULE_RSHAPES=ON" "-DSUPPORT_MODULE_RTEXTURES=ON" "-DSUPPORT_MODULE_RTEXT=ON" "-DSUPPORT_MODULE_RMODELS=ON" "-DSUPPORT_MODULE_RAUDIO=ON" "-DSUPPORT_BUSY_WAIT_LOOP=OFF" "-DSUPPORT_CAMERA_SYSTEM=ON" "-DSUPPORT_GESTURES_SYSTEM=ON" "-DSUPPORT_RPRAND_GENERATOR=ON" "-DSUPPORT_MOUSE_GESTURES=ON" "-DSUPPORT_SSH_KEYBOARD_RPI=ON" "-DSUPPORT_WINMM_HIGHRES_TIMER=ON" "-DSUPPORT_PARTIALBUSY_WAIT_LOOP=OFF" "-DSUPPORT_COMPRESSION_API=ON" "-DSUPPORT_AUTOMATION_EVENTS=ON" "-DSUPPORT_CUSTOM_FRAME_CONTROL=OFF" "-DSUPPORT_CLIPBOARD_IMAGE=ON" "-DSUPPORT_QUADS_DRAW_MODE=ON" "-DSUPPORT_FILEFORMAT_PNG=ON" "-DSUPPORT_FILEFORMAT_BMP=OFF" "-DSUPPORT_FILEFORMAT_TGA=OFF" "-DSUPPORT_FILEFORMAT_JPG=OFF" "-DSUPPORT_FILEFORMAT_GIF=ON" "-DSUPPORT_FILEFORMAT_QOI=ON" "-DSUPPORT_FILEFORMAT_PSD=OFF" "-DSUPPORT_FILEFORMAT_DDS=ON" "-DSUPPORT_FILEFORMAT_HDR=OFF" "-DSUPPORT_FILEFORMAT_PIC=OFF" "-DSUPPORT_FILEFORMAT_PNM=OFF" "-DSUPPORT_FILEFORMAT_KTX=OFF" "-DSUPPORT_FILEFORMAT_ASTC=OFF" "-DSUPPORT_FILEFORMAT_PKM=OFF" "-DSUPPORT_FILEFORMAT_PVR=OFF" "-DSUPPORT_IMAGE_EXPORT=ON" "-DSUPPORT_IMAGE_GENERATION=ON" "-DSUPPORT_FILEFORMAT_TTF=ON" "-DSUPPORT_FILEFORMAT_FNT=ON" "-DSUPPORT_FILEFORMAT_BDF=OFF" "-DSUPPORT_FILEFORMAT_OBJ=ON" "-DSUPPORT_FILEFORMAT_MTL=ON" "-DSUPPORT_FILEFORMAT_IQM=ON" "-DSUPPORT_FILEFORMAT_GLTF=ON" "-DSUPPORT_FILEFORMAT_VOX=ON" "-DSUPPORT_FILEFORMAT_M3D=ON" "-DSUPPORT_MESH_GENERATION=ON" "-DSUPPORT_GPU_SKINNING=OFF" "-DSUPPORT_FILEFORMAT_WAV=ON" "-DSUPPORT_FILEFORMAT_OGG=ON" "-DSUPPORT_FILEFORMAT_MP3=ON" "-DSUPPORT_FILEFORMAT_QOA=ON" "-DSUPPORT_FILEFORMAT_FLAC=OFF" "-DSUPPORT_FILEFORMAT_XM=ON" "-DSUPPORT_FILEFORMAT_MOD=ON" "-DSUPPORT_TRACELOG=ON" "-DSUPPORT_SCREEN_CAPTURE=ON" "-DPLATFORM=Desktop" "-DCMAKE_INSTALL_PREFIX=C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out" "-DCMAKE_C_FLAGS= -nologo -MD -Brepro -W0" "-DCMAKE_C_FLAGS_DEBUG= -nologo -MD -Brepro -W0" "-DCMAKE_CXX_FLAGS= -nologo -MD -Brepro -W0" "-DCMAKE_CXX_FLAGS_DEBUG= -nologo -MD -Brepro -W0" "-DCMAKE_ASM_FLAGS= -nologo -MD -Brepro -W0" "-DCMAKE_ASM_FLAGS_DEBUG= -nologo -MD -Brepro -W0"
+  running: "cmake" "--build" "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build" "--target" "install" "--config" "Debug" "--parallel" "32"
+
+  thread 'main' (54736) panicked at C:\Users\leejo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cmake-0.1.58\src\lib.rs:1132:5:
+
+  command did not execute successfully, got: exit code: 1
+
+  build script failed, must exit now
+  stack backtrace:
+     0: std::panicking::panic_handler
+               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library\std\src\panicking.rs:689
+     1: core::panicking::panic_fmt
+               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library\core\src\panicking.rs:80
+     2: <cmake::Config>::defined::{closure#0}
+     3: <cmake::Config>::defined::{closure#0}
+     4: <cmake::Config>::build
+     5: RNSNvYNCINvMs6_NtCsgvfGJFcjol4_9hashbrown3rawINtBd_8RawTableTNtNtCsdkPGTeTFVes_5alloc6string6StringuEE25find_or_find_insert_indexNCINvNtBf_3map14equivalent_keyBX_BX_uE0NCINvB28_11make_hasherBX_uNtNtNtCsaZOKLwlFm27_3std4hash6random11RandomStateE0E0INtNtNtCs
+     6: build_script_build::main
+     7: <fn() as core::ops::function::FnOnce<()>>::call_once
+  note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.

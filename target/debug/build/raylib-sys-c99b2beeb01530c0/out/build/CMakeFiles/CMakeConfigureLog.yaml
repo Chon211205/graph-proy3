@@ -118,7 +118,7 @@ events:
       Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
       Copyright (C) Microsoft Corporation. All rights reserved.
       
-      Build started 10/26/2026 5:23:35 PM.
+      Build started 10/26/2026 5:37:32 PM.
       Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\4.3.4\\CompilerIdC\\CompilerIdC.vcxproj" on node 1 (default targets).
       PrepareForBuild:
         Creating directory "Debug\\".
@@ -144,7 +144,7 @@ events:
           0 Warning(s)
           0 Error(s)
       
-      Time Elapsed 00:00:00.56
+      Time Elapsed 00:00:00.48
       
       
       Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CompilerIdC.exe"
@@ -1077,7 +1077,7 @@ events:
       Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
       Copyright (C) Microsoft Corporation. All rights reserved.
       
-      Build started 10/26/2026 5:23:36 PM.
+      Build started 10/26/2026 5:37:33 PM.
       Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\4.3.4\\CompilerIdCXX\\CompilerIdCXX.vcxproj" on node 1 (default targets).
       PrepareForBuild:
         Creating directory "Debug\\".
@@ -1103,7 +1103,7 @@ events:
           0 Warning(s)
           0 Error(s)
       
-      Time Elapsed 00:00:00.56
+      Time Elapsed 00:00:00.49
       
       
       Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CompilerIdCXX.exe"
@@ -1557,8 +1557,8 @@ events:
     checks:
       - "Detecting C compiler ABI info"
     directories:
-      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-7pfjgq"
-      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-7pfjgq"
+      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-q7dhtw"
+      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-q7dhtw"
     cmakeVariables:
       CMAKE_CXX_STDLIB_MODULES_JSON: ""
       CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
@@ -1568,35 +1568,35 @@ events:
       variable: "CMAKE_C_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-7pfjgq'
+        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-q7dhtw'
         
-        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_735ba.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_208ac.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
         Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
         Copyright (C) Microsoft Corporation. All rights reserved.
         
-        Build started 10/26/2026 5:23:37 PM.
-        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7pfjgq\\cmTC_735ba.vcxproj" on node 1 (default targets).
+        Build started 10/26/2026 5:37:34 PM.
+        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-q7dhtw\\cmTC_208ac.vcxproj" on node 1 (default targets).
         PrepareForBuild:
-          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7pfjgq\\Debug\\".
-          Creating directory "cmTC_735ba.dir\\Debug\\cmTC_735ba.tlog\\".
+          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-q7dhtw\\Debug\\".
+          Creating directory "cmTC_208ac.dir\\Debug\\cmTC_208ac.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_735ba.dir\\Debug\\cmTC_735ba.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Creating "cmTC_208ac.dir\\Debug\\cmTC_208ac.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
         ClCompile:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_735ba.dir\\Debug\\\\" /Fd"cmTC_735ba.dir\\Debug\\vc142.pdb" /external:W0 /TC /errorReport:queue  -Brepro -Brepro "C:\\Program Files\\CMake\\share\\cmake-4.3\\Modules\\CMakeCCompilerABI.c"
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_208ac.dir\\Debug\\\\" /Fd"cmTC_208ac.dir\\Debug\\vc142.pdb" /external:W0 /TC /errorReport:queue  -Brepro -Brepro "C:\\Program Files\\CMake\\share\\cmake-4.3\\Modules\\CMakeCCompilerABI.c"
           CMakeCCompilerABI.c
         Link:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7pfjgq\\Debug\\cmTC_735ba.exe" /INCREMENTAL /ILK:"cmTC_735ba.dir\\Debug\\cmTC_735ba.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-7pfjgq/Debug/cmTC_735ba.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-7pfjgq/Debug/cmTC_735ba.lib" /MACHINE:X64  /machine:x64 cmTC_735ba.dir\\Debug\\CMakeCCompilerABI.obj
-          cmTC_735ba.vcxproj -> C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7pfjgq\\Debug\\cmTC_735ba.exe
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-q7dhtw\\Debug\\cmTC_208ac.exe" /INCREMENTAL /ILK:"cmTC_208ac.dir\\Debug\\cmTC_208ac.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-q7dhtw/Debug/cmTC_208ac.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-q7dhtw/Debug/cmTC_208ac.lib" /MACHINE:X64  /machine:x64 cmTC_208ac.dir\\Debug\\CMakeCCompilerABI.obj
+          cmTC_208ac.vcxproj -> C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-q7dhtw\\Debug\\cmTC_208ac.exe
         FinalizeBuildStatus:
-          Deleting file "cmTC_735ba.dir\\Debug\\cmTC_735ba.tlog\\unsuccessfulbuild".
-          Touching "cmTC_735ba.dir\\Debug\\cmTC_735ba.tlog\\cmTC_735ba.lastbuildstate".
-        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7pfjgq\\cmTC_735ba.vcxproj" (default targets).
+          Deleting file "cmTC_208ac.dir\\Debug\\cmTC_208ac.tlog\\unsuccessfulbuild".
+          Touching "cmTC_208ac.dir\\Debug\\cmTC_208ac.tlog\\cmTC_208ac.lastbuildstate".
+        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-q7dhtw\\cmTC_208ac.vcxproj" (default targets).
         
         Build succeeded.
             0 Warning(s)
             0 Error(s)
         
-        Time Elapsed 00:00:00.47
+        Time Elapsed 00:00:00.46
         
       exitCode: 0
   -
@@ -1636,8 +1636,8 @@ events:
     checks:
       - "Detecting CXX compiler ABI info"
     directories:
-      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-pkel40"
-      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-pkel40"
+      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-rzmj9i"
+      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-rzmj9i"
     cmakeVariables:
       CMAKE_CXX_FLAGS: " -nologo -MD -Brepro -W0"
       CMAKE_CXX_FLAGS_DEBUG: " -nologo -MD -Brepro -W0"
@@ -1648,35 +1648,35 @@ events:
       variable: "CMAKE_CXX_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-pkel40'
+        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-rzmj9i'
         
-        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_52bba.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_8e26b.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
         Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
         Copyright (C) Microsoft Corporation. All rights reserved.
         
-        Build started 10/26/2026 5:23:38 PM.
-        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-pkel40\\cmTC_52bba.vcxproj" on node 1 (default targets).
+        Build started 10/26/2026 5:37:35 PM.
+        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-rzmj9i\\cmTC_8e26b.vcxproj" on node 1 (default targets).
         PrepareForBuild:
-          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-pkel40\\Debug\\".
-          Creating directory "cmTC_52bba.dir\\Debug\\cmTC_52bba.tlog\\".
+          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-rzmj9i\\Debug\\".
+          Creating directory "cmTC_8e26b.dir\\Debug\\cmTC_8e26b.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_52bba.dir\\Debug\\cmTC_52bba.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Creating "cmTC_8e26b.dir\\Debug\\cmTC_8e26b.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
         ClCompile:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_52bba.dir\\Debug\\\\" /Fd"cmTC_52bba.dir\\Debug\\vc142.pdb" /external:W0 /TP /errorReport:queue  -Brepro -Brepro "C:\\Program Files\\CMake\\share\\cmake-4.3\\Modules\\CMakeCXXCompilerABI.cpp"
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_8e26b.dir\\Debug\\\\" /Fd"cmTC_8e26b.dir\\Debug\\vc142.pdb" /external:W0 /TP /errorReport:queue  -Brepro -Brepro "C:\\Program Files\\CMake\\share\\cmake-4.3\\Modules\\CMakeCXXCompilerABI.cpp"
           CMakeCXXCompilerABI.cpp
         Link:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-pkel40\\Debug\\cmTC_52bba.exe" /INCREMENTAL /ILK:"cmTC_52bba.dir\\Debug\\cmTC_52bba.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-pkel40/Debug/cmTC_52bba.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-pkel40/Debug/cmTC_52bba.lib" /MACHINE:X64  /machine:x64 cmTC_52bba.dir\\Debug\\CMakeCXXCompilerABI.obj
-          cmTC_52bba.vcxproj -> C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-pkel40\\Debug\\cmTC_52bba.exe
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-rzmj9i\\Debug\\cmTC_8e26b.exe" /INCREMENTAL /ILK:"cmTC_8e26b.dir\\Debug\\cmTC_8e26b.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-rzmj9i/Debug/cmTC_8e26b.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-rzmj9i/Debug/cmTC_8e26b.lib" /MACHINE:X64  /machine:x64 cmTC_8e26b.dir\\Debug\\CMakeCXXCompilerABI.obj
+          cmTC_8e26b.vcxproj -> C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-rzmj9i\\Debug\\cmTC_8e26b.exe
         FinalizeBuildStatus:
-          Deleting file "cmTC_52bba.dir\\Debug\\cmTC_52bba.tlog\\unsuccessfulbuild".
-          Touching "cmTC_52bba.dir\\Debug\\cmTC_52bba.tlog\\cmTC_52bba.lastbuildstate".
-        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-pkel40\\cmTC_52bba.vcxproj" (default targets).
+          Deleting file "cmTC_8e26b.dir\\Debug\\cmTC_8e26b.tlog\\unsuccessfulbuild".
+          Touching "cmTC_8e26b.dir\\Debug\\cmTC_8e26b.tlog\\cmTC_8e26b.lastbuildstate".
+        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-rzmj9i\\cmTC_8e26b.vcxproj" (default targets).
         
         Build succeeded.
             0 Warning(s)
             0 Error(s)
         
-        Time Elapsed 00:00:00.47
+        Time Elapsed 00:00:00.44
         
       exitCode: 0
   -
@@ -1719,8 +1719,8 @@ events:
     checks:
       - "Performing Test COMPILER_HAS_THOSE_TOGGLES"
     directories:
-      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-4rdhgp"
-      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-4rdhgp"
+      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-9on092"
+      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-9on092"
     cmakeVariables:
       CMAKE_CXX_STDLIB_MODULES_JSON: ""
       CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
@@ -1731,34 +1731,34 @@ events:
       variable: "COMPILER_HAS_THOSE_TOGGLES"
       cached: true
       stdout: |
-        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-4rdhgp'
+        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-9on092'
         
-        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_0c788.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_b11ca.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
         Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
         Copyright (C) Microsoft Corporation. All rights reserved.
         
-        Build started 10/26/2026 5:23:39 PM.
-        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4rdhgp\\cmTC_0c788.vcxproj" on node 1 (default targets).
+        Build started 10/26/2026 5:37:35 PM.
+        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-9on092\\cmTC_b11ca.vcxproj" on node 1 (default targets).
         PrepareForBuild:
-          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4rdhgp\\Debug\\".
-          Creating directory "cmTC_0c788.dir\\Debug\\cmTC_0c788.tlog\\".
+          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-9on092\\Debug\\".
+          Creating directory "cmTC_b11ca.dir\\Debug\\cmTC_b11ca.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_0c788.dir\\Debug\\cmTC_0c788.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Creating "cmTC_b11ca.dir\\Debug\\cmTC_b11ca.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
         ClCompile:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D COMPILER_HAS_THOSE_TOGGLES /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_0c788.dir\\Debug\\\\" /Fd"cmTC_0c788.dir\\Debug\\vc142.pdb" /external:W0 /TC /errorReport:queue  -Brepro -Brepro -Werror=pointer-arith "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4rdhgp\\src.c"
-        cl : command line error D8021: invalid numeric argument '/Werror=pointer-arith' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4rdhgp\\cmTC_0c788.vcxproj]
-        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4rdhgp\\cmTC_0c788.vcxproj" (default targets) -- FAILED.
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D COMPILER_HAS_THOSE_TOGGLES /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_b11ca.dir\\Debug\\\\" /Fd"cmTC_b11ca.dir\\Debug\\vc142.pdb" /external:W0 /TC /errorReport:queue  -Brepro -Brepro -Werror=pointer-arith "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-9on092\\src.c"
+        cl : command line error D8021: invalid numeric argument '/Werror=pointer-arith' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-9on092\\cmTC_b11ca.vcxproj]
+        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-9on092\\cmTC_b11ca.vcxproj" (default targets) -- FAILED.
         
         Build FAILED.
         
-        "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4rdhgp\\cmTC_0c788.vcxproj" (default target) (1) ->
+        "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-9on092\\cmTC_b11ca.vcxproj" (default target) (1) ->
         (ClCompile target) -> 
-          cl : command line error D8021: invalid numeric argument '/Werror=pointer-arith' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4rdhgp\\cmTC_0c788.vcxproj]
+          cl : command line error D8021: invalid numeric argument '/Werror=pointer-arith' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-9on092\\cmTC_b11ca.vcxproj]
         
             0 Warning(s)
             1 Error(s)
         
-        Time Elapsed 00:00:00.29
+        Time Elapsed 00:00:00.30
         
       exitCode: 1
   -
@@ -1772,8 +1772,8 @@ events:
     checks:
       - "Performing Test CMAKE_HAVE_LIBC_PTHREAD"
     directories:
-      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-u77biy"
-      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-u77biy"
+      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-lci4um"
+      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-lci4um"
     cmakeVariables:
       CMAKE_CXX_STDLIB_MODULES_JSON: ""
       CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
@@ -1784,35 +1784,35 @@ events:
       variable: "CMAKE_HAVE_LIBC_PTHREAD"
       cached: true
       stdout: |
-        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-u77biy'
+        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-lci4um'
         
-        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_3fa7d.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_0af7d.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
         Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
         Copyright (C) Microsoft Corporation. All rights reserved.
         
-        Build started 10/26/2026 5:23:40 PM.
-        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\cmTC_3fa7d.vcxproj" on node 1 (default targets).
+        Build started 10/26/2026 5:37:36 PM.
+        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lci4um\\cmTC_0af7d.vcxproj" on node 1 (default targets).
         PrepareForBuild:
-          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\Debug\\".
-          Creating directory "cmTC_3fa7d.dir\\Debug\\cmTC_3fa7d.tlog\\".
+          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lci4um\\Debug\\".
+          Creating directory "cmTC_0af7d.dir\\Debug\\cmTC_0af7d.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_3fa7d.dir\\Debug\\cmTC_3fa7d.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Creating "cmTC_0af7d.dir\\Debug\\cmTC_0af7d.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
         ClCompile:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D CMAKE_HAVE_LIBC_PTHREAD /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_3fa7d.dir\\Debug\\\\" /Fd"cmTC_3fa7d.dir\\Debug\\vc142.pdb" /external:W0 /TC /errorReport:queue  -Brepro -Brepro "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\src.c"
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D CMAKE_HAVE_LIBC_PTHREAD /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_0af7d.dir\\Debug\\\\" /Fd"cmTC_0af7d.dir\\Debug\\vc142.pdb" /external:W0 /TC /errorReport:queue  -Brepro -Brepro "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lci4um\\src.c"
           src.c
-        C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\src.c(1,10): fatal error C1083: Cannot open include file: 'pthread.h': No such file or directory [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\cmTC_3fa7d.vcxproj]
-        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\cmTC_3fa7d.vcxproj" (default targets) -- FAILED.
+        C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lci4um\\src.c(1,10): fatal error C1083: Cannot open include file: 'pthread.h': No such file or directory [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lci4um\\cmTC_0af7d.vcxproj]
+        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lci4um\\cmTC_0af7d.vcxproj" (default targets) -- FAILED.
         
         Build FAILED.
         
-        "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\cmTC_3fa7d.vcxproj" (default target) (1) ->
+        "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lci4um\\cmTC_0af7d.vcxproj" (default target) (1) ->
         (ClCompile target) -> 
-          C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\src.c(1,10): fatal error C1083: Cannot open include file: 'pthread.h': No such file or directory [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-u77biy\\cmTC_3fa7d.vcxproj]
+          C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lci4um\\src.c(1,10): fatal error C1083: Cannot open include file: 'pthread.h': No such file or directory [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lci4um\\cmTC_0af7d.vcxproj]
         
             0 Warning(s)
             1 Error(s)
         
-        Time Elapsed 00:00:00.33
+        Time Elapsed 00:00:00.31
         
       exitCode: 1
   -
@@ -1825,8 +1825,8 @@ events:
     checks:
       - "Looking for pthread_create in pthreads"
     directories:
-      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ofq10a"
-      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ofq10a"
+      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-jr028h"
+      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-jr028h"
     cmakeVariables:
       CMAKE_CXX_STDLIB_MODULES_JSON: ""
       CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
@@ -1837,37 +1837,37 @@ events:
       variable: "CMAKE_HAVE_PTHREADS_CREATE"
       cached: true
       stdout: |
-        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ofq10a'
+        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-jr028h'
         
-        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_40dda.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_19cce.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
         Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
         Copyright (C) Microsoft Corporation. All rights reserved.
         
-        Build started 10/26/2026 5:23:41 PM.
-        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\cmTC_40dda.vcxproj" on node 1 (default targets).
+        Build started 10/26/2026 5:37:37 PM.
+        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-jr028h\\cmTC_19cce.vcxproj" on node 1 (default targets).
         PrepareForBuild:
-          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\Debug\\".
-          Creating directory "cmTC_40dda.dir\\Debug\\cmTC_40dda.tlog\\".
+          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-jr028h\\Debug\\".
+          Creating directory "cmTC_19cce.dir\\Debug\\cmTC_19cce.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_40dda.dir\\Debug\\cmTC_40dda.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Creating "cmTC_19cce.dir\\Debug\\cmTC_19cce.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
         ClCompile:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D CHECK_FUNCTION_EXISTS=pthread_create /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_40dda.dir\\Debug\\\\" /Fd"cmTC_40dda.dir\\Debug\\vc142.pdb" /external:W0 /TC /errorReport:queue  -Brepro -Brepro "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\CheckFunctionExists.c"
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D CHECK_FUNCTION_EXISTS=pthread_create /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_19cce.dir\\Debug\\\\" /Fd"cmTC_19cce.dir\\Debug\\vc142.pdb" /external:W0 /TC /errorReport:queue  -Brepro -Brepro "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-jr028h\\CheckFunctionExists.c"
           CheckFunctionExists.c
         Link:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\Debug\\cmTC_40dda.exe" /INCREMENTAL /ILK:"cmTC_40dda.dir\\Debug\\cmTC_40dda.ilk" /NOLOGO pthreads.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ofq10a/Debug/cmTC_40dda.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ofq10a/Debug/cmTC_40dda.lib" /MACHINE:X64  /machine:x64 cmTC_40dda.dir\\Debug\\CheckFunctionExists.obj
-        LINK : fatal error LNK1104: cannot open file 'pthreads.lib' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\cmTC_40dda.vcxproj]
-        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\cmTC_40dda.vcxproj" (default targets) -- FAILED.
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-jr028h\\Debug\\cmTC_19cce.exe" /INCREMENTAL /ILK:"cmTC_19cce.dir\\Debug\\cmTC_19cce.ilk" /NOLOGO pthreads.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-jr028h/Debug/cmTC_19cce.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-jr028h/Debug/cmTC_19cce.lib" /MACHINE:X64  /machine:x64 cmTC_19cce.dir\\Debug\\CheckFunctionExists.obj
+        LINK : fatal error LNK1104: cannot open file 'pthreads.lib' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-jr028h\\cmTC_19cce.vcxproj]
+        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-jr028h\\cmTC_19cce.vcxproj" (default targets) -- FAILED.
         
         Build FAILED.
         
-        "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\cmTC_40dda.vcxproj" (default target) (1) ->
+        "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-jr028h\\cmTC_19cce.vcxproj" (default target) (1) ->
         (Link target) -> 
-          LINK : fatal error LNK1104: cannot open file 'pthreads.lib' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ofq10a\\cmTC_40dda.vcxproj]
+          LINK : fatal error LNK1104: cannot open file 'pthreads.lib' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-jr028h\\cmTC_19cce.vcxproj]
         
             0 Warning(s)
             1 Error(s)
         
-        Time Elapsed 00:00:00.37
+        Time Elapsed 00:00:00.38
         
       exitCode: 1
   -
@@ -1880,8 +1880,8 @@ events:
     checks:
       - "Looking for pthread_create in pthread"
     directories:
-      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ln8xfa"
-      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ln8xfa"
+      source: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-qbs83a"
+      binary: "C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-qbs83a"
     cmakeVariables:
       CMAKE_CXX_STDLIB_MODULES_JSON: ""
       CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
@@ -1892,37 +1892,37 @@ events:
       variable: "CMAKE_HAVE_PTHREAD_CREATE"
       cached: true
       stdout: |
-        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ln8xfa'
+        Change Dir: 'C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-qbs83a'
         
-        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_d8dc5.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/MSBuild/Current/Bin/MSBuild.exe" cmTC_3d585.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=16.0 /v:n
         Microsoft (R) Build Engine version 16.11.6+a918ceb31 for .NET Framework
         Copyright (C) Microsoft Corporation. All rights reserved.
         
-        Build started 10/26/2026 5:23:41 PM.
-        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\cmTC_d8dc5.vcxproj" on node 1 (default targets).
+        Build started 10/26/2026 5:37:37 PM.
+        Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-qbs83a\\cmTC_3d585.vcxproj" on node 1 (default targets).
         PrepareForBuild:
-          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\Debug\\".
-          Creating directory "cmTC_d8dc5.dir\\Debug\\cmTC_d8dc5.tlog\\".
+          Creating directory "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-qbs83a\\Debug\\".
+          Creating directory "cmTC_3d585.dir\\Debug\\cmTC_3d585.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_d8dc5.dir\\Debug\\cmTC_d8dc5.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Creating "cmTC_3d585.dir\\Debug\\cmTC_3d585.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
         ClCompile:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D CHECK_FUNCTION_EXISTS=pthread_create /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_d8dc5.dir\\Debug\\\\" /Fd"cmTC_d8dc5.dir\\Debug\\vc142.pdb" /external:W0 /TC /errorReport:queue  -Brepro -Brepro "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\CheckFunctionExists.c"
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /D _MBCS /D CHECK_FUNCTION_EXISTS=pthread_create /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /MDd /Fo"cmTC_3d585.dir\\Debug\\\\" /Fd"cmTC_3d585.dir\\Debug\\vc142.pdb" /external:W0 /TC /errorReport:queue  -Brepro -Brepro "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-qbs83a\\CheckFunctionExists.c"
           CheckFunctionExists.c
         Link:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\Debug\\cmTC_d8dc5.exe" /INCREMENTAL /ILK:"cmTC_d8dc5.dir\\Debug\\cmTC_d8dc5.ilk" /NOLOGO pthread.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ln8xfa/Debug/cmTC_d8dc5.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-ln8xfa/Debug/cmTC_d8dc5.lib" /MACHINE:X64  /machine:x64 cmTC_d8dc5.dir\\Debug\\CheckFunctionExists.obj
-        LINK : fatal error LNK1104: cannot open file 'pthread.lib' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\cmTC_d8dc5.vcxproj]
-        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\cmTC_d8dc5.vcxproj" (default targets) -- FAILED.
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-qbs83a\\Debug\\cmTC_3d585.exe" /INCREMENTAL /ILK:"cmTC_3d585.dir\\Debug\\cmTC_3d585.ilk" /NOLOGO pthread.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-qbs83a/Debug/cmTC_3d585.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/leejo/Desktop/graph-proy3/target/debug/build/raylib-sys-c99b2beeb01530c0/out/build/CMakeFiles/CMakeScratch/TryCompile-qbs83a/Debug/cmTC_3d585.lib" /MACHINE:X64  /machine:x64 cmTC_3d585.dir\\Debug\\CheckFunctionExists.obj
+        LINK : fatal error LNK1104: cannot open file 'pthread.lib' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-qbs83a\\cmTC_3d585.vcxproj]
+        Done Building Project "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-qbs83a\\cmTC_3d585.vcxproj" (default targets) -- FAILED.
         
         Build FAILED.
         
-        "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\cmTC_d8dc5.vcxproj" (default target) (1) ->
+        "C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-qbs83a\\cmTC_3d585.vcxproj" (default target) (1) ->
         (Link target) -> 
-          LINK : fatal error LNK1104: cannot open file 'pthread.lib' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ln8xfa\\cmTC_d8dc5.vcxproj]
+          LINK : fatal error LNK1104: cannot open file 'pthread.lib' [C:\\Users\\leejo\\Desktop\\graph-proy3\\target\\debug\\build\\raylib-sys-c99b2beeb01530c0\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-qbs83a\\cmTC_3d585.vcxproj]
         
             0 Warning(s)
             1 Error(s)
         
-        Time Elapsed 00:00:00.41
+        Time Elapsed 00:00:00.37
         
       exitCode: 1
 ...
