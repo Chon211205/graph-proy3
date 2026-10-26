@@ -115,7 +115,9 @@ fn render(
         (min.z + max.z) * 0.5,
     );
 
-    let initial = Vec3::new(1.05, 0.85, -1.55).normalize();
+    // La nave apunta hacia -X; mirar desde +X coloca la camara
+    // detras de los motores, con una ligera elevacion.
+    let initial = Vec3::new(1.0, 0.22, 0.0).normalize();
 
     let camera = initial;
 
