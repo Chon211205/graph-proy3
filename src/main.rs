@@ -20,6 +20,10 @@ const LIGHT_SPEED: f32 = 600.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
 const SUN_POSITION_X: f32 = -520.0;
 const PLANET_ORBIT_RADIUS: f32 = 280.0;
+const WATER_PLANET_RADIUS: f32 = 24.0;
+const SHIP_COLLISION_RADIUS: f32 = 2.0;
+const COLLISION_MARGIN: f32 = 4.0;
+const AVOIDANCE_DISTANCE: f32 = 52.0;
 const ROLL_INPUT_SPEED: f32 = PI * 0.5;
 const ROLL_SPEED: f32 = PI;
 const TURN_RESPONSE: f32 = 7.0;
@@ -38,6 +42,10 @@ struct Ship {
     pitch_rate: f32,
     steering_bank: f32,
     steering_pitch: f32,
+    orbit_axis: Option<Vec3>,
+    orbit_center: Option<Vec3>,
+    orbit_radius: f32,
+    orbit_camera_blend: f32,
     speed: f32,
 }
 
@@ -53,6 +61,10 @@ impl Ship {
             pitch_rate: 0.0,
             steering_bank: 0.0,
             steering_pitch: 0.0,
+            orbit_axis: None,
+            orbit_center: None,
+            orbit_radius: 0.0,
+            orbit_camera_blend: 0.0,
             speed: 12.0,
         }
     }
@@ -435,10 +447,34 @@ fn model_radius(model: &Model, center: Vec3) -> f32 {
 
 fn chase_camera(ship: &Ship) -> Camera {
     let (forward, ship_right, ship_up) = ship.camera_basis();
-    let position = ship.position.sub(forward.mul(12.0)).add(ship_up.mul(4.0));
-    let target = ship.position.add(forward.mul(8.0));
+    let chase_position = ship.position.sub(forward.mul(12.0)).add(ship_up.mul(4.0));
+    let chase_target = ship.position.add(forward.mul(8.0));
+    let world_up = Vec3::new(0.0, 1.0, 0.0);
+
+    let (orbit_position, orbit_target) = if let Some(planet_center) = ship.orbit_center {
+        let radial = ship.position.sub(planet_center).normalize();
+        (
+            planet_center.add(radial.mul(105.0)).add(world_up.mul(32.0)),
+            planet_center.add(radial.mul(WATER_PLANET_RADIUS * 0.55)),
+        )
+    } else {
+        (chase_position, chase_target)
+    };
+
+    let blend = ship.orbit_camera_blend;
+    let position = chase_position
+        .mul(1.0 - blend)
+        .add(orbit_position.mul(blend));
+    let target = chase_target.mul(1.0 - blend).add(orbit_target.mul(blend));
     let camera_forward = target.sub(position).normalize();
-    let right = ship_right;
+    let up_reference = ship_up
+        .mul(1.0 - blend)
+        .add(world_up.mul(blend))
+        .normalize();
+    let mut right = camera_forward.cross(up_reference).normalize();
+    if right.dot(right) < 0.001 {
+        right = ship_right;
+    }
     let up = right.cross(camera_forward).normalize();
     Camera {
         position,
@@ -456,6 +492,103 @@ fn water_planet_position(world_time: f32) -> Vec3 {
         -20.0,
         orbit.sin() * PLANET_ORBIT_RADIUS,
     ))
+}
+
+fn direction_to_angles(direction: Vec3) -> (f32, f32) {
+    let direction = direction.normalize();
+    let pitch = direction.y.clamp(-1.0, 1.0).asin();
+    let yaw = (-direction.z).atan2(-direction.x).rem_euclid(TAU);
+    (yaw, pitch)
+}
+
+fn move_around_planet(
+    ship: &mut Ship,
+    movement: f32,
+    planet_center: Vec3,
+    yaw_input: i8,
+    pitch_input: i8,
+) {
+    let safe_radius = WATER_PLANET_RADIUS + SHIP_COLLISION_RADIUS + COLLISION_MARGIN;
+    let steps = (movement / 5.0).ceil().max(1.0) as usize;
+    let step_distance = movement / steps as f32;
+
+    if ship.orbit_axis.is_some() {
+        if let Some(previous_center) = ship.orbit_center {
+            ship.position = ship.position.add(planet_center.sub(previous_center));
+            ship.orbit_center = Some(planet_center);
+        }
+    }
+
+    for _ in 0..steps {
+        let offset = ship.position.sub(planet_center);
+        let distance = offset.dot(offset).sqrt();
+        let normal = if distance > 0.001 {
+            offset.mul(1.0 / distance)
+        } else {
+            Vec3::new(1.0, 0.0, 0.0)
+        };
+        let (mut forward, right, up) = ship.movement_basis();
+        let approaching = forward.dot(normal) < 0.0;
+
+        if ship.orbit_axis.is_none() && distance < AVOIDANCE_DISTANCE && approaching {
+            let mut tangent = forward.sub(normal.mul(forward.dot(normal)));
+            if tangent.dot(tangent) < 0.0001 {
+                let side = if yaw_input == 0 {
+                    1.0
+                } else {
+                    yaw_input as f32
+                };
+                tangent = right.mul(side).add(up.mul(pitch_input as f32 * 0.35));
+            }
+            let tangent = tangent.normalize();
+            ship.orbit_axis = Some(normal.cross(tangent).normalize());
+            ship.orbit_center = Some(planet_center);
+            ship.orbit_radius = distance.clamp(safe_radius + 3.0, AVOIDANCE_DISTANCE - 3.0);
+        }
+
+        if let Some(axis) = ship.orbit_axis {
+            ship.orbit_radius += pitch_input as f32 * step_distance * 0.18;
+            ship.orbit_radius = ship.orbit_radius.max(safe_radius + 2.0);
+
+            if ship.orbit_radius > AVOIDANCE_DISTANCE + 6.0 {
+                ship.orbit_axis = None;
+            } else {
+                let tangent = axis.cross(normal).normalize();
+                let radial_error = (ship.orbit_radius - distance).clamp(-8.0, 8.0);
+                forward = tangent.add(normal.mul(radial_error * 0.16)).normalize();
+                let center_direction = normal.mul(-1.0);
+                let orbit_bank = -center_direction.dot(right).clamp(-1.0, 1.0) * STEERING_BANK;
+                ship.steering_bank += (orbit_bank - ship.steering_bank) * 0.12;
+
+                let (yaw, pitch) = direction_to_angles(forward);
+                ship.yaw = yaw;
+                ship.pitch = pitch.clamp(-1.25, 1.25);
+                ship.yaw_rate *= 0.82;
+                ship.pitch_rate *= 0.82;
+            }
+        }
+
+        if ship.orbit_axis.is_some() {
+            let (yaw, pitch) = direction_to_angles(forward);
+            ship.yaw = yaw;
+            ship.pitch = pitch.clamp(-1.25, 1.25);
+        }
+
+        let proposed = ship.position.add(forward.mul(step_distance));
+        let proposed_offset = proposed.sub(planet_center);
+        let proposed_distance = proposed_offset.dot(proposed_offset).sqrt();
+
+        ship.position = if proposed_distance < safe_radius {
+            let surface_normal = if proposed_distance > 0.001 {
+                proposed_offset.mul(1.0 / proposed_distance)
+            } else {
+                normal
+            };
+            planet_center.add(surface_normal.mul(safe_radius))
+        } else {
+            proposed
+        };
+    }
 }
 
 fn render_model<F>(
@@ -596,7 +729,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let planet =
         load_obj(planet_path).map_err(|error| format!("Error al cargar {planet_path}: {error}"))?;
     let planet_center = model_center(&planet);
-    let planet_scale = 24.0 / model_radius(&planet, planet_center).max(0.001);
+    let planet_scale = WATER_PLANET_RADIUS / model_radius(&planet, planet_center).max(0.001);
     let sun = make_sphere(55.0, 18, 28, true);
 
     println!("Vuelo libre 3D iniciado");
@@ -637,6 +770,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ship.pitch_rate = 0.0;
             ship.steering_bank = 0.0;
             ship.steering_pitch = 0.0;
+            ship.orbit_axis = None;
+            ship.orbit_center = None;
+            ship.orbit_radius = 0.0;
+            ship.orbit_camera_blend = 0.0;
             ship.speed = 12.0;
             println!("Warp completado: planeta acuatico");
         }
@@ -672,11 +809,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ship.speed = (ship.speed - 28.0 * delta_time).max(MIN_SPEED);
         }
 
-        let (forward, _, _) = ship.movement_basis();
         let light_speed = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
         let active_speed = if light_speed { LIGHT_SPEED } else { ship.speed };
         let movement = active_speed * delta_time;
-        ship.position = ship.position.add(forward.mul(movement));
+        move_around_planet(
+            &mut ship,
+            movement,
+            water_planet_position(world_time),
+            yaw_input,
+            pitch_input,
+        );
+        let camera_target = if ship.orbit_axis.is_some() { 1.0 } else { 0.0 };
+        let camera_response = 1.0 - (-2.4 * delta_time).exp();
+        ship.orbit_camera_blend += (camera_target - ship.orbit_camera_blend) * camera_response;
+        if ship.orbit_axis.is_none() && ship.orbit_camera_blend < 0.001 {
+            ship.orbit_center = None;
+            ship.orbit_camera_blend = 0.0;
+        }
         distance += movement;
 
         render_scene(
