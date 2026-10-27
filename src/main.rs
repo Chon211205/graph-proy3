@@ -8,7 +8,7 @@ use std::time::Instant;
 use framebuffer::Framebuffer;
 use minifb::{Key, KeyRepeat, ScaleMode, Window, WindowOptions};
 use obj_loader::{load_obj, Face, Model, Vec3};
-use triangle::{draw_triangle, ScreenVertex};
+use triangle::{draw_triangle, draw_triangle_shaded, ScreenVertex};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
@@ -55,6 +55,51 @@ struct Camera {
     up: Vec3,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum SurfaceShader {
+    Ocean,
+    Waterfall,
+    Earth,
+    Grass,
+    Rock,
+    DarkRock,
+    Sand,
+    Wood,
+    Leaves,
+    YellowBlock,
+    WhiteMark,
+    Flat,
+}
+
+fn surface_shader(material: &str) -> SurfaceShader {
+    let name = material.to_ascii_lowercase();
+    if name.contains("oceano") {
+        SurfaceShader::Ocean
+    } else if name.contains("cascada") {
+        SurfaceShader::Waterfall
+    } else if name.contains("roca_oscura") {
+        SurfaceShader::DarkRock
+    } else if name.contains("roca") {
+        SurfaceShader::Rock
+    } else if name.contains("tierra") {
+        SurfaceShader::Earth
+    } else if name.contains("cesped") {
+        SurfaceShader::Grass
+    } else if name.contains("arena") {
+        SurfaceShader::Sand
+    } else if name.contains("tronco") {
+        SurfaceShader::Wood
+    } else if name.contains("hojas") {
+        SurfaceShader::Leaves
+    } else if name.contains("bloque_amarillo") {
+        SurfaceShader::YellowBlock
+    } else if name.contains("interrogacion_blanca") {
+        SurfaceShader::WhiteMark
+    } else {
+        SurfaceShader::Flat
+    }
+}
+
 fn screen_size() -> (usize, usize) {
     #[cfg(target_os = "windows")]
     {
@@ -98,6 +143,12 @@ fn color_for_material(name: &str) -> [u8; 3] {
     let name = name.to_ascii_lowercase();
     if name.contains("sun") {
         [255, 174, 48]
+    } else if name.contains("tierra") {
+        [112, 72, 42]
+    } else if name.contains("arena") {
+        [218, 188, 112]
+    } else if name.contains("cesped") {
+        [55, 142, 72]
     } else if name.contains("planet_land") {
         [62, 153, 91]
     } else if name.contains("planet_ice") {
@@ -122,6 +173,113 @@ fn color_for_material(name: &str) -> [u8; 3] {
 fn pack(rgb: [u8; 3], brightness: f32) -> u32 {
     let channel = |value: u8| (value as f32 * brightness).clamp(0.0, 255.0) as u32;
     (channel(rgb[0]) << 16) | (channel(rgb[1]) << 8) | channel(rgb[2])
+}
+
+fn procedural_surface_color(
+    shader: SurfaceShader,
+    point: Vec3,
+    x: i32,
+    y: i32,
+    time: f32,
+    brightness: f32,
+    fresnel: f32,
+) -> u32 {
+    let noise = ((point.x * 31.0).sin() * (point.y * 27.0).cos() + (point.z * 43.0).sin()) * 0.5;
+
+    let (red, green, blue, light) = match shader {
+        SurfaceShader::Ocean => {
+            let direction = point.normalize();
+            let wave_a = (direction.x * 19.0 + direction.z * 7.0 + time * 1.8).sin();
+            let wave_b = (direction.z * 25.0 - direction.y * 9.0 - time * 1.35).sin();
+            let wave = (wave_a + wave_b) * 0.5;
+            let sparkle = (x as f32 * 0.07 + y as f32 * 0.04 + time * 3.2)
+                .sin()
+                .max(0.0)
+                .powf(18.0);
+            (
+                5.0 + fresnel * 32.0 + sparkle * 115.0,
+                72.0 + wave * 18.0 + fresnel * 80.0 + sparkle * 95.0,
+                142.0 + wave * 22.0 + fresnel * 105.0 + sparkle * 70.0,
+                0.88 + wave * 0.12,
+            )
+        }
+        SurfaceShader::Waterfall => {
+            let flow = (point.y * 38.0 - time * 6.0 + (point.x * 17.0).sin()).sin();
+            let foam = flow.max(0.65).powf(4.0) * 3.0;
+            (
+                35.0 + foam * 70.0,
+                170.0 + foam * 65.0,
+                205.0 + foam * 45.0,
+                1.0,
+            )
+        }
+        SurfaceShader::Earth => (105.0 + noise * 24.0, 67.0 + noise * 15.0, 38.0, 1.0),
+        SurfaceShader::Grass => {
+            let blades = (point.x * 85.0 + point.z * 63.0).sin().abs();
+            (
+                35.0 + noise * 8.0,
+                120.0 + blades * 45.0 + noise * 18.0,
+                48.0,
+                1.0,
+            )
+        }
+        SurfaceShader::Rock => {
+            let grain = noise.abs();
+            (
+                105.0 + grain * 38.0,
+                108.0 + grain * 35.0,
+                112.0 + grain * 32.0,
+                1.0,
+            )
+        }
+        SurfaceShader::DarkRock => {
+            let grain = noise.abs();
+            (
+                42.0 + grain * 30.0,
+                46.0 + grain * 28.0,
+                54.0 + grain * 32.0,
+                1.0,
+            )
+        }
+        SurfaceShader::Sand => {
+            let ripples = (point.x * 52.0 + (point.z * 19.0).sin()).sin();
+            (
+                205.0 + ripples * 15.0,
+                174.0 + ripples * 13.0,
+                96.0 + ripples * 8.0,
+                1.0,
+            )
+        }
+        SurfaceShader::Wood => {
+            let rings = (point.y * 35.0 + point.x.atan2(point.z) * 4.0).sin().abs();
+            (
+                75.0 + rings * 45.0,
+                43.0 + rings * 24.0,
+                20.0 + rings * 10.0,
+                1.0,
+            )
+        }
+        SurfaceShader::Leaves => {
+            let veins = (point.x * 70.0 + point.z * 45.0).sin().abs();
+            (
+                24.0 + veins * 20.0,
+                100.0 + veins * 75.0,
+                42.0 + veins * 20.0,
+                1.0,
+            )
+        }
+        SurfaceShader::YellowBlock => {
+            let pulse = (time * 2.2).sin() * 0.08 + 0.92;
+            (245.0, 190.0, 28.0, pulse)
+        }
+        SurfaceShader::WhiteMark => (255.0, 250.0, 220.0, 1.15),
+        SurfaceShader::Flat => (220.0, 230.0, 238.0, 1.0),
+    };
+
+    let scale = brightness * light;
+    ((red * scale).clamp(0.0, 255.0) as u32) << 16
+        | ((green * scale).clamp(0.0, 255.0) as u32) << 8
+        | (blue * scale).clamp(0.0, 255.0) as u32
 }
 
 fn hash(mut value: u32) -> u32 {
@@ -230,6 +388,14 @@ fn model_center(model: &Model) -> Vec3 {
     min.add(max).mul(0.5)
 }
 
+fn model_radius(model: &Model, center: Vec3) -> f32 {
+    model
+        .vertices
+        .iter()
+        .map(|vertex| vertex.sub(center).dot(vertex.sub(center)).sqrt())
+        .fold(0.0, f32::max)
+}
+
 fn chase_camera(ship: &Ship) -> Camera {
     let (forward, _, _) = ship.basis();
     let world_up = Vec3::new(0.0, 1.0, 0.0);
@@ -246,8 +412,13 @@ fn chase_camera(ship: &Ship) -> Camera {
     }
 }
 
-fn render_model<F>(model: &Model, framebuffer: &mut Framebuffer, camera: &Camera, transform: F)
-where
+fn render_model<F>(
+    model: &Model,
+    framebuffer: &mut Framebuffer,
+    camera: &Camera,
+    transform: F,
+    water_time: Option<f32>,
+) where
     F: Fn(Vec3) -> Vec3,
 {
     let camera_vertices: Vec<Vec3> = model
@@ -280,13 +451,33 @@ where
         };
         let normal = v1.sub(v0).cross(v2.sub(v0)).normalize();
         let brightness = 0.34 + normal.dot(light).abs() * 0.66;
-        draw_triangle(
-            framebuffer,
-            project(v0),
-            project(v1),
-            project(v2),
-            pack(color_for_material(&face.material), brightness),
-        );
+        let a = project(v0);
+        let b = project(v1);
+        let c = project(v2);
+        let shader = surface_shader(&face.material);
+
+        if shader != SurfaceShader::Flat {
+            let p0 = model.vertices[i0];
+            let p1 = model.vertices[i1];
+            let p2 = model.vertices[i2];
+            let center = v0.add(v1).add(v2).mul(1.0 / 3.0);
+            let view_direction = center.mul(-1.0).normalize();
+            let fresnel = (1.0 - normal.dot(view_direction).abs()).powf(3.0);
+            let time = water_time.unwrap_or_default();
+
+            draw_triangle_shaded(framebuffer, a, b, c, |w0, w1, w2, x, y| {
+                let point = p0.mul(w0).add(p1.mul(w1)).add(p2.mul(w2));
+                procedural_surface_color(shader, point, x, y, time, brightness, fresnel)
+            });
+        } else {
+            draw_triangle(
+                framebuffer,
+                a,
+                b,
+                c,
+                pack(color_for_material(&face.material), brightness),
+            );
+        }
     }
 }
 
@@ -294,6 +485,8 @@ fn render_scene(
     ship_model: &Model,
     ship_center: Vec3,
     planet: &Model,
+    planet_center: Vec3,
+    planet_scale: f32,
     sun: &Model,
     framebuffer: &mut Framebuffer,
     ship: &Ship,
@@ -309,25 +502,44 @@ fn render_scene(
         sun_position.add(Vec3::new(orbit.cos() * 220.0, -20.0, orbit.sin() * 220.0));
     let planet_rotation = world_time * 0.25;
 
-    render_model(sun, framebuffer, &camera, |vertex| vertex.add(sun_position));
-    render_model(planet, framebuffer, &camera, |vertex| {
-        let (sin, cos) = planet_rotation.sin_cos();
-        Vec3::new(
-            vertex.x * cos - vertex.z * sin,
-            vertex.y,
-            vertex.x * sin + vertex.z * cos,
-        )
-        .add(planet_position)
-    });
+    render_model(
+        sun,
+        framebuffer,
+        &camera,
+        |vertex| vertex.add(sun_position),
+        None,
+    );
+    render_model(
+        planet,
+        framebuffer,
+        &camera,
+        |vertex| {
+            let vertex = vertex.sub(planet_center).mul(planet_scale);
+            let (sin, cos) = planet_rotation.sin_cos();
+            Vec3::new(
+                vertex.x * cos - vertex.z * sin,
+                vertex.y,
+                vertex.x * sin + vertex.z * cos,
+            )
+            .add(planet_position)
+        },
+        Some(world_time),
+    );
 
     let (forward, right, up) = ship.basis();
-    render_model(ship_model, framebuffer, &camera, |vertex| {
-        let local = vertex.sub(ship_center).mul(SHIP_SCALE);
-        ship.position
-            .add(forward.mul(-local.x))
-            .add(up.mul(local.y))
-            .add(right.mul(local.z))
-    });
+    render_model(
+        ship_model,
+        framebuffer,
+        &camera,
+        |vertex| {
+            let local = vertex.sub(ship_center).mul(SHIP_SCALE);
+            ship.position
+                .add(forward.mul(-local.x))
+                .add(up.mul(local.y))
+                .add(right.mul(local.z))
+        },
+        None,
+    );
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -336,7 +548,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| "assets/nave.obj".to_string());
     let ship_model = load_obj(&path).map_err(|error| format!("Error al cargar {path}: {error}"))?;
     let ship_center = model_center(&ship_model);
-    let planet = make_sphere(24.0, 18, 28, false);
+    let planet_path = "assets/water_planet.obj";
+    let planet =
+        load_obj(planet_path).map_err(|error| format!("Error al cargar {planet_path}: {error}"))?;
+    let planet_center = model_center(&planet);
+    let planet_scale = 24.0 / model_radius(&planet, planet_center).max(0.001);
     let sun = make_sphere(55.0, 18, 28, true);
 
     println!("Vuelo libre 3D iniciado");
@@ -390,6 +606,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &ship_model,
             ship_center,
             &planet,
+            planet_center,
+            planet_scale,
             &sun,
             &mut framebuffer,
             &ship,
