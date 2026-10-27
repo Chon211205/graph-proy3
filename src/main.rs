@@ -14,6 +14,7 @@ const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
 const NEAR_PLANE: f32 = 0.2;
 const SHIP_SCALE: f32 = 0.055;
+const MIN_SPEED: f32 = 4.0;
 const MAX_SPEED: f32 = 55.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
 
@@ -557,8 +558,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sun = make_sphere(55.0, 18, 28, true);
 
     println!("Vuelo libre 3D iniciado");
-    println!("W/S o flechas: cabeceo | A/D: direccion | Q/E: alabeo");
-    println!("Espacio: acelerar | Ctrl: frenar | R: reiniciar | P: captura");
+    println!("W: acelerar | S: frenar | Flechas arriba/abajo: cabeceo");
+    println!("A/D: direccion | Q/E: alabeo | R: reiniciar | P: captura");
 
     let mut fullscreen = false;
     let mut window = create_window(fullscreen)?;
@@ -582,8 +583,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             distance = 0.0;
         }
 
-        let pitch_input = (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8
-            - (window.is_key_down(Key::S) || window.is_key_down(Key::Down)) as i8;
+        let pitch_input = window.is_key_down(Key::Up) as i8 - window.is_key_down(Key::Down) as i8;
         let yaw_input = window.is_key_down(Key::D) as i8 - window.is_key_down(Key::A) as i8;
         let roll_input = window.is_key_down(Key::E) as i8 - window.is_key_down(Key::Q) as i8;
 
@@ -591,11 +591,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ship.yaw = (ship.yaw + yaw_input as f32 * 1.15 * delta_time).rem_euclid(TAU);
         ship.roll = (ship.roll + roll_input as f32 * 1.7 * delta_time).rem_euclid(TAU);
 
-        if window.is_key_down(Key::Space) {
+        if window.is_key_down(Key::W) || window.is_key_down(Key::Space) {
             ship.speed = (ship.speed + 20.0 * delta_time).min(MAX_SPEED);
         }
-        if window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl) {
-            ship.speed = (ship.speed - 28.0 * delta_time).max(0.0);
+        if window.is_key_down(Key::S)
+            || window.is_key_down(Key::LeftCtrl)
+            || window.is_key_down(Key::RightCtrl)
+        {
+            ship.speed = (ship.speed - 28.0 * delta_time).max(MIN_SPEED);
         }
 
         let (forward, _, _) = ship.basis();
