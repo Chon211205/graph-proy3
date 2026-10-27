@@ -15,6 +15,7 @@ const HEIGHT: usize = 800;
 const NEAR_PLANE: f32 = 0.2;
 const SHIP_SCALE: f32 = 0.055;
 const MAX_SPEED: f32 = 55.0;
+const PLANET_ORBIT_SPEED: f32 = 0.02;
 
 struct Ship {
     position: Vec3,
@@ -497,7 +498,7 @@ fn render_scene(
     draw_skybox(framebuffer, travel);
     let camera = chase_camera(ship);
     let sun_position = Vec3::new(-400.0, 20.0, 0.0);
-    let orbit = world_time * 0.08;
+    let orbit = world_time * PLANET_ORBIT_SPEED;
     let planet_position =
         sun_position.add(Vec3::new(orbit.cos() * 220.0, -20.0, orbit.sin() * 220.0));
     let planet_rotation = world_time * 0.25;
