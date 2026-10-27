@@ -2,16 +2,58 @@ mod framebuffer;
 mod obj_loader;
 mod triangle;
 
+use std::f32::consts::{PI, TAU};
+use std::time::Instant;
+
 use framebuffer::Framebuffer;
 use minifb::{Key, KeyRepeat, ScaleMode, Window, WindowOptions};
-use obj_loader::{load_obj, Model, Vec3};
+use obj_loader::{load_obj, Face, Model, Vec3};
 use triangle::{draw_triangle, ScreenVertex};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
-const MAX_SPEED: f32 = 0.028;
-const ACCELERATION: f32 = 0.0035;
-const DRAG: f32 = 0.86;
+const NEAR_PLANE: f32 = 0.2;
+const SHIP_SCALE: f32 = 0.055;
+const MAX_SPEED: f32 = 55.0;
+
+struct Ship {
+    position: Vec3,
+    yaw: f32,
+    pitch: f32,
+    roll: f32,
+    speed: f32,
+}
+
+impl Ship {
+    fn new() -> Self {
+        Self {
+            position: Vec3::new(0.0, 0.0, 0.0),
+            yaw: 0.0,
+            pitch: 0.0,
+            roll: 0.0,
+            speed: 12.0,
+        }
+    }
+
+    fn basis(&self) -> (Vec3, Vec3, Vec3) {
+        let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
+        let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
+        let forward = Vec3::new(-cos_pitch * cos_yaw, sin_pitch, -cos_pitch * sin_yaw).normalize();
+        let level_right = forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
+        let level_up = level_right.cross(forward).normalize();
+        let (sin_roll, cos_roll) = self.roll.sin_cos();
+        let right = level_right.mul(cos_roll).add(level_up.mul(sin_roll));
+        let up = level_up.mul(cos_roll).sub(level_right.mul(sin_roll));
+        (forward, right, up)
+    }
+}
+
+struct Camera {
+    position: Vec3,
+    forward: Vec3,
+    right: Vec3,
+    up: Vec3,
+}
 
 fn screen_size() -> (usize, usize) {
     #[cfg(target_os = "windows")]
@@ -19,16 +61,12 @@ fn screen_size() -> (usize, usize) {
         use windows_sys::Win32::UI::WindowsAndMessaging::{
             GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN,
         };
-
-        // GetSystemMetrics is safe for these read-only screen metrics.
         let width = unsafe { GetSystemMetrics(SM_CXSCREEN) };
         let height = unsafe { GetSystemMetrics(SM_CYSCREEN) };
-
         if width > 0 && height > 0 {
             return (width as usize, height as usize);
         }
     }
-
     (WIDTH, HEIGHT)
 }
 
@@ -38,9 +76,8 @@ fn create_window(fullscreen: bool) -> Result<Window, minifb::Error> {
     } else {
         (WIDTH, HEIGHT)
     };
-
     let mut window = Window::new(
-        "LAB 4 - Nave Espacial OBJ | Rust | F11: pantalla completa",
+        "Sistema solar | Vuelo libre 3D | F11: fullscreen",
         width,
         height,
         WindowOptions {
@@ -50,29 +87,32 @@ fn create_window(fullscreen: bool) -> Result<Window, minifb::Error> {
             ..WindowOptions::default()
         },
     )?;
-
     if fullscreen {
         window.set_position(0, 0);
     }
-
     window.set_target_fps(60);
     Ok(window)
 }
 
 fn color_for_material(name: &str) -> [u8; 3] {
-    let n = name.to_ascii_lowercase();
-
-    if n.contains("blue") {
-        [47, 87, 235]
-    } else if n.contains("glass") {
+    let name = name.to_ascii_lowercase();
+    if name.contains("sun") {
+        [255, 174, 48]
+    } else if name.contains("planet_land") {
+        [62, 153, 91]
+    } else if name.contains("planet_ice") {
+        [180, 225, 238]
+    } else if name.contains("planet") || name.contains("blue") {
+        [47, 87, 210]
+    } else if name.contains("glass") {
         [24, 60, 78]
-    } else if n.contains("dark") {
+    } else if name.contains("dark") {
         [43, 51, 64]
-    } else if n.contains("yellow") {
+    } else if name.contains("yellow") {
         [242, 197, 57]
-    } else if n.contains("red") {
+    } else if name.contains("red") {
         [199, 49, 57]
-    } else if n.contains("metal") {
+    } else if name.contains("metal") {
         [103, 121, 143]
     } else {
         [220, 230, 238]
@@ -80,8 +120,7 @@ fn color_for_material(name: &str) -> [u8; 3] {
 }
 
 fn pack(rgb: [u8; 3], brightness: f32) -> u32 {
-    let channel = |v: u8| (v as f32 * brightness).clamp(0.0, 255.0) as u32;
-
+    let channel = |value: u8| (value as f32 * brightness).clamp(0.0, 255.0) as u32;
     (channel(rgb[0]) << 16) | (channel(rgb[1]) << 8) | channel(rgb[2])
 }
 
@@ -93,46 +132,32 @@ fn hash(mut value: u32) -> u32 {
     value ^ (value >> 16)
 }
 
-fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, ship_x: f32, ship_y: f32) {
-    // Fondo espacial con un degradado azul-violeta.
+fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32) {
     for y in 0..framebuffer.height {
         let t = y as f32 / framebuffer.height as f32;
         let horizon = (1.0 - (t - 0.48).abs() * 2.0).max(0.0);
-        let r = (4.0 + horizon * 8.0) as u32;
-        let g = (7.0 + horizon * 11.0) as u32;
-        let b = (20.0 + horizon * 24.0) as u32;
-        let color = (r << 16) | (g << 8) | b;
+        let color = (((4.0 + horizon * 8.0) as u32) << 16)
+            | (((7.0 + horizon * 11.0) as u32) << 8)
+            | (20.0 + horizon * 24.0) as u32;
         let start = y * framebuffer.width;
         framebuffer.pixels[start..start + framebuffer.width].fill(color);
     }
 
-    // Las estrellas viven en distintas profundidades. Al reducirse z se
-    // separan del centro y producen la sensacion de avance continuo.
-    let center_x = framebuffer.width as f32 * 0.5 - ship_x * 18.0;
-    let center_y = framebuffer.height as f32 * 0.46 - ship_y * 12.0;
-
+    let center_x = framebuffer.width as f32 * 0.5;
+    let center_y = framebuffer.height as f32 * 0.48;
     for index in 0..700_u32 {
-        let x_seed = hash(index.wrapping_mul(3).wrapping_add(1));
-        let y_seed = hash(index.wrapping_mul(3).wrapping_add(2));
-        let z_seed = hash(index.wrapping_mul(3).wrapping_add(3));
-
-        let world_x = x_seed as f32 / u32::MAX as f32 * 2.0 - 1.0;
-        let world_y = y_seed as f32 / u32::MAX as f32 * 2.0 - 1.0;
-        let initial_z = z_seed as f32 / u32::MAX as f32;
+        let world_x = hash(index * 3 + 1) as f32 / u32::MAX as f32 * 2.0 - 1.0;
+        let world_y = hash(index * 3 + 2) as f32 / u32::MAX as f32 * 2.0 - 1.0;
+        let initial_z = hash(index * 3 + 3) as f32 / u32::MAX as f32;
         let z = (initial_z - travel).rem_euclid(1.0).max(0.025);
         let perspective = 0.58 / z;
-
         let x = (center_x + world_x * framebuffer.width as f32 * perspective) as i32;
         let y = (center_y + world_y * framebuffer.height as f32 * perspective) as i32;
-
         if x < 0 || y < 0 || x >= framebuffer.width as i32 || y >= framebuffer.height as i32 {
             continue;
         }
-
-        let closeness = 1.0 - z;
-        let brightness = (125.0 + closeness * 130.0) as u32;
-        let blue = (brightness + 18).min(255);
-        let color = (brightness << 16) | (brightness << 8) | blue;
+        let brightness = (125.0 + (1.0 - z) * 130.0) as u32;
+        let color = (brightness << 16) | (brightness << 8) | (brightness + 18).min(255);
         let size = if z < 0.16 {
             3
         } else if z < 0.34 {
@@ -140,16 +165,11 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, ship_x: f32, ship_y: 
         } else {
             1
         };
-
         for dy in 0..size {
             for dx in 0..size {
                 let px = x + dx;
                 let py = y + dy;
-                if px >= 0
-                    && py >= 0
-                    && px < framebuffer.width as i32
-                    && py < framebuffer.height as i32
-                {
+                if px < framebuffer.width as i32 && py < framebuffer.height as i32 {
                     framebuffer.pixels[py as usize * framebuffer.width + px as usize] = color;
                 }
             }
@@ -157,242 +177,231 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, ship_x: f32, ship_y: 
     }
 }
 
-fn render(
-    model: &Model,
-    framebuffer: &mut Framebuffer,
-    ship_x: f32,
-    ship_y: f32,
-    yaw: f32,
-    pitch: f32,
-    roll: f32,
-    travel: f32,
-) {
-    framebuffer.clear(0x172234);
-    draw_skybox(framebuffer, travel, ship_x, ship_y);
+fn make_sphere(radius: f32, stacks: usize, slices: usize, sun: bool) -> Model {
+    let mut vertices = Vec::new();
+    for stack in 0..=stacks {
+        let latitude = PI * stack as f32 / stacks as f32 - PI * 0.5;
+        let ring = latitude.cos() * radius;
+        let y = latitude.sin() * radius;
+        for slice in 0..=slices {
+            let longitude = TAU * slice as f32 / slices as f32;
+            vertices.push(Vec3::new(ring * longitude.cos(), y, ring * longitude.sin()));
+        }
+    }
 
+    let mut faces = Vec::new();
+    for stack in 0..stacks {
+        for slice in 0..slices {
+            let first = stack * (slices + 1) + slice;
+            let second = first + slices + 1;
+            let material = if sun {
+                "sun"
+            } else if stack < 2 || stack + 2 >= stacks {
+                "planet_ice"
+            } else if hash((stack * 97 + slice * 31) as u32) % 5 < 2 {
+                "planet_land"
+            } else {
+                "planet_ocean"
+            };
+            faces.push(Face {
+                indices: [first, second, first + 1],
+                material: material.to_string(),
+            });
+            faces.push(Face {
+                indices: [first + 1, second, second + 1],
+                material: material.to_string(),
+            });
+        }
+    }
+    Model { vertices, faces }
+}
+
+fn model_center(model: &Model) -> Vec3 {
     let mut min = model.vertices[0];
     let mut max = min;
-
     for vertex in &model.vertices {
         min.x = min.x.min(vertex.x);
         min.y = min.y.min(vertex.y);
         min.z = min.z.min(vertex.z);
-
         max.x = max.x.max(vertex.x);
         max.y = max.y.max(vertex.y);
         max.z = max.z.max(vertex.z);
     }
+    min.add(max).mul(0.5)
+}
 
-    let center = Vec3::new(
-        (min.x + max.x) * 0.5,
-        (min.y + max.y) * 0.5,
-        (min.z + max.z) * 0.5,
-    );
+fn chase_camera(ship: &Ship) -> Camera {
+    let (forward, _, _) = ship.basis();
+    let world_up = Vec3::new(0.0, 1.0, 0.0);
+    let position = ship.position.sub(forward.mul(12.0)).add(world_up.mul(4.0));
+    let target = ship.position.add(forward.mul(8.0));
+    let camera_forward = target.sub(position).normalize();
+    let right = camera_forward.cross(world_up).normalize();
+    let up = right.cross(camera_forward).normalize();
+    Camera {
+        position,
+        forward: camera_forward,
+        right,
+        up,
+    }
+}
 
-    // La nave apunta hacia -X; mirar desde +X coloca la camara
-    // detras de los motores, con una ligera elevacion.
-    let initial = Vec3::new(1.0, 0.22, 0.0).normalize();
-
-    let camera = initial;
-
-    let right = Vec3::new(0.0, 1.0, 0.0).cross(camera).normalize();
-
-    let up = camera.cross(right).normalize();
-
-    let light = Vec3::new(0.2, 1.0, -0.7).normalize();
-
-    let camera_coords: Vec<Vec3> = model
+fn render_model<F>(model: &Model, framebuffer: &mut Framebuffer, camera: &Camera, transform: F)
+where
+    F: Fn(Vec3) -> Vec3,
+{
+    let camera_vertices: Vec<Vec3> = model
         .vertices
         .iter()
         .map(|vertex| {
-            let v = vertex.sub(center);
-
-            let v = Vec3::new(v.dot(right), v.dot(up), v.dot(camera));
-
-            let (sin_yaw, cos_yaw) = yaw.sin_cos();
-            let v = Vec3::new(
-                v.x * cos_yaw + v.z * sin_yaw,
-                v.y,
-                -v.x * sin_yaw + v.z * cos_yaw,
-            );
-
-            let (sin_pitch, cos_pitch) = pitch.sin_cos();
-            let v = Vec3::new(
-                v.x,
-                v.y * cos_pitch - v.z * sin_pitch,
-                v.y * sin_pitch + v.z * cos_pitch,
-            );
-
-            let (sin_roll, cos_roll) = roll.sin_cos();
+            let relative = transform(*vertex).sub(camera.position);
             Vec3::new(
-                v.x * cos_roll - v.y * sin_roll,
-                v.x * sin_roll + v.y * cos_roll,
-                v.z,
+                relative.dot(camera.right),
+                relative.dot(camera.up),
+                relative.dot(camera.forward),
             )
         })
         .collect();
-
-    let mut x0 = f32::INFINITY;
-    let mut x1 = f32::NEG_INFINITY;
-    let mut y0 = f32::INFINITY;
-    let mut y1 = f32::NEG_INFINITY;
-
-    for vertex in &camera_coords {
-        x0 = x0.min(vertex.x);
-        x1 = x1.max(vertex.x);
-
-        y0 = y0.min(vertex.y);
-        y1 = y1.max(vertex.y);
-    }
-
-    let scale_x = (WIDTH as f32 * 0.48) / (x1 - x0).max(0.001);
-
-    let scale_y = (HEIGHT as f32 * 0.48) / (y1 - y0).max(0.001);
-
-    let scale = scale_x.min(scale_y);
-
-    let mx = (x0 + x1) * 0.5;
-    let my = (y0 + y1) * 0.5;
-
-    let screen: Vec<ScreenVertex> = camera_coords
-        .iter()
-        .map(|vertex| ScreenVertex {
-            x: WIDTH as f32 * (0.5 + ship_x * 0.28) + (vertex.x - mx) * scale,
-
-            y: HEIGHT as f32 * (0.5 + ship_y * 0.25) - (vertex.y - my) * scale,
-
-            z: vertex.z,
-        })
-        .collect();
+    let focal = HEIGHT as f32 / (60.0_f32.to_radians() * 0.5).tan() * 0.5;
+    let light = Vec3::new(-0.3, 0.8, -0.5).normalize();
 
     for face in &model.faces {
         let [i0, i1, i2] = face.indices;
-
-        let v0 = camera_coords[i0];
-        let v1 = camera_coords[i1];
-        let v2 = camera_coords[i2];
-
+        let v0 = camera_vertices[i0];
+        let v1 = camera_vertices[i1];
+        let v2 = camera_vertices[i2];
+        if v0.z <= NEAR_PLANE || v1.z <= NEAR_PLANE || v2.z <= NEAR_PLANE {
+            continue;
+        }
+        let project = |vertex: Vec3| ScreenVertex {
+            x: WIDTH as f32 * 0.5 + vertex.x * focal / vertex.z,
+            y: HEIGHT as f32 * 0.5 - vertex.y * focal / vertex.z,
+            z: 1.0 / vertex.z,
+        };
         let normal = v1.sub(v0).cross(v2.sub(v0)).normalize();
-
-        let brightness = 0.53 + 0.47 * normal.dot(light).abs();
-
-        let color = pack(color_for_material(&face.material), brightness);
-
-        draw_triangle(framebuffer, screen[i0], screen[i1], screen[i2], color);
+        let brightness = 0.34 + normal.dot(light).abs() * 0.66;
+        draw_triangle(
+            framebuffer,
+            project(v0),
+            project(v1),
+            project(v2),
+            pack(color_for_material(&face.material), brightness),
+        );
     }
+}
+
+fn render_scene(
+    ship_model: &Model,
+    ship_center: Vec3,
+    planet: &Model,
+    sun: &Model,
+    framebuffer: &mut Framebuffer,
+    ship: &Ship,
+    world_time: f32,
+    travel: f32,
+) {
+    framebuffer.clear(0);
+    draw_skybox(framebuffer, travel);
+    let camera = chase_camera(ship);
+    let sun_position = Vec3::new(-400.0, 20.0, 0.0);
+    let orbit = world_time * 0.08;
+    let planet_position =
+        sun_position.add(Vec3::new(orbit.cos() * 220.0, -20.0, orbit.sin() * 220.0));
+    let planet_rotation = world_time * 0.25;
+
+    render_model(sun, framebuffer, &camera, |vertex| vertex.add(sun_position));
+    render_model(planet, framebuffer, &camera, |vertex| {
+        let (sin, cos) = planet_rotation.sin_cos();
+        Vec3::new(
+            vertex.x * cos - vertex.z * sin,
+            vertex.y,
+            vertex.x * sin + vertex.z * cos,
+        )
+        .add(planet_position)
+    });
+
+    let (forward, right, up) = ship.basis();
+    render_model(ship_model, framebuffer, &camera, |vertex| {
+        let local = vertex.sub(ship_center).mul(SHIP_SCALE);
+        ship.position
+            .add(forward.mul(-local.x))
+            .add(up.mul(local.y))
+            .add(right.mul(local.z))
+    });
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "assets/nave.obj".to_string());
+    let ship_model = load_obj(&path).map_err(|error| format!("Error al cargar {path}: {error}"))?;
+    let ship_center = model_center(&ship_model);
+    let planet = make_sphere(24.0, 18, 28, false);
+    let sun = make_sphere(55.0, 18, 28, true);
 
-    let model = load_obj(&path).map_err(|e| format!("Error al cargar {}: {}", path, e))?;
-
-    println!("Modelo: {}", path);
-    println!("Vertices: {}", model.vertices.len());
-    println!("Triangulos: {}", model.faces.len());
-    println!("Controles: WASD/flechas = mover, Q/E = giro, P = captura, F11 = fullscreen");
+    println!("Vuelo libre 3D iniciado");
+    println!("W/S o flechas: cabeceo | A/D: direccion | Q/E: alabeo");
+    println!("Espacio: acelerar | Ctrl: frenar | R: reiniciar | P: captura");
 
     let mut fullscreen = false;
     let mut window = create_window(fullscreen)?;
-
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
-
-    let mut ship_x: f32 = 0.0;
-    let mut ship_y: f32 = 0.0;
-    let mut velocity_x: f32 = 0.0;
-    let mut velocity_y: f32 = 0.0;
-    let mut yaw: f32 = 0.0;
-    let mut pitch: f32 = 0.0;
-    let mut roll: f32 = 0.0;
-    let mut barrel_roll: f32 = 0.0;
-    let mut travel: f32 = 0.0;
-
-    render(
-        &model,
-        &mut framebuffer,
-        ship_x,
-        ship_y,
-        yaw,
-        pitch,
-        roll,
-        travel,
-    );
+    let mut ship = Ship::new();
+    let start = Instant::now();
+    let mut previous = Instant::now();
+    let mut distance = 0.0_f32;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        let now = Instant::now();
+        let delta_time = now.duration_since(previous).as_secs_f32().min(0.05);
+        previous = now;
+
         if window.is_key_pressed(Key::F11, KeyRepeat::No) {
             fullscreen = !fullscreen;
             window = create_window(fullscreen)?;
-            println!(
-                "Pantalla completa: {}",
-                if fullscreen {
-                    "activada"
-                } else {
-                    "desactivada"
-                }
-            );
+        }
+        if window.is_key_pressed(Key::R, KeyRepeat::No) {
+            ship = Ship::new();
+            distance = 0.0;
         }
 
-        let horizontal = (window.is_key_down(Key::D) || window.is_key_down(Key::Right)) as i8
-            - (window.is_key_down(Key::A) || window.is_key_down(Key::Left)) as i8;
-        let vertical = (window.is_key_down(Key::S) || window.is_key_down(Key::Down)) as i8
-            - (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8;
+        let pitch_input = (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8
+            - (window.is_key_down(Key::S) || window.is_key_down(Key::Down)) as i8;
+        let yaw_input = window.is_key_down(Key::D) as i8 - window.is_key_down(Key::A) as i8;
+        let roll_input = window.is_key_down(Key::E) as i8 - window.is_key_down(Key::Q) as i8;
 
-        velocity_x = (velocity_x + horizontal as f32 * ACCELERATION).clamp(-MAX_SPEED, MAX_SPEED);
-        velocity_y = (velocity_y + vertical as f32 * ACCELERATION).clamp(-MAX_SPEED, MAX_SPEED);
+        ship.pitch = (ship.pitch + pitch_input as f32 * 1.1 * delta_time).clamp(-1.25, 1.25);
+        ship.yaw = (ship.yaw + yaw_input as f32 * 1.15 * delta_time).rem_euclid(TAU);
+        ship.roll = (ship.roll + roll_input as f32 * 1.7 * delta_time).rem_euclid(TAU);
 
-        if horizontal == 0 {
-            velocity_x *= DRAG;
+        if window.is_key_down(Key::Space) {
+            ship.speed = (ship.speed + 20.0 * delta_time).min(MAX_SPEED);
         }
-        if vertical == 0 {
-            velocity_y *= DRAG;
-        }
-
-        ship_x = (ship_x + velocity_x).clamp(-1.0, 1.0);
-        ship_y = (ship_y + velocity_y).clamp(-1.0, 1.0);
-
-        if ship_x.abs() >= 1.0 {
-            velocity_x = 0.0;
-        }
-        if ship_y.abs() >= 1.0 {
-            velocity_y = 0.0;
+        if window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl) {
+            ship.speed = (ship.speed - 28.0 * delta_time).max(0.0);
         }
 
-        if window.is_key_down(Key::Q) {
-            barrel_roll -= 0.10;
-        }
-        if window.is_key_down(Key::E) {
-            barrel_roll += 0.10;
-        }
+        let (forward, _, _) = ship.basis();
+        let movement = ship.speed * delta_time;
+        ship.position = ship.position.add(forward.mul(movement));
+        distance += movement;
 
-        let target_yaw = velocity_x * 6.0;
-        let target_pitch = -velocity_y * 12.0;
-        let target_roll = barrel_roll - velocity_x * 18.0;
-
-        yaw += (target_yaw - yaw) * 0.14;
-        pitch += (target_pitch - pitch) * 0.14;
-        roll += (target_roll - roll) * 0.18;
-        travel = (travel + 0.0035).rem_euclid(1.0);
-
-        render(
-            &model,
+        render_scene(
+            &ship_model,
+            ship_center,
+            &planet,
+            &sun,
             &mut framebuffer,
-            ship_x,
-            ship_y,
-            yaw,
-            pitch,
-            roll,
-            travel,
+            &ship,
+            start.elapsed().as_secs_f32(),
+            (distance * 0.0025).rem_euclid(1.0),
         );
 
         if window.is_key_pressed(Key::P, KeyRepeat::No) {
             framebuffer.save_png("captura.png")?;
             println!("Captura guardada: captura.png");
         }
-
         window.update_with_buffer(&framebuffer.pixels, WIDTH, HEIGHT)?;
     }
-
     Ok(())
 }

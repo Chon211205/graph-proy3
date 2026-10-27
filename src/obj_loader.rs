@@ -1,4 +1,3 @@
-
 use std::{
     fs::File,
     io::{BufRead, BufReader},
@@ -18,11 +17,15 @@ impl Vec3 {
     }
 
     pub fn sub(self, b: Self) -> Self {
-        Self::new(
-            self.x - b.x,
-            self.y - b.y,
-            self.z - b.z,
-        )
+        Self::new(self.x - b.x, self.y - b.y, self.z - b.z)
+    }
+
+    pub fn add(self, b: Self) -> Self {
+        Self::new(self.x + b.x, self.y + b.y, self.z + b.z)
+    }
+
+    pub fn mul(self, scalar: f32) -> Self {
+        Self::new(self.x * scalar, self.y * scalar, self.z * scalar)
     }
 
     pub fn dot(self, b: Self) -> f32 {
@@ -43,11 +46,7 @@ impl Vec3 {
         if length < 1e-9 {
             Self::default()
         } else {
-            Self::new(
-                self.x / length,
-                self.y / length,
-                self.z / length,
-            )
+            Self::new(self.x / length, self.y / length, self.z / length)
         }
     }
 }
@@ -62,10 +61,7 @@ pub struct Model {
     pub faces: Vec<Face>,
 }
 
-fn read_index(
-    token: &str,
-    count: usize,
-) -> Result<usize, String> {
+fn read_index(token: &str, count: usize) -> Result<usize, String> {
     let raw = token.split('/').next().unwrap_or("");
 
     let index = raw
@@ -78,21 +74,15 @@ fn read_index(
         count as isize + index
     };
 
-    if index == 0
-        || zero_based < 0
-        || zero_based >= count as isize
-    {
+    if index == 0 || zero_based < 0 || zero_based >= count as isize {
         return Err(format!("Indice fuera de rango: {token}"));
     }
 
     Ok(zero_based as usize)
 }
 
-pub fn load_obj(
-    path: impl AsRef<Path>,
-) -> Result<Model, String> {
-    let file = File::open(path)
-        .map_err(|e| e.to_string())?;
+pub fn load_obj(path: impl AsRef<Path>) -> Result<Model, String> {
+    let file = File::open(path).map_err(|e| e.to_string())?;
 
     let mut model = Model {
         vertices: Vec::new(),
@@ -111,16 +101,10 @@ pub fn load_obj(
                     .take(3)
                     .map(|s| s.parse::<f32>())
                     .collect::<Result<_, _>>()
-                    .map_err(|e| {
-                        format!("Linea {}: {e}", line_no + 1)
-                    })?;
+                    .map_err(|e| format!("Linea {}: {e}", line_no + 1))?;
 
                 if nums.len() == 3 {
-                    model.vertices.push(Vec3::new(
-                        nums[0],
-                        nums[1],
-                        nums[2],
-                    ));
+                    model.vertices.push(Vec3::new(nums[0], nums[1], nums[2]));
                 }
             }
 
@@ -130,21 +114,12 @@ pub fn load_obj(
 
             Some("f") => {
                 let ids = parts
-                    .map(|t| {
-                        read_index(
-                            t,
-                            model.vertices.len(),
-                        )
-                    })
+                    .map(|t| read_index(t, model.vertices.len()))
                     .collect::<Result<Vec<_>, _>>()?;
 
                 for i in 1..ids.len().saturating_sub(1) {
                     model.faces.push(Face {
-                        indices: [
-                            ids[0],
-                            ids[i],
-                            ids[i + 1],
-                        ],
+                        indices: [ids[0], ids[i], ids[i + 1]],
                         material: material.clone(),
                     });
                 }
