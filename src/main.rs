@@ -85,6 +85,78 @@ fn pack(rgb: [u8; 3], brightness: f32) -> u32 {
     (channel(rgb[0]) << 16) | (channel(rgb[1]) << 8) | channel(rgb[2])
 }
 
+fn hash(mut value: u32) -> u32 {
+    value ^= value >> 16;
+    value = value.wrapping_mul(0x7feb_352d);
+    value ^= value >> 15;
+    value = value.wrapping_mul(0x846c_a68b);
+    value ^ (value >> 16)
+}
+
+fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, ship_x: f32, ship_y: f32) {
+    // Fondo espacial con un degradado azul-violeta.
+    for y in 0..framebuffer.height {
+        let t = y as f32 / framebuffer.height as f32;
+        let horizon = (1.0 - (t - 0.48).abs() * 2.0).max(0.0);
+        let r = (4.0 + horizon * 8.0) as u32;
+        let g = (7.0 + horizon * 11.0) as u32;
+        let b = (20.0 + horizon * 24.0) as u32;
+        let color = (r << 16) | (g << 8) | b;
+        let start = y * framebuffer.width;
+        framebuffer.pixels[start..start + framebuffer.width].fill(color);
+    }
+
+    // Las estrellas viven en distintas profundidades. Al reducirse z se
+    // separan del centro y producen la sensacion de avance continuo.
+    let center_x = framebuffer.width as f32 * 0.5 - ship_x * 18.0;
+    let center_y = framebuffer.height as f32 * 0.46 - ship_y * 12.0;
+
+    for index in 0..700_u32 {
+        let x_seed = hash(index.wrapping_mul(3).wrapping_add(1));
+        let y_seed = hash(index.wrapping_mul(3).wrapping_add(2));
+        let z_seed = hash(index.wrapping_mul(3).wrapping_add(3));
+
+        let world_x = x_seed as f32 / u32::MAX as f32 * 2.0 - 1.0;
+        let world_y = y_seed as f32 / u32::MAX as f32 * 2.0 - 1.0;
+        let initial_z = z_seed as f32 / u32::MAX as f32;
+        let z = (initial_z - travel).rem_euclid(1.0).max(0.025);
+        let perspective = 0.58 / z;
+
+        let x = (center_x + world_x * framebuffer.width as f32 * perspective) as i32;
+        let y = (center_y + world_y * framebuffer.height as f32 * perspective) as i32;
+
+        if x < 0 || y < 0 || x >= framebuffer.width as i32 || y >= framebuffer.height as i32 {
+            continue;
+        }
+
+        let closeness = 1.0 - z;
+        let brightness = (125.0 + closeness * 130.0) as u32;
+        let blue = (brightness + 18).min(255);
+        let color = (brightness << 16) | (brightness << 8) | blue;
+        let size = if z < 0.16 {
+            3
+        } else if z < 0.34 {
+            2
+        } else {
+            1
+        };
+
+        for dy in 0..size {
+            for dx in 0..size {
+                let px = x + dx;
+                let py = y + dy;
+                if px >= 0
+                    && py >= 0
+                    && px < framebuffer.width as i32
+                    && py < framebuffer.height as i32
+                {
+                    framebuffer.pixels[py as usize * framebuffer.width + px as usize] = color;
+                }
+            }
+        }
+    }
+}
+
 fn render(
     model: &Model,
     framebuffer: &mut Framebuffer,
@@ -93,8 +165,10 @@ fn render(
     yaw: f32,
     pitch: f32,
     roll: f32,
+    travel: f32,
 ) {
     framebuffer.clear(0x172234);
+    draw_skybox(framebuffer, travel, ship_x, ship_y);
 
     let mut min = model.vertices[0];
     let mut max = min;
@@ -233,8 +307,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pitch: f32 = 0.0;
     let mut roll: f32 = 0.0;
     let mut barrel_roll: f32 = 0.0;
+    let mut travel: f32 = 0.0;
 
-    render(&model, &mut framebuffer, ship_x, ship_y, yaw, pitch, roll);
+    render(
+        &model,
+        &mut framebuffer,
+        ship_x,
+        ship_y,
+        yaw,
+        pitch,
+        roll,
+        travel,
+    );
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         if window.is_key_pressed(Key::F11, KeyRepeat::No) {
@@ -289,8 +373,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         yaw += (target_yaw - yaw) * 0.14;
         pitch += (target_pitch - pitch) * 0.14;
         roll += (target_roll - roll) * 0.18;
+        travel = (travel + 0.0035).rem_euclid(1.0);
 
-        render(&model, &mut framebuffer, ship_x, ship_y, yaw, pitch, roll);
+        render(
+            &model,
+            &mut framebuffer,
+            ship_x,
+            ship_y,
+            yaw,
+            pitch,
+            roll,
+            travel,
+        );
 
         if window.is_key_pressed(Key::P, KeyRepeat::No) {
             framebuffer.save_png("captura.png")?;
