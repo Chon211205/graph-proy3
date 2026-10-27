@@ -24,6 +24,7 @@ const TURN_RESPONSE: f32 = 7.0;
 const MAX_YAW_RATE: f32 = 1.15;
 const MAX_PITCH_RATE: f32 = 1.1;
 const STEERING_BANK: f32 = 0.48;
+const STEERING_PITCH: f32 = 0.24;
 
 struct Ship {
     position: Vec3,
@@ -34,6 +35,7 @@ struct Ship {
     yaw_rate: f32,
     pitch_rate: f32,
     steering_bank: f32,
+    steering_pitch: f32,
     speed: f32,
 }
 
@@ -48,21 +50,29 @@ impl Ship {
             yaw_rate: 0.0,
             pitch_rate: 0.0,
             steering_bank: 0.0,
+            steering_pitch: 0.0,
             speed: 12.0,
         }
     }
 
     fn basis(&self) -> (Vec3, Vec3, Vec3) {
-        self.basis_with_roll(self.roll + self.steering_bank)
+        self.basis_with_angles(
+            self.pitch + self.steering_pitch,
+            self.roll + self.steering_bank,
+        )
     }
 
     fn camera_basis(&self) -> (Vec3, Vec3, Vec3) {
-        self.basis_with_roll(self.roll)
+        self.basis_with_angles(self.pitch, self.roll)
     }
 
-    fn basis_with_roll(&self, roll: f32) -> (Vec3, Vec3, Vec3) {
+    fn movement_basis(&self) -> (Vec3, Vec3, Vec3) {
+        self.basis_with_angles(self.pitch, self.roll)
+    }
+
+    fn basis_with_angles(&self, pitch: f32, roll: f32) -> (Vec3, Vec3, Vec3) {
         let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
-        let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
+        let (sin_pitch, cos_pitch) = pitch.sin_cos();
         let forward = Vec3::new(-cos_pitch * cos_yaw, sin_pitch, -cos_pitch * sin_yaw).normalize();
         let level_right = forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
         let level_up = level_right.cross(forward).normalize();
@@ -620,6 +630,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ship.yaw_rate = 0.0;
             ship.pitch_rate = 0.0;
             ship.steering_bank = 0.0;
+            ship.steering_pitch = 0.0;
             ship.speed = 12.0;
             println!("Warp completado: planeta acuatico");
         }
@@ -636,8 +647,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ship.pitch = (ship.pitch + ship.pitch_rate * delta_time).clamp(-1.25, 1.25);
         ship.yaw = (ship.yaw + ship.yaw_rate * delta_time).rem_euclid(TAU);
 
-        let target_bank = yaw_input as f32 * STEERING_BANK;
+        let target_bank = -(yaw_input as f32) * STEERING_BANK;
         ship.steering_bank += (target_bank - ship.steering_bank) * response;
+        let target_visual_pitch = pitch_input as f32 * STEERING_PITCH;
+        ship.steering_pitch += (target_visual_pitch - ship.steering_pitch) * response;
 
         let roll_input = window.is_key_down(Key::E) as i8 - window.is_key_down(Key::Q) as i8;
         ship.roll_target += roll_input as f32 * ROLL_INPUT_SPEED * delta_time;
@@ -653,7 +666,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ship.speed = (ship.speed - 28.0 * delta_time).max(MIN_SPEED);
         }
 
-        let (forward, _, _) = ship.basis();
+        let (forward, _, _) = ship.movement_basis();
         let light_speed = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
         let active_speed = if light_speed { LIGHT_SPEED } else { ship.speed };
         let movement = active_speed * delta_time;
