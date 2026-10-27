@@ -20,6 +20,10 @@ const LIGHT_SPEED: f32 = 600.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
 const ROLL_INPUT_SPEED: f32 = PI * 0.5;
 const ROLL_SPEED: f32 = PI;
+const TURN_RESPONSE: f32 = 7.0;
+const MAX_YAW_RATE: f32 = 1.15;
+const MAX_PITCH_RATE: f32 = 1.1;
+const STEERING_BANK: f32 = 0.48;
 
 struct Ship {
     position: Vec3,
@@ -27,6 +31,9 @@ struct Ship {
     pitch: f32,
     roll: f32,
     roll_target: f32,
+    yaw_rate: f32,
+    pitch_rate: f32,
+    steering_bank: f32,
     speed: f32,
 }
 
@@ -38,17 +45,28 @@ impl Ship {
             pitch: 0.0,
             roll: 0.0,
             roll_target: 0.0,
+            yaw_rate: 0.0,
+            pitch_rate: 0.0,
+            steering_bank: 0.0,
             speed: 12.0,
         }
     }
 
     fn basis(&self) -> (Vec3, Vec3, Vec3) {
+        self.basis_with_roll(self.roll + self.steering_bank)
+    }
+
+    fn camera_basis(&self) -> (Vec3, Vec3, Vec3) {
+        self.basis_with_roll(self.roll)
+    }
+
+    fn basis_with_roll(&self, roll: f32) -> (Vec3, Vec3, Vec3) {
         let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
         let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
         let forward = Vec3::new(-cos_pitch * cos_yaw, sin_pitch, -cos_pitch * sin_yaw).normalize();
         let level_right = forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
         let level_up = level_right.cross(forward).normalize();
-        let (sin_roll, cos_roll) = self.roll.sin_cos();
+        let (sin_roll, cos_roll) = roll.sin_cos();
         let right = level_right.mul(cos_roll).add(level_up.mul(sin_roll));
         let up = level_up.mul(cos_roll).sub(level_right.mul(sin_roll));
         (forward, right, up)
@@ -404,7 +422,7 @@ fn model_radius(model: &Model, center: Vec3) -> f32 {
 }
 
 fn chase_camera(ship: &Ship) -> Camera {
-    let (forward, ship_right, ship_up) = ship.basis();
+    let (forward, ship_right, ship_up) = ship.camera_basis();
     let position = ship.position.sub(forward.mul(12.0)).add(ship_up.mul(4.0));
     let target = ship.position.add(forward.mul(8.0));
     let camera_forward = target.sub(position).normalize();
@@ -566,9 +584,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sun = make_sphere(55.0, 18, 28, true);
 
     println!("Vuelo libre 3D iniciado");
-    println!("W: acelerar | S: frenar | Flechas arriba/abajo: cabeceo");
+    println!("W/S o flechas: subir/bajar | Espacio: acelerar | Ctrl: frenar");
     println!("A/D: direccion | Mantener Q/E: alabeo | R: reiniciar | P: captura");
-    println!("1: warp al planeta acuatico | Espacio/Shift: velocidad de luz");
+    println!("1: warp al planeta acuatico | Shift: velocidad de luz");
 
     let mut fullscreen = false;
     let mut window = create_window(fullscreen)?;
@@ -599,15 +617,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ship.pitch = -0.08;
             ship.roll = 0.0;
             ship.roll_target = 0.0;
+            ship.yaw_rate = 0.0;
+            ship.pitch_rate = 0.0;
+            ship.steering_bank = 0.0;
             ship.speed = 12.0;
             println!("Warp completado: planeta acuatico");
         }
 
-        let pitch_input = window.is_key_down(Key::Up) as i8 - window.is_key_down(Key::Down) as i8;
+        let pitch_input = (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8
+            - (window.is_key_down(Key::S) || window.is_key_down(Key::Down)) as i8;
         let yaw_input = window.is_key_down(Key::D) as i8 - window.is_key_down(Key::A) as i8;
 
-        ship.pitch = (ship.pitch + pitch_input as f32 * 1.1 * delta_time).clamp(-1.25, 1.25);
-        ship.yaw = (ship.yaw + yaw_input as f32 * 1.15 * delta_time).rem_euclid(TAU);
+        let response = 1.0 - (-TURN_RESPONSE * delta_time).exp();
+        let target_pitch_rate = pitch_input as f32 * MAX_PITCH_RATE;
+        let target_yaw_rate = yaw_input as f32 * MAX_YAW_RATE;
+        ship.pitch_rate += (target_pitch_rate - ship.pitch_rate) * response;
+        ship.yaw_rate += (target_yaw_rate - ship.yaw_rate) * response;
+        ship.pitch = (ship.pitch + ship.pitch_rate * delta_time).clamp(-1.25, 1.25);
+        ship.yaw = (ship.yaw + ship.yaw_rate * delta_time).rem_euclid(TAU);
+
+        let target_bank = yaw_input as f32 * STEERING_BANK;
+        ship.steering_bank += (target_bank - ship.steering_bank) * response;
 
         let roll_input = window.is_key_down(Key::E) as i8 - window.is_key_down(Key::Q) as i8;
         ship.roll_target += roll_input as f32 * ROLL_INPUT_SPEED * delta_time;
@@ -616,20 +646,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let roll_step = (ROLL_SPEED * delta_time).min(roll_difference.abs());
         ship.roll += roll_difference.signum() * roll_step;
 
-        if window.is_key_down(Key::W) {
+        if window.is_key_down(Key::Space) {
             ship.speed = (ship.speed + 20.0 * delta_time).min(MAX_SPEED);
         }
-        if window.is_key_down(Key::S)
-            || window.is_key_down(Key::LeftCtrl)
-            || window.is_key_down(Key::RightCtrl)
-        {
+        if window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl) {
             ship.speed = (ship.speed - 28.0 * delta_time).max(MIN_SPEED);
         }
 
         let (forward, _, _) = ship.basis();
-        let light_speed = window.is_key_down(Key::Space)
-            || window.is_key_down(Key::LeftShift)
-            || window.is_key_down(Key::RightShift);
+        let light_speed = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
         let active_speed = if light_speed { LIGHT_SPEED } else { ship.speed };
         let movement = active_speed * delta_time;
         ship.position = ship.position.add(forward.mul(movement));
