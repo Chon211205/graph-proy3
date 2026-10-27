@@ -16,6 +16,7 @@ const NEAR_PLANE: f32 = 0.2;
 const SHIP_SCALE: f32 = 0.055;
 const MIN_SPEED: f32 = 4.0;
 const MAX_SPEED: f32 = 55.0;
+const LIGHT_SPEED: f32 = 600.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
 
 struct Ship {
@@ -414,6 +415,12 @@ fn chase_camera(ship: &Ship) -> Camera {
     }
 }
 
+fn water_planet_position(world_time: f32) -> Vec3 {
+    let sun_position = Vec3::new(-400.0, 20.0, 0.0);
+    let orbit = world_time * PLANET_ORBIT_SPEED;
+    sun_position.add(Vec3::new(orbit.cos() * 220.0, -20.0, orbit.sin() * 220.0))
+}
+
 fn render_model<F>(
     model: &Model,
     framebuffer: &mut Framebuffer,
@@ -499,9 +506,7 @@ fn render_scene(
     draw_skybox(framebuffer, travel);
     let camera = chase_camera(ship);
     let sun_position = Vec3::new(-400.0, 20.0, 0.0);
-    let orbit = world_time * PLANET_ORBIT_SPEED;
-    let planet_position =
-        sun_position.add(Vec3::new(orbit.cos() * 220.0, -20.0, orbit.sin() * 220.0));
+    let planet_position = water_planet_position(world_time);
     let planet_rotation = world_time * 0.25;
 
     render_model(
@@ -560,6 +565,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Vuelo libre 3D iniciado");
     println!("W: acelerar | S: frenar | Flechas arriba/abajo: cabeceo");
     println!("A/D: direccion | Q/E: alabeo | R: reiniciar | P: captura");
+    println!("1: warp al planeta acuatico | Espacio/Shift: velocidad de luz");
 
     let mut fullscreen = false;
     let mut window = create_window(fullscreen)?;
@@ -573,6 +579,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let now = Instant::now();
         let delta_time = now.duration_since(previous).as_secs_f32().min(0.05);
         previous = now;
+        let world_time = start.elapsed().as_secs_f32();
 
         if window.is_key_pressed(Key::F11, KeyRepeat::No) {
             fullscreen = !fullscreen;
@@ -581,6 +588,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if window.is_key_pressed(Key::R, KeyRepeat::No) {
             ship = Ship::new();
             distance = 0.0;
+        }
+        if window.is_key_pressed(Key::Key1, KeyRepeat::No) {
+            let destination = water_planet_position(world_time);
+            ship.position = destination.add(Vec3::new(55.0, 8.0, 0.0));
+            ship.yaw = 0.0;
+            ship.pitch = -0.08;
+            ship.roll = 0.0;
+            ship.speed = 12.0;
+            println!("Warp completado: planeta acuatico");
         }
 
         let pitch_input = window.is_key_down(Key::Up) as i8 - window.is_key_down(Key::Down) as i8;
@@ -591,7 +607,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ship.yaw = (ship.yaw + yaw_input as f32 * 1.15 * delta_time).rem_euclid(TAU);
         ship.roll = (ship.roll + roll_input as f32 * 1.7 * delta_time).rem_euclid(TAU);
 
-        if window.is_key_down(Key::W) || window.is_key_down(Key::Space) {
+        if window.is_key_down(Key::W) {
             ship.speed = (ship.speed + 20.0 * delta_time).min(MAX_SPEED);
         }
         if window.is_key_down(Key::S)
@@ -602,7 +618,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let (forward, _, _) = ship.basis();
-        let movement = ship.speed * delta_time;
+        let light_speed = window.is_key_down(Key::Space)
+            || window.is_key_down(Key::LeftShift)
+            || window.is_key_down(Key::RightShift);
+        let active_speed = if light_speed { LIGHT_SPEED } else { ship.speed };
+        let movement = active_speed * delta_time;
         ship.position = ship.position.add(forward.mul(movement));
         distance += movement;
 
@@ -615,7 +635,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &sun,
             &mut framebuffer,
             &ship,
-            start.elapsed().as_secs_f32(),
+            world_time,
             (distance * 0.0025).rem_euclid(1.0),
         );
 
