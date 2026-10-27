@@ -18,6 +18,8 @@ const MIN_SPEED: f32 = 4.0;
 const MAX_SPEED: f32 = 55.0;
 const LIGHT_SPEED: f32 = 600.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
+const SUN_POSITION_X: f32 = -520.0;
+const PLANET_ORBIT_RADIUS: f32 = 280.0;
 const ROLL_INPUT_SPEED: f32 = PI * 0.5;
 const ROLL_SPEED: f32 = PI;
 const TURN_RESPONSE: f32 = 7.0;
@@ -447,9 +449,13 @@ fn chase_camera(ship: &Ship) -> Camera {
 }
 
 fn water_planet_position(world_time: f32) -> Vec3 {
-    let sun_position = Vec3::new(-400.0, 20.0, 0.0);
+    let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let orbit = world_time * PLANET_ORBIT_SPEED;
-    sun_position.add(Vec3::new(orbit.cos() * 220.0, -20.0, orbit.sin() * 220.0))
+    sun_position.add(Vec3::new(
+        orbit.cos() * PLANET_ORBIT_RADIUS,
+        -20.0,
+        orbit.sin() * PLANET_ORBIT_RADIUS,
+    ))
 }
 
 fn render_model<F>(
@@ -536,7 +542,7 @@ fn render_scene(
     framebuffer.clear(0);
     draw_skybox(framebuffer, travel);
     let camera = chase_camera(ship);
-    let sun_position = Vec3::new(-400.0, 20.0, 0.0);
+    let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let planet_position = water_planet_position(world_time);
     let planet_rotation = world_time * 0.25;
 
