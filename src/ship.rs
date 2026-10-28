@@ -7,7 +7,7 @@ pub enum ModelAxes {
     Arwing,
     Kirby,
     Astra,
-    Sebas,
+    CowboyB,
 }
 
 pub struct ShipSpec {
@@ -177,10 +177,10 @@ pub static ASTRA_SPEC: ShipSpec = ShipSpec {
     laser_core_color: [190, 245, 255],
 };
 
-pub static SEBAS_SPEC: ShipSpec = ShipSpec {
-    name: "Nave Roja",
+pub static COWBOYB_SPEC: ShipSpec = ShipSpec {
+    name: "Cowboy B",
     model_scale: 0.28,
-    model_axes: ModelAxes::Sebas,
+    model_axes: ModelAxes::CowboyB,
     collision_radius: 2.0,
     min_speed: 4.0,
     cruise_speed: 12.0,
@@ -233,11 +233,10 @@ impl ShipSpec {
                 .mul(local.z)
                 .add(up.mul(local.y))
                 .add(right.mul(local.x)),
-            // This mesh is rolled upside down around its longitudinal axis.
-            ModelAxes::Sebas => forward
+            ModelAxes::CowboyB => forward
                 .mul(-local.y)
-                .add(up.mul(-local.z))
-                .add(right.mul(-local.x)),
+                .add(up.mul(local.z))
+                .add(right.mul(local.x)),
         }
     }
 }

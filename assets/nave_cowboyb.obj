@@ -1,5 +1,5 @@
 # Nave desde un solo cubo; Z arriba; medidas en unidades Blender
-mtllib nave_sebas.mtl
+mtllib nave_cowboyb.mtl
 o Nave
 v 0.779999971 1.20000005 0.280000001
 v 0.779999971 1.20000005 -0.280000001

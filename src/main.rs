@@ -12,7 +12,7 @@ use minifb::{Key, KeyRepeat, ScaleMode, Window, WindowOptions};
 use obj_loader::{load_obj, Face, Model, Vec3};
 use ship::{
     Projectile, Ship, ShipController, ShipInput, ShipSpec, ARWING_SPEC, ASTRA_SPEC, KIRBY_SPEC,
-    SEBAS_SPEC,
+    COWBOYB_SPEC,
 };
 use triangle::{draw_triangle, draw_triangle_shaded, ScreenVertex};
 
@@ -1025,13 +1025,13 @@ fn select_ship(
     arwing: &Model,
     kirby: &Model,
     astra: &Model,
-    sebas: &Model,
+    cowboyb: &Model,
 ) -> Result<Option<usize>, minifb::Error> {
     let choices = [
         ("Arwing", arwing, &ARWING_SPEC),
         ("Kirby UFO", kirby, &KIRBY_SPEC),
         ("ASTRA", astra, &ASTRA_SPEC),
-        ("Nave Roja", sebas, &SEBAS_SPEC),
+        ("Cowboy B", cowboyb, &COWBOYB_SPEC),
     ];
     let centers = choices.map(|(_, model, _)| model_center(model));
     let mut selected = 1_usize;
@@ -1089,11 +1089,11 @@ fn select_ship(
         let angle = start.elapsed().as_secs_f32() * 0.65;
 
         for (index, (_, model, spec)) in choices.iter().enumerate() {
-            let target_radius = if index == selected { 2.4 } else { 2.1 };
+            let target_radius = if index == selected { 2.8 } else { 2.55 };
             let display_scale = target_radius / (spec.model_scale * model_radius(model, centers[index]).max(0.001));
             let position = Vec3::new(
-                if index % 2 == 0 { -4.4 } else { 4.4 },
-                if index < 2 { 5.8 } else { -2.55 },
+                if index % 2 == 0 { 6.5 } else { -6.5 },
+                if index < 2 { 4.65 } else { -3.2 },
                 0.0,
             );
             let forward = Vec3::new(angle.sin(), 0.0, -angle.cos());
@@ -1121,7 +1121,7 @@ fn select_ship(
                 (WIDTH * 3 / 4) as i32
             };
             let top_y = if index < 2 {
-                HEIGHT as i32 / 2 - 56
+                HEIGHT as i32 / 2 - 40
             } else {
                 HEIGHT as i32 - 78
             };
@@ -1137,16 +1137,16 @@ fn select_ship(
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arwing_path = "assets/nave.obj";
     let kirby_path = "assets/kirby.obj";
-    let astra_path = "assets/nave_astra_simple_mejorada.obj";
-    let sebas_path = "assets/nave_sebas.obj";
+    let astra_path = "assets/nave_astra.obj";
+    let cowboyb_path = "assets/nave_cowboyb.obj";
     let arwing_model =
         load_obj(arwing_path).map_err(|error| format!("Error al cargar {arwing_path}: {error}"))?;
     let kirby_model =
         load_obj(kirby_path).map_err(|error| format!("Error al cargar {kirby_path}: {error}"))?;
     let astra_model =
         load_obj(astra_path).map_err(|error| format!("Error al cargar {astra_path}: {error}"))?;
-    let sebas_model =
-        load_obj(sebas_path).map_err(|error| format!("Error al cargar {sebas_path}: {error}"))?;
+    let cowboyb_model = load_obj(cowboyb_path)
+        .map_err(|error| format!("Error al cargar {cowboyb_path}: {error}"))?;
 
     let mut fullscreen = false;
     let mut window = create_window(fullscreen)?;
@@ -1158,7 +1158,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &arwing_model,
             &kirby_model,
             &astra_model,
-            &sebas_model,
+            &cowboyb_model,
         )?
     else {
         return Ok(());
@@ -1167,7 +1167,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         0 => (&arwing_model, &ARWING_SPEC),
         1 => (&kirby_model, &KIRBY_SPEC),
         2 => (&astra_model, &ASTRA_SPEC),
-        _ => (&sebas_model, &SEBAS_SPEC),
+        _ => (&cowboyb_model, &COWBOYB_SPEC),
     };
     let ship_center = model_center(ship_model);
     window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");

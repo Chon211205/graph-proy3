@@ -1,5 +1,5 @@
 # ASTRA SIMPLE: Y arriba, proa +Z; OBJ estandar. Todas las caras son triangulos.
-mtllib nave_astra_simple_mejorada.mtl
+mtllib nave_astra.mtl
 o Nave_Astra
 v 0.2964000 -0.2500000 5.1000000
 v -0.2964000 -0.2500000 5.1000000
