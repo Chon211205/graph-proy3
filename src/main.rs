@@ -21,6 +21,9 @@ const MAX_SPEED: f32 = 55.0;
 const ACCELERATION_RATE: f32 = 20.0;
 const BRAKING_RATE: f32 = 28.0;
 const CRUISE_RECOVERY_RATE: f32 = 18.0;
+const LASER_SPEED: f32 = 220.0;
+const LASER_LIFETIME: f32 = 3.0;
+const FIRE_INTERVAL: f32 = 0.12;
 const LIGHT_SPEED: f32 = 600.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
 const SUN_POSITION_X: f32 = -520.0;
@@ -118,6 +121,12 @@ struct Camera {
 struct ObjectCollider {
     center: Vec3,
     radius: f32,
+}
+
+struct Projectile {
+    position: Vec3,
+    direction: Vec3,
+    lifetime: f32,
 }
 
 fn build_object_colliders(model: &Model, model_center: Vec3, scale: f32) -> Vec<ObjectCollider> {
@@ -261,7 +270,11 @@ fn create_window(fullscreen: bool) -> Result<Window, minifb::Error> {
 
 fn color_for_material(name: &str) -> [u8; 3] {
     let name = name.to_ascii_lowercase();
-    if name.contains("turbo_core") {
+    if name.contains("laser_core") {
+        [255, 245, 190]
+    } else if name.contains("laser") {
+        [255, 48, 38]
+    } else if name.contains("turbo_core") {
         [220, 252, 255]
     } else if name.contains("turbo") {
         [36, 142, 255]
@@ -519,6 +532,38 @@ fn make_turbo_plume(segments: usize) -> Model {
             }
             .to_string(),
             group: "turbo".to_string(),
+        });
+    }
+    Model { vertices, faces }
+}
+
+fn make_laser_bolt() -> Model {
+    let vertices = vec![
+        Vec3::new(1.4, 0.0, 0.0),
+        Vec3::new(-1.4, 0.0, 0.0),
+        Vec3::new(0.0, 0.16, 0.0),
+        Vec3::new(0.0, 0.0, 0.16),
+        Vec3::new(0.0, -0.16, 0.0),
+        Vec3::new(0.0, 0.0, -0.16),
+    ];
+    let mut faces = Vec::new();
+    for side in 0..4 {
+        let current = 2 + side;
+        let next = 2 + (side + 1) % 4;
+        let material = if side % 2 == 0 {
+            "laser_core"
+        } else {
+            "laser_glow"
+        };
+        faces.push(Face {
+            indices: [0, current, next],
+            material: material.to_string(),
+            group: "laser".to_string(),
+        });
+        faces.push(Face {
+            indices: [1, next, current],
+            material: material.to_string(),
+            group: "laser".to_string(),
         });
     }
     Model { vertices, faces }
@@ -841,6 +886,8 @@ fn render_scene(
     ship_model: &Model,
     ship_center: Vec3,
     turbo_plume: &Model,
+    laser_bolt: &Model,
+    projectiles: &[Projectile],
     planet: &Model,
     planet_center: Vec3,
     planet_scale: f32,
@@ -905,6 +952,29 @@ fn render_scene(
             None,
         );
     }
+    for projectile in projectiles {
+        let mut laser_right = projectile
+            .direction
+            .cross(Vec3::new(0.0, 1.0, 0.0))
+            .normalize();
+        if laser_right.dot(laser_right) < 0.001 {
+            laser_right = Vec3::new(1.0, 0.0, 0.0);
+        }
+        let laser_up = laser_right.cross(projectile.direction).normalize();
+        render_model(
+            laser_bolt,
+            framebuffer,
+            &camera,
+            |vertex| {
+                projectile
+                    .position
+                    .add(projectile.direction.mul(vertex.x))
+                    .add(laser_up.mul(vertex.y))
+                    .add(laser_right.mul(vertex.z))
+            },
+            None,
+        );
+    }
     render_model(
         ship_model,
         framebuffer,
@@ -935,10 +1005,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let object_colliders = build_object_colliders(&planet, planet_center, planet_scale);
     let sun = make_sphere(55.0, 18, 28, true);
     let turbo_plume = make_turbo_plume(12);
+    let laser_bolt = make_laser_bolt();
 
     println!("Vuelo libre 3D iniciado");
     println!("W/S o flechas: subir/bajar | Espacio: acelerar | Ctrl: frenar");
-    println!("A/D: direccion | Mantener Q/E: alabeo | R: reiniciar | P: captura");
+    println!("A/D: direccion | Q/E: alabeo | Enter: disparar | R: reiniciar | P: captura");
     println!("1: warp al planeta acuatico | Shift: velocidad de luz");
     println!("Backspace: abandonar la zona orbital");
     println!(
@@ -950,6 +1021,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut window = create_window(fullscreen)?;
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     let mut ship = Ship::new();
+    let mut projectiles = Vec::<Projectile>::new();
+    let mut fire_cooldown = 0.0_f32;
     let start = Instant::now();
     let mut previous = Instant::now();
     let mut distance = 0.0_f32;
@@ -966,6 +1039,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         if window.is_key_pressed(Key::R, KeyRepeat::No) {
             ship = Ship::new();
+            projectiles.clear();
+            fire_cooldown = 0.0;
             distance = 0.0;
         }
         if window.is_key_pressed(Key::Key1, KeyRepeat::No) {
@@ -1023,6 +1098,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let roll_step = (ROLL_SPEED * delta_time).min(roll_difference.abs());
         ship.roll += roll_difference.signum() * roll_step;
 
+        fire_cooldown = (fire_cooldown - delta_time).max(0.0);
+        if window.is_key_down(Key::Enter) && fire_cooldown <= 0.0 {
+            let (shot_direction, shot_right, shot_up) = ship.basis();
+            for side in [-1.0_f32, 1.0] {
+                projectiles.push(Projectile {
+                    position: ship
+                        .position
+                        .add(shot_direction.mul(1.6))
+                        .add(shot_right.mul(side * 1.15))
+                        .sub(shot_up.mul(0.05)),
+                    direction: shot_direction,
+                    lifetime: LASER_LIFETIME,
+                });
+            }
+            fire_cooldown = FIRE_INTERVAL;
+        }
+
+        for projectile in &mut projectiles {
+            projectile.position = projectile
+                .position
+                .add(projectile.direction.mul(LASER_SPEED * delta_time));
+            projectile.lifetime -= delta_time;
+        }
+        projectiles.retain(|projectile| projectile.lifetime > 0.0);
+
         let accelerating = window.is_key_down(Key::Space);
         let braking = window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl);
         let (target_speed, speed_change_rate) = match (accelerating, braking) {
@@ -1068,6 +1168,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &ship_model,
             ship_center,
             &turbo_plume,
+            &laser_bolt,
+            &projectiles,
             &planet,
             planet_center,
             planet_scale,
