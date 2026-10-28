@@ -16,7 +16,11 @@ const HEIGHT: usize = 800;
 const NEAR_PLANE: f32 = 0.2;
 const SHIP_SCALE: f32 = 0.055;
 const MIN_SPEED: f32 = 4.0;
+const CRUISE_SPEED: f32 = 12.0;
 const MAX_SPEED: f32 = 55.0;
+const ACCELERATION_RATE: f32 = 20.0;
+const BRAKING_RATE: f32 = 28.0;
+const CRUISE_RECOVERY_RATE: f32 = 18.0;
 const LIGHT_SPEED: f32 = 600.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
 const SUN_POSITION_X: f32 = -520.0;
@@ -72,7 +76,7 @@ impl Ship {
             orbit_camera_blend: 0.0,
             planet_locked: false,
             orbit_release_active: false,
-            speed: 12.0,
+            speed: CRUISE_SPEED,
         }
     }
 
@@ -980,7 +984,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ship.orbit_camera_blend = 0.0;
             ship.planet_locked = false;
             ship.orbit_release_active = false;
-            ship.speed = 12.0;
+            ship.speed = CRUISE_SPEED;
             println!("Warp completado: planeta acuatico");
         }
 
@@ -1019,12 +1023,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let roll_step = (ROLL_SPEED * delta_time).min(roll_difference.abs());
         ship.roll += roll_difference.signum() * roll_step;
 
-        if window.is_key_down(Key::Space) {
-            ship.speed = (ship.speed + 20.0 * delta_time).min(MAX_SPEED);
-        }
-        if window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl) {
-            ship.speed = (ship.speed - 28.0 * delta_time).max(MIN_SPEED);
-        }
+        let accelerating = window.is_key_down(Key::Space);
+        let braking = window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl);
+        let (target_speed, speed_change_rate) = match (accelerating, braking) {
+            (true, false) => (MAX_SPEED, ACCELERATION_RATE),
+            (false, true) => (MIN_SPEED, BRAKING_RATE),
+            _ => (CRUISE_SPEED, CRUISE_RECOVERY_RATE),
+        };
+        let speed_difference = target_speed - ship.speed;
+        let speed_step = (speed_change_rate * delta_time).min(speed_difference.abs());
+        ship.speed += speed_difference.signum() * speed_step;
 
         if window.is_key_pressed(Key::Backspace, KeyRepeat::No) && ship.planet_locked {
             ship.planet_locked = false;
