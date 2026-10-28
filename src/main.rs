@@ -1,5 +1,6 @@
 mod framebuffer;
 mod obj_loader;
+mod ship;
 mod triangle;
 
 use std::collections::HashMap;
@@ -9,108 +10,21 @@ use std::time::Instant;
 use framebuffer::Framebuffer;
 use minifb::{Key, KeyRepeat, ScaleMode, Window, WindowOptions};
 use obj_loader::{load_obj, Face, Model, Vec3};
+use ship::{Projectile, Ship, ShipController, ShipInput, ARWING_SPEC};
 use triangle::{draw_triangle, draw_triangle_shaded, ScreenVertex};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
 const NEAR_PLANE: f32 = 0.2;
-const SHIP_SCALE: f32 = 0.055;
-const MIN_SPEED: f32 = 4.0;
-const CRUISE_SPEED: f32 = 12.0;
-const MAX_SPEED: f32 = 55.0;
-const ACCELERATION_RATE: f32 = 20.0;
-const BRAKING_RATE: f32 = 28.0;
-const CRUISE_RECOVERY_RATE: f32 = 18.0;
-const LASER_SPEED: f32 = 220.0;
-const LASER_LIFETIME: f32 = 3.0;
-const MAX_CHARGE_TIME: f32 = 1.4;
-const CHARGED_SHOT_THRESHOLD: f32 = 0.35;
 const LIGHT_SPEED: f32 = 600.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
 const SUN_POSITION_X: f32 = -520.0;
 const PLANET_ORBIT_RADIUS: f32 = 280.0;
 const WATER_PLANET_RADIUS: f32 = 24.0;
-const SHIP_COLLISION_RADIUS: f32 = 2.0;
 const COLLISION_MARGIN: f32 = 4.0;
 const AVOIDANCE_DISTANCE: f32 = 52.0;
 const ORBIT_LIMIT_RADIUS: f32 = 60.0;
 const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
-const ROLL_INPUT_SPEED: f32 = PI * 0.5;
-const ROLL_SPEED: f32 = PI;
-const MAX_MANUAL_ROLL: f32 = PI * 0.22;
-const AUTO_LEVEL_SPEED: f32 = 3.2;
-const TURN_RESPONSE: f32 = 7.0;
-const MAX_YAW_RATE: f32 = 1.15;
-const MAX_PITCH_RATE: f32 = 1.1;
-const STEERING_BANK: f32 = 0.48;
-const STEERING_PITCH: f32 = 0.24;
-
-struct Ship {
-    position: Vec3,
-    yaw: f32,
-    pitch: f32,
-    roll: f32,
-    roll_target: f32,
-    yaw_rate: f32,
-    pitch_rate: f32,
-    steering_bank: f32,
-    steering_pitch: f32,
-    orbit_axis: Option<Vec3>,
-    orbit_center: Option<Vec3>,
-    orbit_camera_blend: f32,
-    planet_locked: bool,
-    orbit_release_active: bool,
-    speed: f32,
-}
-
-impl Ship {
-    fn new() -> Self {
-        Self {
-            position: Vec3::new(0.0, 0.0, 0.0),
-            yaw: 0.0,
-            pitch: 0.0,
-            roll: 0.0,
-            roll_target: 0.0,
-            yaw_rate: 0.0,
-            pitch_rate: 0.0,
-            steering_bank: 0.0,
-            steering_pitch: 0.0,
-            orbit_axis: None,
-            orbit_center: None,
-            orbit_camera_blend: 0.0,
-            planet_locked: false,
-            orbit_release_active: false,
-            speed: CRUISE_SPEED,
-        }
-    }
-
-    fn basis(&self) -> (Vec3, Vec3, Vec3) {
-        self.basis_with_angles(
-            self.pitch + self.steering_pitch,
-            self.roll + self.steering_bank,
-        )
-    }
-
-    fn camera_basis(&self) -> (Vec3, Vec3, Vec3) {
-        self.basis_with_angles(self.pitch, self.roll)
-    }
-
-    fn movement_basis(&self) -> (Vec3, Vec3, Vec3) {
-        self.basis_with_angles(self.pitch, self.roll)
-    }
-
-    fn basis_with_angles(&self, pitch: f32, roll: f32) -> (Vec3, Vec3, Vec3) {
-        let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
-        let (sin_pitch, cos_pitch) = pitch.sin_cos();
-        let forward = Vec3::new(-cos_pitch * cos_yaw, sin_pitch, -cos_pitch * sin_yaw).normalize();
-        let level_right = forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
-        let level_up = level_right.cross(forward).normalize();
-        let (sin_roll, cos_roll) = roll.sin_cos();
-        let right = level_right.mul(cos_roll).add(level_up.mul(sin_roll));
-        let up = level_up.mul(cos_roll).sub(level_right.mul(sin_roll));
-        (forward, right, up)
-    }
-}
 
 struct Camera {
     position: Vec3,
@@ -122,13 +36,6 @@ struct Camera {
 struct ObjectCollider {
     center: Vec3,
     radius: f32,
-}
-
-struct Projectile {
-    position: Vec3,
-    direction: Vec3,
-    lifetime: f32,
-    scale: f32,
 }
 
 fn build_object_colliders(model: &Model, model_center: Vec3, scale: f32) -> Vec<ObjectCollider> {
@@ -595,8 +502,11 @@ fn model_radius(model: &Model, center: Vec3) -> f32 {
 
 fn chase_camera(ship: &Ship) -> Camera {
     let (forward, ship_right, ship_up) = ship.camera_basis();
-    let chase_position = ship.position.sub(forward.mul(12.0)).add(ship_up.mul(4.0));
-    let chase_target = ship.position.add(forward.mul(8.0));
+    let chase_position = ship
+        .position
+        .sub(forward.mul(ship.spec.chase_distance))
+        .add(ship_up.mul(ship.spec.chase_height));
+    let chase_target = ship.position.add(forward.mul(ship.spec.chase_look_ahead));
     let world_up = Vec3::new(0.0, 1.0, 0.0);
 
     let (orbit_position, orbit_target) = if let Some(planet_center) = ship.orbit_center {
@@ -659,7 +569,7 @@ fn move_around_planet(
     yaw_input: i8,
     pitch_input: i8,
 ) {
-    let safe_radius = planet_surface_radius + SHIP_COLLISION_RADIUS + COLLISION_MARGIN;
+    let safe_radius = planet_surface_radius + ship.spec.collision_radius + COLLISION_MARGIN;
     let steps = movement.ceil().max(1.0) as usize;
     let step_distance = movement / steps as f32;
 
@@ -687,9 +597,9 @@ fn move_around_planet(
         if !ship.orbit_release_active && distance < AVOIDANCE_DISTANCE {
             if !ship.planet_locked {
                 let level_roll = (ship.roll + PI).rem_euclid(TAU) - PI;
-                ship.roll = level_roll.clamp(-MAX_MANUAL_ROLL, MAX_MANUAL_ROLL);
+                ship.roll = level_roll.clamp(-ship.spec.max_manual_roll, ship.spec.max_manual_roll);
                 ship.roll_target = ship.roll;
-                ship.speed = ship.speed.max(MIN_SPEED);
+                ship.speed = ship.speed.max(ship.spec.min_speed);
             }
             ship.planet_locked = true;
         }
@@ -788,7 +698,7 @@ fn move_around_planet(
                 local.x * sin_rotation + local.z * cos_rotation,
             )
             .add(planet_center);
-            let separation = collider.radius + SHIP_COLLISION_RADIUS + 0.8;
+            let separation = collider.radius + ship.spec.collision_radius + 0.8;
             let collider_offset = ship.position.sub(collider_center);
             let collider_distance = collider_offset.dot(collider_offset).sqrt();
 
@@ -939,9 +849,9 @@ fn render_scene(
     for side in [-1.0_f32, 1.0] {
         let emitter = ship
             .position
-            .sub(forward.mul(1.12))
-            .add(right.mul(side * 0.72))
-            .sub(up.mul(0.05));
+            .sub(forward.mul(ship.spec.turbo_back))
+            .add(right.mul(side * ship.spec.turbo_side))
+            .sub(up.mul(ship.spec.turbo_down));
         render_model(
             turbo_plume,
             framebuffer,
@@ -999,7 +909,7 @@ fn render_scene(
         framebuffer,
         &camera,
         |vertex| {
-            let local = vertex.sub(ship_center).mul(SHIP_SCALE);
+            let local = vertex.sub(ship_center).mul(ship.spec.model_scale);
             ship.position
                 .add(forward.mul(-local.x))
                 .add(up.mul(local.y))
@@ -1039,10 +949,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut fullscreen = false;
     let mut window = create_window(fullscreen)?;
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
-    let mut ship = Ship::new();
-    let mut projectiles = Vec::<Projectile>::new();
-    let mut fire_charge = 0.0_f32;
-    let mut fire_was_down = false;
+    let mut ship_controller = ShipController::new(&ARWING_SPEC);
     let start = Instant::now();
     let mut previous = Instant::now();
     let mut distance = 0.0_f32;
@@ -1058,14 +965,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             window = create_window(fullscreen)?;
         }
         if window.is_key_pressed(Key::R, KeyRepeat::No) {
-            ship = Ship::new();
-            projectiles.clear();
-            fire_charge = 0.0;
-            fire_was_down = false;
+            ship_controller.reset();
             distance = 0.0;
         }
         if window.is_key_pressed(Key::Key1, KeyRepeat::No) {
             let destination = water_planet_position(world_time);
+            let ship = &mut ship_controller.ship;
             ship.position = destination.add(Vec3::new(45.0, 8.0, 0.0));
             ship.yaw = 0.0;
             ship.pitch = -0.08;
@@ -1080,94 +985,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ship.orbit_camera_blend = 0.0;
             ship.planet_locked = false;
             ship.orbit_release_active = false;
-            ship.speed = CRUISE_SPEED;
+            ship.speed = ship.spec.cruise_speed;
             println!("Warp completado: planeta acuatico");
         }
 
         let pitch_input = (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8
             - (window.is_key_down(Key::S) || window.is_key_down(Key::Down)) as i8;
         let yaw_input = window.is_key_down(Key::D) as i8 - window.is_key_down(Key::A) as i8;
-
-        let response = 1.0 - (-TURN_RESPONSE * delta_time).exp();
-        let target_pitch_rate = pitch_input as f32 * MAX_PITCH_RATE;
-        let target_yaw_rate = yaw_input as f32 * MAX_YAW_RATE;
-        ship.pitch_rate += (target_pitch_rate - ship.pitch_rate) * response;
-        ship.yaw_rate += (target_yaw_rate - ship.yaw_rate) * response;
-        ship.pitch = (ship.pitch + ship.pitch_rate * delta_time).clamp(-1.25, 1.25);
-        ship.yaw = (ship.yaw + ship.yaw_rate * delta_time).rem_euclid(TAU);
-
-        let target_bank = -(yaw_input as f32) * STEERING_BANK;
-        ship.steering_bank += (target_bank - ship.steering_bank) * response;
-        let target_visual_pitch = pitch_input as f32 * STEERING_PITCH;
-        ship.steering_pitch += (target_visual_pitch - ship.steering_pitch) * response;
-
         let roll_input = window.is_key_down(Key::E) as i8 - window.is_key_down(Key::Q) as i8;
-        if ship.planet_locked {
-            if roll_input != 0 {
-                ship.roll_target = (ship.roll_target
-                    + roll_input as f32 * ROLL_INPUT_SPEED * delta_time)
-                    .clamp(-MAX_MANUAL_ROLL, MAX_MANUAL_ROLL);
-            } else {
-                let level_response = 1.0 - (-AUTO_LEVEL_SPEED * delta_time).exp();
-                ship.roll_target += (0.0 - ship.roll_target) * level_response;
-            }
-        } else {
-            ship.roll_target += roll_input as f32 * ROLL_INPUT_SPEED * delta_time;
-        }
-
-        let roll_difference = ship.roll_target - ship.roll;
-        let roll_step = (ROLL_SPEED * delta_time).min(roll_difference.abs());
-        ship.roll += roll_difference.signum() * roll_step;
-
-        let fire_down = window.is_key_down(Key::Enter);
-        if fire_down {
-            fire_charge = (fire_charge + delta_time).min(MAX_CHARGE_TIME);
-        } else if fire_was_down {
-            let (shot_direction, shot_right, shot_up) = ship.basis();
-            if fire_charge >= CHARGED_SHOT_THRESHOLD {
-                let charge = (fire_charge / MAX_CHARGE_TIME).clamp(0.0, 1.0);
-                projectiles.push(Projectile {
-                    position: ship.position.add(shot_direction.mul(2.0)),
-                    direction: shot_direction,
-                    lifetime: LASER_LIFETIME,
-                    scale: 1.5 + charge * 2.5,
-                });
-            } else {
-                for side in [-1.0_f32, 1.0] {
-                    projectiles.push(Projectile {
-                        position: ship
-                            .position
-                            .add(shot_direction.mul(1.6))
-                            .add(shot_right.mul(side * 1.15))
-                            .sub(shot_up.mul(0.05)),
-                        direction: shot_direction,
-                        lifetime: LASER_LIFETIME,
-                        scale: 1.0,
-                    });
-                }
-            }
-            fire_charge = 0.0;
-        }
-        fire_was_down = fire_down;
-
-        for projectile in &mut projectiles {
-            projectile.position = projectile
-                .position
-                .add(projectile.direction.mul(LASER_SPEED * delta_time));
-            projectile.lifetime -= delta_time;
-        }
-        projectiles.retain(|projectile| projectile.lifetime > 0.0);
-
-        let accelerating = window.is_key_down(Key::Space);
-        let braking = window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl);
-        let (target_speed, speed_change_rate) = match (accelerating, braking) {
-            (true, false) => (MAX_SPEED, ACCELERATION_RATE),
-            (false, true) => (MIN_SPEED, BRAKING_RATE),
-            _ => (CRUISE_SPEED, CRUISE_RECOVERY_RATE),
+        let input = ShipInput {
+            pitch: pitch_input,
+            yaw: yaw_input,
+            roll: roll_input,
+            accelerating: window.is_key_down(Key::Space),
+            braking: window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl),
+            firing: window.is_key_down(Key::Enter),
         };
-        let speed_difference = target_speed - ship.speed;
-        let speed_step = (speed_change_rate * delta_time).min(speed_difference.abs());
-        ship.speed += speed_difference.signum() * speed_step;
+        ship_controller.update(&input, delta_time);
+
+        let light_speed = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
+        let active_speed = if light_speed {
+            LIGHT_SPEED
+        } else {
+            ship_controller.ship.speed
+        };
+        let turbo_power = ship_controller.turbo_power(active_speed);
+        let movement = active_speed * delta_time;
+        let ship = &mut ship_controller.ship;
 
         if window.is_key_pressed(Key::Backspace, KeyRepeat::No) && ship.planet_locked {
             ship.planet_locked = false;
@@ -1176,12 +1020,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Orbita liberada");
         }
 
-        let light_speed = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
-        let active_speed = if light_speed { LIGHT_SPEED } else { ship.speed };
-        let turbo_power = ((active_speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED)).clamp(0.0, 1.0);
-        let movement = active_speed * delta_time;
         move_around_planet(
-            &mut ship,
+            ship,
             movement,
             water_planet_position(world_time),
             planet_surface_radius,
@@ -1204,17 +1044,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ship_center,
             &turbo_plume,
             &laser_bolt,
-            &projectiles,
+            &ship_controller.projectiles,
             &planet,
             planet_center,
             planet_scale,
             &sun,
             &mut framebuffer,
-            &ship,
+            &ship_controller.ship,
             world_time,
             (distance * 0.0025).rem_euclid(1.0),
             turbo_power,
-            (fire_charge / MAX_CHARGE_TIME).clamp(0.0, 1.0),
+            ship_controller.charge_ratio(),
         );
 
         if window.is_key_pressed(Key::P, KeyRepeat::No) {
