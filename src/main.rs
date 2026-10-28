@@ -932,17 +932,118 @@ fn render_scene(
     );
 }
 
+fn draw_selection_panel(framebuffer: &mut Framebuffer, left: usize, right: usize, selected: bool) {
+    let top = 120;
+    let bottom = HEIGHT - 110;
+    let fill = if selected { 0x182b46 } else { 0x101722 };
+    let border = if selected { 0xffd447 } else { 0x43536a };
+    for y in top..bottom {
+        for x in left..right {
+            let edge = x < left + 5 || x + 5 >= right || y < top + 5 || y + 5 >= bottom;
+            framebuffer.pixels[y * WIDTH + x] = if edge { border } else { fill };
+        }
+    }
+}
+
+fn select_ship(
+    window: &mut Window,
+    framebuffer: &mut Framebuffer,
+    arwing: &Model,
+    kirby: &Model,
+) -> Result<Option<usize>, minifb::Error> {
+    let choices = [
+        ("Arwing", arwing, &ARWING_SPEC),
+        ("Kirby UFO", kirby, &KIRBY_SPEC),
+    ];
+    let centers = [model_center(arwing), model_center(kirby)];
+    let mut selected = 1_usize;
+    let start = Instant::now();
+
+    while window.is_open() && !window.is_key_down(Key::Escape) {
+        if window.is_key_pressed(Key::Left, KeyRepeat::No)
+            || window.is_key_pressed(Key::A, KeyRepeat::No)
+        {
+            selected = selected.saturating_sub(1);
+        }
+        if window.is_key_pressed(Key::Right, KeyRepeat::No)
+            || window.is_key_pressed(Key::D, KeyRepeat::No)
+        {
+            selected = (selected + 1).min(choices.len() - 1);
+        }
+        if window.is_key_pressed(Key::Enter, KeyRepeat::No) {
+            return Ok(Some(selected));
+        }
+
+        window.set_title(&format!(
+            "Selecciona nave: {} | A/D o flechas | Enter: confirmar",
+            choices[selected].0
+        ));
+        framebuffer.clear(0);
+        draw_skybox(framebuffer, 0.0);
+        draw_selection_panel(framebuffer, 90, WIDTH / 2 - 25, selected == 0);
+        draw_selection_panel(framebuffer, WIDTH / 2 + 25, WIDTH - 90, selected == 1);
+
+        let camera_position = Vec3::new(0.0, 2.0, -15.0);
+        let camera_forward = Vec3::new(0.0, -0.08, 1.0).normalize();
+        let camera_right = camera_forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
+        let camera = Camera {
+            position: camera_position,
+            forward: camera_forward,
+            right: camera_right,
+            up: camera_right.cross(camera_forward).normalize(),
+        };
+        let angle = start.elapsed().as_secs_f32() * 0.65;
+
+        for (index, (_, model, spec)) in choices.iter().enumerate() {
+            let display_scale = if index == selected { 1.72 } else { 1.5 };
+            let position = Vec3::new(if index == 0 { 5.75 } else { -5.75 }, 0.0, 0.0);
+            let forward = Vec3::new(angle.sin(), 0.0, -angle.cos());
+            let right = Vec3::new(angle.cos(), 0.0, angle.sin());
+            let up = Vec3::new(0.0, 1.0, 0.0);
+            render_model(
+                model,
+                framebuffer,
+                &camera,
+                |vertex| {
+                    let local = vertex
+                        .sub(centers[index])
+                        .mul(spec.model_scale * display_scale);
+                    position.add(spec.model_to_world(local, forward, right, up))
+                },
+                None,
+                None,
+            );
+        }
+
+        window.update_with_buffer(&framebuffer.pixels, WIDTH, HEIGHT)?;
+    }
+    Ok(None)
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "assets/kirby.obj".to_string());
-    let ship_spec = if path.to_ascii_lowercase().contains("kirby") {
-        &KIRBY_SPEC
-    } else {
-        &ARWING_SPEC
+    let arwing_path = "assets/nave.obj";
+    let kirby_path = "assets/kirby.obj";
+    let arwing_model =
+        load_obj(arwing_path).map_err(|error| format!("Error al cargar {arwing_path}: {error}"))?;
+    let kirby_model =
+        load_obj(kirby_path).map_err(|error| format!("Error al cargar {kirby_path}: {error}"))?;
+
+    let mut fullscreen = false;
+    let mut window = create_window(fullscreen)?;
+    let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
+    let Some(selected_ship) =
+        select_ship(&mut window, &mut framebuffer, &arwing_model, &kirby_model)?
+    else {
+        return Ok(());
     };
-    let ship_model = load_obj(&path).map_err(|error| format!("Error al cargar {path}: {error}"))?;
-    let ship_center = model_center(&ship_model);
+    let (ship_model, ship_spec) = if selected_ship == 0 {
+        (&arwing_model, &ARWING_SPEC)
+    } else {
+        (&kirby_model, &KIRBY_SPEC)
+    };
+    let ship_center = model_center(ship_model);
+    window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
+
     let planet_path = "assets/water_planet.obj";
     let planet =
         load_obj(planet_path).map_err(|error| format!("Error al cargar {planet_path}: {error}"))?;
@@ -964,9 +1065,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         object_colliders.len()
     );
 
-    let mut fullscreen = false;
-    let mut window = create_window(fullscreen)?;
-    let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     let mut ship_controller = ShipController::new(ship_spec);
     let start = Instant::now();
     let mut previous = Instant::now();
@@ -1058,7 +1156,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         distance += movement;
 
         render_scene(
-            &ship_model,
+            ship_model,
             ship_center,
             &turbo_plume,
             &laser_bolt,
