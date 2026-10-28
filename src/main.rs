@@ -187,6 +187,12 @@ fn color_for_material(name: &str, effect_spec: Option<&ShipSpec>) -> [u8; 3] {
         effect_spec.map_or([220, 252, 255], |spec| spec.turbo_core_color)
     } else if name.contains("turbo") {
         effect_spec.map_or([36, 142, 255], |spec| spec.turbo_color)
+    } else if name.contains("luz_cian") {
+        [40, 205, 255]
+    } else if name.contains("azul_profundo") {
+        [18, 44, 98]
+    } else if name.contains("azul_cobalto") {
+        [34, 106, 190]
     } else if name.contains("soft_pink") {
         [255, 158, 198]
     } else if name.contains("light_pink") || name.contains("rosy_cheeks") {
@@ -209,13 +215,13 @@ fn color_for_material(name: &str, effect_spec: Option<&ShipSpec>) -> [u8; 3] {
         [180, 225, 238]
     } else if name.contains("planet") || name.contains("blue") {
         [47, 87, 210]
-    } else if name.contains("glass") {
+    } else if name.contains("glass") || name.contains("vidrio_oscuro") {
         [24, 60, 78]
-    } else if name.contains("dark") {
+    } else if name.contains("dark") || name.contains("gris_oscuro") {
         [43, 51, 64]
-    } else if name.contains("yellow") {
+    } else if name.contains("yellow") || name.contains("amarillo") {
         [242, 197, 57]
-    } else if name.contains("red") {
+    } else if name.contains("red") || name.contains("rojo") {
         [199, 49, 57]
     } else if name.contains("metal") {
         [103, 121, 143]
