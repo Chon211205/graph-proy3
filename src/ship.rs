@@ -2,8 +2,16 @@ use std::f32::consts::{PI, TAU};
 
 use crate::obj_loader::Vec3;
 
+#[derive(Clone, Copy)]
+pub enum ModelAxes {
+    Arwing,
+    Kirby,
+}
+
 pub struct ShipSpec {
+    pub name: &'static str,
     pub model_scale: f32,
+    pub model_axes: ModelAxes,
     pub collision_radius: f32,
     pub min_speed: f32,
     pub cruise_speed: f32,
@@ -26,6 +34,9 @@ pub struct ShipSpec {
     pub turbo_back: f32,
     pub turbo_side: f32,
     pub turbo_down: f32,
+    pub turbo_sides: &'static [f32],
+    pub turbo_color: [u8; 3],
+    pub turbo_core_color: [u8; 3],
     pub laser_speed: f32,
     pub laser_lifetime: f32,
     pub max_charge_time: f32,
@@ -33,10 +44,18 @@ pub struct ShipSpec {
     pub muzzle_forward: f32,
     pub muzzle_side: f32,
     pub muzzle_down: f32,
+    pub muzzle_sides: &'static [f32],
+    pub laser_color: [u8; 3],
+    pub laser_core_color: [u8; 3],
 }
 
+const DUAL_SIDES: &[f32] = &[-1.0, 1.0];
+const CENTER_SIDE: &[f32] = &[0.0];
+
 pub static ARWING_SPEC: ShipSpec = ShipSpec {
+    name: "Arwing",
     model_scale: 0.055,
+    model_axes: ModelAxes::Arwing,
     collision_radius: 2.0,
     min_speed: 4.0,
     cruise_speed: 12.0,
@@ -59,6 +78,9 @@ pub static ARWING_SPEC: ShipSpec = ShipSpec {
     turbo_back: 1.12,
     turbo_side: 0.72,
     turbo_down: 0.05,
+    turbo_sides: DUAL_SIDES,
+    turbo_color: [36, 142, 255],
+    turbo_core_color: [220, 252, 255],
     laser_speed: 220.0,
     laser_lifetime: 3.0,
     max_charge_time: 1.4,
@@ -66,7 +88,66 @@ pub static ARWING_SPEC: ShipSpec = ShipSpec {
     muzzle_forward: 1.6,
     muzzle_side: 1.15,
     muzzle_down: 0.05,
+    muzzle_sides: DUAL_SIDES,
+    laser_color: [255, 48, 38],
+    laser_core_color: [255, 245, 190],
 };
+
+pub static KIRBY_SPEC: ShipSpec = ShipSpec {
+    name: "Kirby UFO",
+    model_scale: 0.25,
+    model_axes: ModelAxes::Kirby,
+    collision_radius: 2.0,
+    min_speed: 4.0,
+    cruise_speed: 12.0,
+    max_speed: 55.0,
+    acceleration_rate: 20.0,
+    braking_rate: 28.0,
+    cruise_recovery_rate: 18.0,
+    roll_input_speed: PI * 0.5,
+    roll_speed: PI,
+    max_manual_roll: PI * 0.22,
+    auto_level_speed: 3.2,
+    turn_response: 7.0,
+    max_yaw_rate: 1.15,
+    max_pitch_rate: 1.1,
+    steering_bank: 0.38,
+    steering_pitch: 0.2,
+    chase_distance: 12.0,
+    chase_height: 4.0,
+    chase_look_ahead: 8.0,
+    turbo_back: 1.45,
+    turbo_side: 0.0,
+    turbo_down: 0.2,
+    turbo_sides: CENTER_SIDE,
+    turbo_color: [255, 190, 18],
+    turbo_core_color: [255, 252, 180],
+    laser_speed: 220.0,
+    laser_lifetime: 3.0,
+    max_charge_time: 1.4,
+    charged_shot_threshold: 0.35,
+    muzzle_forward: 1.75,
+    muzzle_side: 0.82,
+    muzzle_down: 0.0,
+    muzzle_sides: DUAL_SIDES,
+    laser_color: [38, 255, 92],
+    laser_core_color: [205, 255, 214],
+};
+
+impl ShipSpec {
+    pub fn model_to_world(&self, local: Vec3, forward: Vec3, right: Vec3, up: Vec3) -> Vec3 {
+        match self.model_axes {
+            ModelAxes::Arwing => forward
+                .mul(-local.x)
+                .add(up.mul(local.y))
+                .add(right.mul(local.z)),
+            ModelAxes::Kirby => forward
+                .mul(-local.y)
+                .add(up.mul(local.z))
+                .add(right.mul(local.x)),
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct ShipInput {
@@ -248,13 +329,13 @@ impl ShipController {
                     scale: 1.5 + charge * 2.5,
                 });
             } else {
-                for side in [-1.0_f32, 1.0] {
+                for side in self.ship.spec.muzzle_sides {
                     self.projectiles.push(Projectile {
                         position: self
                             .ship
                             .position
                             .add(forward.mul(self.ship.spec.muzzle_forward))
-                            .add(right.mul(side * self.ship.spec.muzzle_side))
+                            .add(right.mul(*side * self.ship.spec.muzzle_side))
                             .sub(up.mul(self.ship.spec.muzzle_down)),
                         direction: forward,
                         lifetime: self.ship.spec.laser_lifetime,

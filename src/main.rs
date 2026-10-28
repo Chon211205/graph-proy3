@@ -10,7 +10,7 @@ use std::time::Instant;
 use framebuffer::Framebuffer;
 use minifb::{Key, KeyRepeat, ScaleMode, Window, WindowOptions};
 use obj_loader::{load_obj, Face, Model, Vec3};
-use ship::{Projectile, Ship, ShipController, ShipInput, ARWING_SPEC};
+use ship::{Projectile, Ship, ShipController, ShipInput, ShipSpec, ARWING_SPEC, KIRBY_SPEC};
 use triangle::{draw_triangle, draw_triangle_shaded, ScreenVertex};
 
 const WIDTH: usize = 1200;
@@ -177,16 +177,24 @@ fn create_window(fullscreen: bool) -> Result<Window, minifb::Error> {
     Ok(window)
 }
 
-fn color_for_material(name: &str) -> [u8; 3] {
+fn color_for_material(name: &str, effect_spec: Option<&ShipSpec>) -> [u8; 3] {
     let name = name.to_ascii_lowercase();
     if name.contains("laser_core") {
-        [255, 245, 190]
+        effect_spec.map_or([255, 245, 190], |spec| spec.laser_core_color)
     } else if name.contains("laser") {
-        [255, 48, 38]
+        effect_spec.map_or([255, 48, 38], |spec| spec.laser_color)
     } else if name.contains("turbo_core") {
-        [220, 252, 255]
+        effect_spec.map_or([220, 252, 255], |spec| spec.turbo_core_color)
     } else if name.contains("turbo") {
-        [36, 142, 255]
+        effect_spec.map_or([36, 142, 255], |spec| spec.turbo_color)
+    } else if name.contains("soft_pink") {
+        [255, 158, 198]
+    } else if name.contains("light_pink") || name.contains("rosy_cheeks") {
+        [255, 105, 158]
+    } else if name.contains("burgundy") {
+        [92, 22, 48]
+    } else if name.contains("golden") || name.contains("gold") {
+        [236, 176, 42]
     } else if name.contains("sun") {
         [255, 174, 48]
     } else if name.contains("tierra") {
@@ -731,6 +739,7 @@ fn render_model<F>(
     camera: &Camera,
     transform: F,
     water_time: Option<f32>,
+    effect_spec: Option<&ShipSpec>,
 ) where
     F: Fn(Vec3) -> Vec3,
 {
@@ -788,7 +797,7 @@ fn render_model<F>(
                 a,
                 b,
                 c,
-                pack(color_for_material(&face.material), brightness),
+                pack(color_for_material(&face.material, effect_spec), brightness),
             );
         }
     }
@@ -824,6 +833,7 @@ fn render_scene(
         &camera,
         |vertex| vertex.add(sun_position),
         None,
+        None,
     );
     render_model(
         planet,
@@ -840,17 +850,18 @@ fn render_scene(
             .add(planet_position)
         },
         Some(world_time),
+        None,
     );
 
     let (forward, right, up) = ship.basis();
     let pulse = 0.9 + (world_time * 28.0).sin() * 0.1;
     let plume_length = (1.3 + turbo_power * 5.5) * pulse;
     let plume_radius = 0.16 + turbo_power * 0.16;
-    for side in [-1.0_f32, 1.0] {
+    for side in ship.spec.turbo_sides {
         let emitter = ship
             .position
             .sub(forward.mul(ship.spec.turbo_back))
-            .add(right.mul(side * ship.spec.turbo_side))
+            .add(right.mul(*side * ship.spec.turbo_side))
             .sub(up.mul(ship.spec.turbo_down));
         render_model(
             turbo_plume,
@@ -863,6 +874,7 @@ fn render_scene(
                     .add(up.mul(vertex.z * plume_radius))
             },
             None,
+            Some(ship.spec),
         );
     }
     for projectile in projectiles {
@@ -886,6 +898,7 @@ fn render_scene(
                     .add(laser_right.mul(vertex.z * projectile.scale))
             },
             None,
+            Some(ship.spec),
         );
     }
     if fire_charge > 0.0 {
@@ -902,6 +915,7 @@ fn render_scene(
                     .add(right.mul(vertex.z * charge_scale))
             },
             None,
+            Some(ship.spec),
         );
     }
     render_model(
@@ -911,10 +925,9 @@ fn render_scene(
         |vertex| {
             let local = vertex.sub(ship_center).mul(ship.spec.model_scale);
             ship.position
-                .add(forward.mul(-local.x))
-                .add(up.mul(local.y))
-                .add(right.mul(local.z))
+                .add(ship.spec.model_to_world(local, forward, right, up))
         },
+        None,
         None,
     );
 }
@@ -922,7 +935,12 @@ fn render_scene(
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| "assets/nave.obj".to_string());
+        .unwrap_or_else(|| "assets/kirby.obj".to_string());
+    let ship_spec = if path.to_ascii_lowercase().contains("kirby") {
+        &KIRBY_SPEC
+    } else {
+        &ARWING_SPEC
+    };
     let ship_model = load_obj(&path).map_err(|error| format!("Error al cargar {path}: {error}"))?;
     let ship_center = model_center(&ship_model);
     let planet_path = "assets/water_planet.obj";
@@ -936,7 +954,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let turbo_plume = make_turbo_plume(12);
     let laser_bolt = make_laser_bolt();
 
-    println!("Vuelo libre 3D iniciado");
+    println!("Vuelo libre 3D iniciado: {}", ship_spec.name);
     println!("W/S o flechas: subir/bajar | Espacio: acelerar | Ctrl: frenar");
     println!("A/D: direccion | Q/E: alabeo | Enter: disparar/cargar | R: reiniciar | P: captura");
     println!("1: warp al planeta acuatico | Shift: velocidad de luz");
@@ -949,7 +967,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut fullscreen = false;
     let mut window = create_window(fullscreen)?;
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
-    let mut ship_controller = ShipController::new(&ARWING_SPEC);
+    let mut ship_controller = ShipController::new(ship_spec);
     let start = Instant::now();
     let mut previous = Instant::now();
     let mut distance = 0.0_f32;
