@@ -11,8 +11,8 @@ use framebuffer::Framebuffer;
 use minifb::{Key, KeyRepeat, ScaleMode, Window, WindowOptions};
 use obj_loader::{load_obj, Face, Model, Vec3};
 use ship::{
-    Projectile, Ship, ShipController, ShipInput, ShipSpec, ARWING_SPEC, ASTRA_SPEC, KIRBY_SPEC,
-    COWBOYB_SPEC,
+    Projectile, Ship, ShipController, ShipInput, ShipSpec, ARWING_SPEC, ASTRA_SPEC, COWBOYB_SPEC,
+    KIRBY_SPEC,
 };
 use triangle::{draw_triangle, draw_triangle_shaded, ScreenVertex};
 
@@ -28,6 +28,10 @@ const COLLISION_MARGIN: f32 = 4.0;
 const AVOIDANCE_DISTANCE: f32 = 52.0;
 const ORBIT_LIMIT_RADIUS: f32 = 60.0;
 const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
+const WATER_LEVEL_LENGTH: f32 = 880.0;
+const WATER_LEVEL_HALF_WIDTH: f32 = 13.0;
+const WATER_LEVEL_MIN_HEIGHT: f32 = 4.0;
+const WATER_LEVEL_MAX_HEIGHT: f32 = 28.0;
 
 struct Camera {
     position: Vec3,
@@ -39,6 +43,121 @@ struct Camera {
 struct ObjectCollider {
     center: Vec3,
     radius: f32,
+}
+
+struct LevelCollider {
+    min: Vec3,
+    max: Vec3,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum GameMode {
+    FreeWorld,
+    WaterLevel,
+}
+
+struct WaterLevelState {
+    progress: f32,
+    lateral: f32,
+    height: f32,
+}
+
+impl WaterLevelState {
+    fn new() -> Self {
+        Self {
+            progress: 8.0,
+            lateral: 0.0,
+            height: 10.0,
+        }
+    }
+
+    fn update(&mut self, ship: &mut Ship, input: &ShipInput, delta_time: f32) {
+        self.progress += ship.speed * delta_time;
+        self.lateral = (self.lateral + input.yaw as f32 * 17.0 * delta_time)
+            .clamp(-WATER_LEVEL_HALF_WIDTH, WATER_LEVEL_HALF_WIDTH);
+        self.height = (self.height + input.pitch as f32 * 15.0 * delta_time)
+            .clamp(WATER_LEVEL_MIN_HEIGHT, WATER_LEVEL_MAX_HEIGHT);
+
+        let route_curve = (self.progress * 0.012).sin() * 3.5;
+        let route_height = (self.progress * 0.018).sin() * 1.5;
+        ship.position = Vec3::new(
+            -self.progress,
+            self.height + route_height,
+            self.lateral + route_curve,
+        );
+        ship.yaw = 0.0;
+        ship.pitch = 0.0;
+        ship.orbit_axis = None;
+        ship.orbit_center = None;
+        ship.orbit_camera_blend = 0.0;
+        ship.planet_locked = false;
+        ship.orbit_release_active = false;
+    }
+}
+
+fn level_to_world(vertex: Vec3) -> Vec3 {
+    Vec3::new(-vertex.y, vertex.z, vertex.x)
+}
+
+fn build_level_colliders(model: &Model) -> Vec<LevelCollider> {
+    let mut bounds: HashMap<&str, (Vec3, Vec3)> = HashMap::new();
+    for face in &model.faces {
+        if !face.group.to_ascii_lowercase().contains("obstacle") {
+            continue;
+        }
+        let entry = bounds.entry(face.group.as_str()).or_insert((
+            Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY),
+            Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY),
+        ));
+        for index in face.indices {
+            let vertex = model.vertices[index];
+            entry.0.x = entry.0.x.min(vertex.x);
+            entry.0.y = entry.0.y.min(vertex.y);
+            entry.0.z = entry.0.z.min(vertex.z);
+            entry.1.x = entry.1.x.max(vertex.x);
+            entry.1.y = entry.1.y.max(vertex.y);
+            entry.1.z = entry.1.z.max(vertex.z);
+        }
+    }
+    bounds
+        .into_values()
+        .map(|(min, max)| LevelCollider {
+            min: Vec3::new(-max.y, min.z, min.x),
+            max: Vec3::new(-min.y, max.z, max.x),
+        })
+        .collect()
+}
+
+fn resolve_level_collisions(
+    state: &mut WaterLevelState,
+    ship: &mut Ship,
+    colliders: &[LevelCollider],
+) {
+    for collider in colliders {
+        let closest = Vec3::new(
+            ship.position.x.clamp(collider.min.x, collider.max.x),
+            ship.position.y.clamp(collider.min.y, collider.max.y),
+            ship.position.z.clamp(collider.min.z, collider.max.z),
+        );
+        let offset = ship.position.sub(closest);
+        let distance = offset.dot(offset).sqrt();
+        let separation = ship.spec.collision_radius;
+        if distance < separation {
+            let lateral_offset = Vec3::new(0.0, offset.y, offset.z);
+            let lateral_distance = lateral_offset.dot(lateral_offset).sqrt();
+            let normal = if lateral_distance > 0.001 {
+                lateral_offset.mul(1.0 / lateral_distance)
+            } else {
+                Vec3::new(0.0, 1.0, 0.0)
+            };
+            let correction = normal.mul(separation - distance + 0.2);
+            state.height =
+                (state.height + correction.y).clamp(WATER_LEVEL_MIN_HEIGHT, WATER_LEVEL_MAX_HEIGHT);
+            state.lateral = (state.lateral + correction.z)
+                .clamp(-WATER_LEVEL_HALF_WIDTH, WATER_LEVEL_HALF_WIDTH);
+            ship.position = ship.position.add(correction);
+        }
+    }
 }
 
 fn build_object_colliders(model: &Model, model_center: Vec3, scale: f32) -> Vec<ObjectCollider> {
@@ -204,6 +323,18 @@ fn color_for_material(name: &str, effect_spec: Option<&ShipSpec>) -> [u8; 3] {
         [92, 22, 48]
     } else if name.contains("golden") || name.contains("gold") {
         [236, 176, 42]
+    } else if name.contains("coral_rojo") {
+        [238, 42, 58]
+    } else if name.contains("coral_morado") {
+        [151, 46, 205]
+    } else if name.contains("coral_amarillo") {
+        [245, 174, 42]
+    } else if name.contains("planta_marina") {
+        [18, 116, 76]
+    } else if name.contains("ruina") {
+        [84, 112, 108]
+    } else if name.contains("energy_submarina") {
+        [30, 220, 240]
     } else if name.contains("sun") {
         [255, 174, 48]
     } else if name.contains("tierra") {
@@ -569,6 +700,14 @@ fn water_planet_position(world_time: f32) -> Vec3 {
     ))
 }
 
+fn place_ship_near_water_planet(controller: &mut ShipController, world_time: f32) {
+    controller.reset();
+    let ship = &mut controller.ship;
+    ship.position = water_planet_position(world_time).add(Vec3::new(45.0, 8.0, 0.0));
+    ship.pitch = -0.08;
+    ship.speed = ship.spec.cruise_speed;
+}
+
 fn direction_to_angles(direction: Vec3) -> (f32, f32) {
     let direction = direction.normalize();
     let pitch = direction.y.clamp(-1.0, 1.0).asin();
@@ -862,6 +1001,34 @@ fn render_scene(
         None,
     );
 
+    render_ship_components(
+        ship_model,
+        ship_center,
+        turbo_plume,
+        laser_bolt,
+        projectiles,
+        framebuffer,
+        &camera,
+        ship,
+        world_time,
+        turbo_power,
+        fire_charge,
+    );
+}
+
+fn render_ship_components(
+    ship_model: &Model,
+    ship_center: Vec3,
+    turbo_plume: &Model,
+    laser_bolt: &Model,
+    projectiles: &[Projectile],
+    framebuffer: &mut Framebuffer,
+    camera: &Camera,
+    ship: &Ship,
+    world_time: f32,
+    turbo_power: f32,
+    fire_charge: f32,
+) {
     let (forward, right, up) = ship.basis();
     let pulse = 0.9 + (world_time * 28.0).sin() * 0.1;
     let plume_length = (1.3 + turbo_power * 5.5) * pulse;
@@ -930,7 +1097,7 @@ fn render_scene(
     render_model(
         ship_model,
         framebuffer,
-        &camera,
+        camera,
         |vertex| {
             let local = vertex.sub(ship_center).mul(ship.spec.model_scale);
             ship.position
@@ -938,6 +1105,66 @@ fn render_scene(
         },
         None,
         None,
+    );
+}
+
+fn draw_underwater_background(framebuffer: &mut Framebuffer, travel: f32) {
+    for y in 0..framebuffer.height {
+        let depth = y as f32 / framebuffer.height as f32;
+        let red = (3.0 + depth * 4.0) as u32;
+        let green = (22.0 + depth * 24.0) as u32;
+        let blue = (42.0 + depth * 36.0) as u32;
+        let color = (red << 16) | (green << 8) | blue;
+        let row = y * framebuffer.width;
+        framebuffer.pixels[row..row + framebuffer.width].fill(color);
+    }
+    for index in 0..90_u32 {
+        let seed = hash(index.wrapping_mul(7919));
+        let x = (seed as usize % framebuffer.width + (travel * 170.0) as usize) % framebuffer.width;
+        let y = (hash(seed ^ 0x9e3779b9) as usize % framebuffer.height + framebuffer.height
+            - ((travel * (18.0 + (index % 7) as f32)) as usize % framebuffer.height))
+            % framebuffer.height;
+        framebuffer.pixels[y * framebuffer.width + x] = 0x65cfe2;
+    }
+}
+
+fn render_water_level(
+    level: &Model,
+    ship_model: &Model,
+    ship_center: Vec3,
+    turbo_plume: &Model,
+    laser_bolt: &Model,
+    projectiles: &[Projectile],
+    framebuffer: &mut Framebuffer,
+    ship: &Ship,
+    world_time: f32,
+    progress: f32,
+    turbo_power: f32,
+    fire_charge: f32,
+) {
+    framebuffer.clear(0);
+    draw_underwater_background(framebuffer, progress * 0.002);
+    let camera = chase_camera(ship);
+    render_model(
+        level,
+        framebuffer,
+        &camera,
+        level_to_world,
+        Some(world_time),
+        None,
+    );
+    render_ship_components(
+        ship_model,
+        ship_center,
+        turbo_plume,
+        laser_bolt,
+        projectiles,
+        framebuffer,
+        &camera,
+        ship,
+        world_time,
+        turbo_power,
+        fire_charge,
     );
 }
 
@@ -1072,10 +1299,38 @@ fn select_ship(
         ));
         framebuffer.clear(0);
         draw_skybox(framebuffer, 0.0);
-        draw_selection_panel(framebuffer, 45, 52, WIDTH / 2 - 15, HEIGHT / 2 - 12, selected == 0);
-        draw_selection_panel(framebuffer, WIDTH / 2 + 15, 52, WIDTH - 45, HEIGHT / 2 - 12, selected == 1);
-        draw_selection_panel(framebuffer, 45, HEIGHT / 2 + 12, WIDTH / 2 - 15, HEIGHT - 48, selected == 2);
-        draw_selection_panel(framebuffer, WIDTH / 2 + 15, HEIGHT / 2 + 12, WIDTH - 45, HEIGHT - 48, selected == 3);
+        draw_selection_panel(
+            framebuffer,
+            45,
+            52,
+            WIDTH / 2 - 15,
+            HEIGHT / 2 - 12,
+            selected == 0,
+        );
+        draw_selection_panel(
+            framebuffer,
+            WIDTH / 2 + 15,
+            52,
+            WIDTH - 45,
+            HEIGHT / 2 - 12,
+            selected == 1,
+        );
+        draw_selection_panel(
+            framebuffer,
+            45,
+            HEIGHT / 2 + 12,
+            WIDTH / 2 - 15,
+            HEIGHT - 48,
+            selected == 2,
+        );
+        draw_selection_panel(
+            framebuffer,
+            WIDTH / 2 + 15,
+            HEIGHT / 2 + 12,
+            WIDTH - 45,
+            HEIGHT - 48,
+            selected == 3,
+        );
 
         let camera_position = Vec3::new(0.0, 2.0, -15.0);
         let camera_forward = Vec3::new(0.0, -0.08, 1.0).normalize();
@@ -1090,7 +1345,8 @@ fn select_ship(
 
         for (index, (_, model, spec)) in choices.iter().enumerate() {
             let target_radius = if index == selected { 2.8 } else { 2.55 };
-            let display_scale = target_radius / (spec.model_scale * model_radius(model, centers[index]).max(0.001));
+            let display_scale =
+                target_radius / (spec.model_scale * model_radius(model, centers[index]).max(0.001));
             let position = Vec3::new(
                 if index % 2 == 0 { 6.5 } else { -6.5 },
                 if index < 2 { 4.65 } else { -3.2 },
@@ -1125,8 +1381,19 @@ fn select_ship(
             } else {
                 HEIGHT as i32 - 78
             };
-            let color = if index == selected { 0xffd447 } else { 0xa9bbd2 };
-            draw_selection_label(framebuffer, &name.to_ascii_uppercase(), center_x, top_y, 3, color);
+            let color = if index == selected {
+                0xffd447
+            } else {
+                0xa9bbd2
+            };
+            draw_selection_label(
+                framebuffer,
+                &name.to_ascii_uppercase(),
+                center_x,
+                top_y,
+                3,
+                color,
+            );
         }
 
         window.update_with_buffer(&framebuffer.pixels, WIDTH, HEIGHT)?;
@@ -1135,10 +1402,10 @@ fn select_ship(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let arwing_path = "assets/nave.obj";
-    let kirby_path = "assets/kirby.obj";
-    let astra_path = "assets/nave_astra.obj";
-    let cowboyb_path = "assets/nave_cowboyb.obj";
+    let arwing_path = "assets/vehicles/nave.obj";
+    let kirby_path = "assets/vehicles/kirby.obj";
+    let astra_path = "assets/vehicles/nave_astra.obj";
+    let cowboyb_path = "assets/vehicles/nave_cowboyb.obj";
     let arwing_model =
         load_obj(arwing_path).map_err(|error| format!("Error al cargar {arwing_path}: {error}"))?;
     let kirby_model =
@@ -1151,15 +1418,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut fullscreen = false;
     let mut window = create_window(fullscreen)?;
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
-    let Some(selected_ship) =
-        select_ship(
-            &mut window,
-            &mut framebuffer,
-            &arwing_model,
-            &kirby_model,
-            &astra_model,
-            &cowboyb_model,
-        )?
+    let Some(selected_ship) = select_ship(
+        &mut window,
+        &mut framebuffer,
+        &arwing_model,
+        &kirby_model,
+        &astra_model,
+        &cowboyb_model,
+    )?
     else {
         return Ok(());
     };
@@ -1172,9 +1438,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ship_center = model_center(ship_model);
     window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
 
-    let planet_path = "assets/water_planet.obj";
+    let planet_path = "assets/planets/water_planet.obj";
     let planet =
         load_obj(planet_path).map_err(|error| format!("Error al cargar {planet_path}: {error}"))?;
+    let water_level_path = "assets/levels/waterlevel.obj";
+    let water_level = load_obj(water_level_path)
+        .map_err(|error| format!("Error al cargar {water_level_path}: {error}"))?;
+    let level_colliders = build_level_colliders(&water_level);
     let planet_center = model_center(&planet);
     let planet_scale = WATER_PLANET_RADIUS / model_radius(&planet, planet_center).max(0.001);
     let planet_surface_radius = material_radius(&planet, planet_center, "Oceano") * planet_scale;
@@ -1188,12 +1458,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("A/D: direccion | Q/E: alabeo | Enter: disparar/cargar | R: reiniciar | P: captura");
     println!("1: warp al planeta acuatico | Shift: velocidad de luz");
     println!("Backspace: abandonar la zona orbital");
+    println!("Enter cerca del planeta: iniciar nivel submarino");
     println!(
         "Colisionadores alrededor del planeta: {}",
         object_colliders.len()
     );
 
     let mut ship_controller = ShipController::new(ship_spec);
+    let mut game_mode = GameMode::FreeWorld;
+    let mut water_level_state = WaterLevelState::new();
     let start = Instant::now();
     let mut previous = Instant::now();
     let mut distance = 0.0_f32;
@@ -1210,26 +1483,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         if window.is_key_pressed(Key::R, KeyRepeat::No) {
             ship_controller.reset();
+            if game_mode == GameMode::WaterLevel {
+                water_level_state = WaterLevelState::new();
+            }
             distance = 0.0;
         }
-        if window.is_key_pressed(Key::Key1, KeyRepeat::No) {
-            let destination = water_planet_position(world_time);
-            let ship = &mut ship_controller.ship;
-            ship.position = destination.add(Vec3::new(45.0, 8.0, 0.0));
-            ship.yaw = 0.0;
-            ship.pitch = -0.08;
-            ship.roll = 0.0;
-            ship.roll_target = 0.0;
-            ship.yaw_rate = 0.0;
-            ship.pitch_rate = 0.0;
-            ship.steering_bank = 0.0;
-            ship.steering_pitch = 0.0;
-            ship.orbit_axis = None;
-            ship.orbit_center = None;
-            ship.orbit_camera_blend = 0.0;
-            ship.planet_locked = false;
-            ship.orbit_release_active = false;
-            ship.speed = ship.spec.cruise_speed;
+        if game_mode == GameMode::FreeWorld && window.is_key_pressed(Key::Key1, KeyRepeat::No) {
+            place_ship_near_water_planet(&mut ship_controller, world_time);
             println!("Warp completado: planeta acuatico");
         }
 
@@ -1237,69 +1497,130 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             - (window.is_key_down(Key::S) || window.is_key_down(Key::Down)) as i8;
         let yaw_input = window.is_key_down(Key::D) as i8 - window.is_key_down(Key::A) as i8;
         let roll_input = window.is_key_down(Key::E) as i8 - window.is_key_down(Key::Q) as i8;
+        let mut entered_level = false;
+        if game_mode == GameMode::FreeWorld
+            && ship_controller.ship.planet_locked
+            && window.is_key_pressed(Key::Enter, KeyRepeat::No)
+        {
+            ship_controller.reset();
+            water_level_state = WaterLevelState::new();
+            game_mode = GameMode::WaterLevel;
+            entered_level = true;
+            window.set_title("Nivel submarino | Backspace: volver al sistema solar");
+            println!("Nivel submarino iniciado");
+        } else if game_mode == GameMode::WaterLevel
+            && window.is_key_pressed(Key::Backspace, KeyRepeat::No)
+        {
+            game_mode = GameMode::FreeWorld;
+            place_ship_near_water_planet(&mut ship_controller, world_time);
+            window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
+            println!("Regreso al sistema solar");
+        }
+
         let input = ShipInput {
             pitch: pitch_input,
             yaw: yaw_input,
             roll: roll_input,
             accelerating: window.is_key_down(Key::Space),
             braking: window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl),
-            firing: window.is_key_down(Key::Enter),
+            firing: window.is_key_down(Key::Enter) && !entered_level,
         };
-        ship_controller.update(&input, delta_time);
 
-        let light_speed = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
-        let active_speed = if light_speed {
-            LIGHT_SPEED
-        } else {
-            ship_controller.ship.speed
-        };
-        let turbo_power = ship_controller.turbo_power(active_speed);
-        let movement = active_speed * delta_time;
-        let ship = &mut ship_controller.ship;
+        match game_mode {
+            GameMode::FreeWorld => {
+                ship_controller.update(&input, delta_time);
+                let light_speed =
+                    window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
+                let active_speed = if light_speed {
+                    LIGHT_SPEED
+                } else {
+                    ship_controller.ship.speed
+                };
+                let turbo_power = ship_controller.turbo_power(active_speed);
+                let movement = active_speed * delta_time;
+                let ship = &mut ship_controller.ship;
 
-        if window.is_key_pressed(Key::Backspace, KeyRepeat::No) && ship.planet_locked {
-            ship.planet_locked = false;
-            ship.orbit_release_active = true;
-            ship.orbit_axis = None;
-            println!("Orbita liberada");
+                if window.is_key_pressed(Key::Backspace, KeyRepeat::No) && ship.planet_locked {
+                    ship.planet_locked = false;
+                    ship.orbit_release_active = true;
+                    ship.orbit_axis = None;
+                    println!("Orbita liberada");
+                }
+
+                move_around_planet(
+                    ship,
+                    movement,
+                    water_planet_position(world_time),
+                    planet_surface_radius,
+                    world_time * 0.25,
+                    &object_colliders,
+                    yaw_input,
+                    pitch_input,
+                );
+                let camera_target = if ship.orbit_axis.is_some() { 1.0 } else { 0.0 };
+                let camera_response = 1.0 - (-2.4 * delta_time).exp();
+                ship.orbit_camera_blend +=
+                    (camera_target - ship.orbit_camera_blend) * camera_response;
+                if ship.orbit_axis.is_none() && ship.orbit_camera_blend < 0.001 {
+                    ship.orbit_center = None;
+                    ship.orbit_camera_blend = 0.0;
+                }
+                distance += movement;
+
+                if ship.planet_locked {
+                    window.set_title("Planeta acuatico | Enter: iniciar nivel | Backspace: salir");
+                } else {
+                    window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
+                }
+                render_scene(
+                    ship_model,
+                    ship_center,
+                    &turbo_plume,
+                    &laser_bolt,
+                    &ship_controller.projectiles,
+                    &planet,
+                    planet_center,
+                    planet_scale,
+                    &sun,
+                    &mut framebuffer,
+                    &ship_controller.ship,
+                    world_time,
+                    (distance * 0.0025).rem_euclid(1.0),
+                    turbo_power,
+                    ship_controller.charge_ratio(),
+                );
+            }
+            GameMode::WaterLevel => {
+                ship_controller.update(&input, delta_time);
+                water_level_state.update(&mut ship_controller.ship, &input, delta_time);
+                resolve_level_collisions(
+                    &mut water_level_state,
+                    &mut ship_controller.ship,
+                    &level_colliders,
+                );
+                let turbo_power = ship_controller.turbo_power(ship_controller.ship.speed);
+                render_water_level(
+                    &water_level,
+                    ship_model,
+                    ship_center,
+                    &turbo_plume,
+                    &laser_bolt,
+                    &ship_controller.projectiles,
+                    &mut framebuffer,
+                    &ship_controller.ship,
+                    world_time,
+                    water_level_state.progress,
+                    turbo_power,
+                    ship_controller.charge_ratio(),
+                );
+                if water_level_state.progress >= WATER_LEVEL_LENGTH {
+                    game_mode = GameMode::FreeWorld;
+                    place_ship_near_water_planet(&mut ship_controller, world_time);
+                    window.set_title("Sistema solar | Nivel completado");
+                    println!("Nivel submarino completado");
+                }
+            }
         }
-
-        move_around_planet(
-            ship,
-            movement,
-            water_planet_position(world_time),
-            planet_surface_radius,
-            world_time * 0.25,
-            &object_colliders,
-            yaw_input,
-            pitch_input,
-        );
-        let camera_target = if ship.orbit_axis.is_some() { 1.0 } else { 0.0 };
-        let camera_response = 1.0 - (-2.4 * delta_time).exp();
-        ship.orbit_camera_blend += (camera_target - ship.orbit_camera_blend) * camera_response;
-        if ship.orbit_axis.is_none() && ship.orbit_camera_blend < 0.001 {
-            ship.orbit_center = None;
-            ship.orbit_camera_blend = 0.0;
-        }
-        distance += movement;
-
-        render_scene(
-            ship_model,
-            ship_center,
-            &turbo_plume,
-            &laser_bolt,
-            &ship_controller.projectiles,
-            &planet,
-            planet_center,
-            planet_scale,
-            &sun,
-            &mut framebuffer,
-            &ship_controller.ship,
-            world_time,
-            (distance * 0.0025).rem_euclid(1.0),
-            turbo_power,
-            ship_controller.charge_ratio(),
-        );
 
         if window.is_key_pressed(Key::P, KeyRepeat::No) {
             framebuffer.save_png("captura.png")?;
