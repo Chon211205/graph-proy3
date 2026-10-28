@@ -54,6 +54,7 @@ impl Vec3 {
 pub struct Face {
     pub indices: [usize; 3],
     pub material: String,
+    pub group: String,
 }
 
 pub struct Model {
@@ -90,6 +91,7 @@ pub fn load_obj(path: impl AsRef<Path>) -> Result<Model, String> {
     };
 
     let mut material = "Hull White".to_string();
+    let mut group = "default".to_string();
 
     for (line_no, line) in BufReader::new(file).lines().enumerate() {
         let line = line.map_err(|e| e.to_string())?;
@@ -112,6 +114,10 @@ pub fn load_obj(path: impl AsRef<Path>) -> Result<Model, String> {
                 material = parts.collect::<Vec<_>>().join(" ");
             }
 
+            Some("g") | Some("o") => {
+                group = parts.collect::<Vec<_>>().join(" ");
+            }
+
             Some("f") => {
                 let ids = parts
                     .map(|t| read_index(t, model.vertices.len()))
@@ -121,6 +127,7 @@ pub fn load_obj(path: impl AsRef<Path>) -> Result<Model, String> {
                     model.faces.push(Face {
                         indices: [ids[0], ids[i], ids[i + 1]],
                         material: material.clone(),
+                        group: group.clone(),
                     });
                 }
             }

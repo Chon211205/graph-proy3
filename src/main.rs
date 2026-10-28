@@ -1,95 +1,96 @@
 mod framebuffer;
 mod obj_loader;
+mod ship;
 mod triangle;
 
+use std::collections::HashMap;
 use std::f32::consts::{PI, TAU};
 use std::time::Instant;
 
 use framebuffer::Framebuffer;
 use minifb::{Key, KeyRepeat, ScaleMode, Window, WindowOptions};
 use obj_loader::{load_obj, Face, Model, Vec3};
+use ship::{Projectile, Ship, ShipController, ShipInput, ShipSpec, ARWING_SPEC, KIRBY_SPEC};
 use triangle::{draw_triangle, draw_triangle_shaded, ScreenVertex};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
 const NEAR_PLANE: f32 = 0.2;
-const SHIP_SCALE: f32 = 0.055;
-const MIN_SPEED: f32 = 4.0;
-const MAX_SPEED: f32 = 55.0;
 const LIGHT_SPEED: f32 = 600.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
 const SUN_POSITION_X: f32 = -520.0;
 const PLANET_ORBIT_RADIUS: f32 = 280.0;
-const ROLL_INPUT_SPEED: f32 = PI * 0.5;
-const ROLL_SPEED: f32 = PI;
-const TURN_RESPONSE: f32 = 7.0;
-const MAX_YAW_RATE: f32 = 1.15;
-const MAX_PITCH_RATE: f32 = 1.1;
-const STEERING_BANK: f32 = 0.48;
-const STEERING_PITCH: f32 = 0.24;
-
-struct Ship {
-    position: Vec3,
-    yaw: f32,
-    pitch: f32,
-    roll: f32,
-    roll_target: f32,
-    yaw_rate: f32,
-    pitch_rate: f32,
-    steering_bank: f32,
-    steering_pitch: f32,
-    speed: f32,
-}
-
-impl Ship {
-    fn new() -> Self {
-        Self {
-            position: Vec3::new(0.0, 0.0, 0.0),
-            yaw: 0.0,
-            pitch: 0.0,
-            roll: 0.0,
-            roll_target: 0.0,
-            yaw_rate: 0.0,
-            pitch_rate: 0.0,
-            steering_bank: 0.0,
-            steering_pitch: 0.0,
-            speed: 12.0,
-        }
-    }
-
-    fn basis(&self) -> (Vec3, Vec3, Vec3) {
-        self.basis_with_angles(
-            self.pitch + self.steering_pitch,
-            self.roll + self.steering_bank,
-        )
-    }
-
-    fn camera_basis(&self) -> (Vec3, Vec3, Vec3) {
-        self.basis_with_angles(self.pitch, self.roll)
-    }
-
-    fn movement_basis(&self) -> (Vec3, Vec3, Vec3) {
-        self.basis_with_angles(self.pitch, self.roll)
-    }
-
-    fn basis_with_angles(&self, pitch: f32, roll: f32) -> (Vec3, Vec3, Vec3) {
-        let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
-        let (sin_pitch, cos_pitch) = pitch.sin_cos();
-        let forward = Vec3::new(-cos_pitch * cos_yaw, sin_pitch, -cos_pitch * sin_yaw).normalize();
-        let level_right = forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
-        let level_up = level_right.cross(forward).normalize();
-        let (sin_roll, cos_roll) = roll.sin_cos();
-        let right = level_right.mul(cos_roll).add(level_up.mul(sin_roll));
-        let up = level_up.mul(cos_roll).sub(level_right.mul(sin_roll));
-        (forward, right, up)
-    }
-}
+const WATER_PLANET_RADIUS: f32 = 24.0;
+const COLLISION_MARGIN: f32 = 4.0;
+const AVOIDANCE_DISTANCE: f32 = 52.0;
+const ORBIT_LIMIT_RADIUS: f32 = 60.0;
+const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
 
 struct Camera {
     position: Vec3,
     forward: Vec3,
     right: Vec3,
     up: Vec3,
+}
+
+struct ObjectCollider {
+    center: Vec3,
+    radius: f32,
+}
+
+fn build_object_colliders(model: &Model, model_center: Vec3, scale: f32) -> Vec<ObjectCollider> {
+    let mut bounds: HashMap<&str, (Vec3, Vec3)> = HashMap::new();
+
+    for face in &model.faces {
+        let name = face.group.as_str();
+        if !(name.contains("Palmera")
+            || name.contains("Roca")
+            || name.contains("Bloque")
+            || name.contains("Interrogacion"))
+        {
+            continue;
+        }
+
+        let entry = bounds.entry(name).or_insert((
+            Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY),
+            Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY),
+        ));
+        for index in face.indices {
+            let vertex = model.vertices[index];
+            entry.0.x = entry.0.x.min(vertex.x);
+            entry.0.y = entry.0.y.min(vertex.y);
+            entry.0.z = entry.0.z.min(vertex.z);
+            entry.1.x = entry.1.x.max(vertex.x);
+            entry.1.y = entry.1.y.max(vertex.y);
+            entry.1.z = entry.1.z.max(vertex.z);
+        }
+    }
+
+    bounds
+        .into_values()
+        .map(|(min, max)| {
+            let center = min.add(max).mul(0.5);
+            let half_size = max.sub(min).mul(0.5);
+            ObjectCollider {
+                center: center.sub(model_center).mul(scale),
+                radius: half_size.dot(half_size).sqrt() * scale + 0.6,
+            }
+        })
+        .filter(|collider| collider.radius > 0.7)
+        .collect()
+}
+
+fn material_radius(model: &Model, center: Vec3, material_name: &str) -> f32 {
+    let mut radius: f32 = 0.0;
+    for face in &model.faces {
+        if face.material.contains(material_name) {
+            for index in face.indices {
+                let offset = model.vertices[index].sub(center);
+                radius = radius.max(offset.dot(offset).sqrt());
+            }
+        }
+    }
+    radius
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -176,9 +177,25 @@ fn create_window(fullscreen: bool) -> Result<Window, minifb::Error> {
     Ok(window)
 }
 
-fn color_for_material(name: &str) -> [u8; 3] {
+fn color_for_material(name: &str, effect_spec: Option<&ShipSpec>) -> [u8; 3] {
     let name = name.to_ascii_lowercase();
-    if name.contains("sun") {
+    if name.contains("laser_core") {
+        effect_spec.map_or([255, 245, 190], |spec| spec.laser_core_color)
+    } else if name.contains("laser") {
+        effect_spec.map_or([255, 48, 38], |spec| spec.laser_color)
+    } else if name.contains("turbo_core") {
+        effect_spec.map_or([220, 252, 255], |spec| spec.turbo_core_color)
+    } else if name.contains("turbo") {
+        effect_spec.map_or([36, 142, 255], |spec| spec.turbo_color)
+    } else if name.contains("soft_pink") {
+        [255, 158, 198]
+    } else if name.contains("light_pink") || name.contains("rosy_cheeks") {
+        [255, 105, 158]
+    } else if name.contains("burgundy") {
+        [92, 22, 48]
+    } else if name.contains("golden") || name.contains("gold") {
+        [236, 176, 42]
+    } else if name.contains("sun") {
         [255, 174, 48]
     } else if name.contains("tierra") {
         [112, 72, 42]
@@ -401,12 +418,70 @@ fn make_sphere(radius: f32, stacks: usize, slices: usize, sun: bool) -> Model {
             faces.push(Face {
                 indices: [first, second, first + 1],
                 material: material.to_string(),
+                group: if sun { "sun" } else { "planet" }.to_string(),
             });
             faces.push(Face {
                 indices: [first + 1, second, second + 1],
                 material: material.to_string(),
+                group: if sun { "sun" } else { "planet" }.to_string(),
             });
         }
+    }
+    Model { vertices, faces }
+}
+
+fn make_turbo_plume(segments: usize) -> Model {
+    let mut vertices = vec![Vec3::new(-1.0, 0.0, 0.0)];
+    for segment in 0..segments {
+        let angle = TAU * segment as f32 / segments as f32;
+        vertices.push(Vec3::new(0.0, angle.cos(), angle.sin()));
+    }
+
+    let mut faces = Vec::new();
+    for segment in 0..segments {
+        let next = (segment + 1) % segments;
+        faces.push(Face {
+            indices: [0, segment + 1, next + 1],
+            material: if segment % 2 == 0 {
+                "turbo_core"
+            } else {
+                "turbo_glow"
+            }
+            .to_string(),
+            group: "turbo".to_string(),
+        });
+    }
+    Model { vertices, faces }
+}
+
+fn make_laser_bolt() -> Model {
+    let vertices = vec![
+        Vec3::new(1.4, 0.0, 0.0),
+        Vec3::new(-1.4, 0.0, 0.0),
+        Vec3::new(0.0, 0.16, 0.0),
+        Vec3::new(0.0, 0.0, 0.16),
+        Vec3::new(0.0, -0.16, 0.0),
+        Vec3::new(0.0, 0.0, -0.16),
+    ];
+    let mut faces = Vec::new();
+    for side in 0..4 {
+        let current = 2 + side;
+        let next = 2 + (side + 1) % 4;
+        let material = if side % 2 == 0 {
+            "laser_core"
+        } else {
+            "laser_glow"
+        };
+        faces.push(Face {
+            indices: [0, current, next],
+            material: material.to_string(),
+            group: "laser".to_string(),
+        });
+        faces.push(Face {
+            indices: [1, next, current],
+            material: material.to_string(),
+            group: "laser".to_string(),
+        });
     }
     Model { vertices, faces }
 }
@@ -435,10 +510,37 @@ fn model_radius(model: &Model, center: Vec3) -> f32 {
 
 fn chase_camera(ship: &Ship) -> Camera {
     let (forward, ship_right, ship_up) = ship.camera_basis();
-    let position = ship.position.sub(forward.mul(12.0)).add(ship_up.mul(4.0));
-    let target = ship.position.add(forward.mul(8.0));
+    let chase_position = ship
+        .position
+        .sub(forward.mul(ship.spec.chase_distance))
+        .add(ship_up.mul(ship.spec.chase_height));
+    let chase_target = ship.position.add(forward.mul(ship.spec.chase_look_ahead));
+    let world_up = Vec3::new(0.0, 1.0, 0.0);
+
+    let (orbit_position, orbit_target) = if let Some(planet_center) = ship.orbit_center {
+        let radial = ship.position.sub(planet_center).normalize();
+        (
+            planet_center.add(radial.mul(55.0)).add(world_up.mul(16.0)),
+            ship.position.add(forward.mul(3.0)),
+        )
+    } else {
+        (chase_position, chase_target)
+    };
+
+    let blend = ship.orbit_camera_blend;
+    let position = chase_position
+        .mul(1.0 - blend)
+        .add(orbit_position.mul(blend));
+    let target = chase_target.mul(1.0 - blend).add(orbit_target.mul(blend));
     let camera_forward = target.sub(position).normalize();
-    let right = ship_right;
+    let up_reference = ship_up
+        .mul(1.0 - blend)
+        .add(world_up.mul(blend))
+        .normalize();
+    let mut right = camera_forward.cross(up_reference).normalize();
+    if right.dot(right) < 0.001 {
+        right = ship_right;
+    }
     let up = right.cross(camera_forward).normalize();
     Camera {
         position,
@@ -458,12 +560,186 @@ fn water_planet_position(world_time: f32) -> Vec3 {
     ))
 }
 
+fn direction_to_angles(direction: Vec3) -> (f32, f32) {
+    let direction = direction.normalize();
+    let pitch = direction.y.clamp(-1.0, 1.0).asin();
+    let yaw = (-direction.z).atan2(-direction.x).rem_euclid(TAU);
+    (yaw, pitch)
+}
+
+fn move_around_planet(
+    ship: &mut Ship,
+    movement: f32,
+    planet_center: Vec3,
+    planet_surface_radius: f32,
+    planet_rotation: f32,
+    object_colliders: &[ObjectCollider],
+    yaw_input: i8,
+    pitch_input: i8,
+) {
+    let safe_radius = planet_surface_radius + ship.spec.collision_radius + COLLISION_MARGIN;
+    let steps = movement.ceil().max(1.0) as usize;
+    let step_distance = movement / steps as f32;
+
+    if ship.planet_locked {
+        if let Some(previous_center) = ship.orbit_center {
+            ship.position = ship.position.add(planet_center.sub(previous_center));
+        }
+        ship.orbit_center = Some(planet_center);
+    }
+
+    for _ in 0..steps {
+        let offset = ship.position.sub(planet_center);
+        let distance = offset.dot(offset).sqrt();
+        let normal = if distance > 0.001 {
+            offset.mul(1.0 / distance)
+        } else {
+            Vec3::new(1.0, 0.0, 0.0)
+        };
+        let (mut forward, right, up) = ship.movement_basis();
+        let approaching = forward.dot(normal) < 0.0;
+
+        if ship.orbit_release_active && distance > ORBIT_LIMIT_RADIUS + 8.0 {
+            ship.orbit_release_active = false;
+        }
+        if !ship.orbit_release_active && distance < AVOIDANCE_DISTANCE {
+            if !ship.planet_locked {
+                let level_roll = (ship.roll + PI).rem_euclid(TAU) - PI;
+                ship.roll = level_roll.clamp(-ship.spec.max_manual_roll, ship.spec.max_manual_roll);
+                ship.roll_target = ship.roll;
+                ship.speed = ship.speed.max(ship.spec.min_speed);
+            }
+            ship.planet_locked = true;
+        }
+
+        if ship.planet_locked {
+            ship.orbit_axis = Some(normal);
+            ship.orbit_center = Some(planet_center);
+        } else if distance > AVOIDANCE_DISTANCE + 8.0 || ship.orbit_release_active {
+            ship.orbit_axis = None;
+        }
+
+        if distance < AVOIDANCE_DISTANCE && approaching {
+            let strength = ((AVOIDANCE_DISTANCE - distance) / (AVOIDANCE_DISTANCE - safe_radius))
+                .clamp(0.0, 1.0);
+            let mut tangent = forward.sub(normal.mul(forward.dot(normal)));
+            if tangent.dot(tangent) < 0.0001 {
+                let side = if yaw_input == 0 {
+                    1.0
+                } else {
+                    yaw_input as f32
+                };
+                tangent = right.mul(side).add(up.mul(pitch_input as f32 * 0.35));
+            }
+            let tangent = tangent.normalize();
+            let steering = 0.12 + strength * 0.55;
+            forward = forward
+                .mul(1.0 - steering)
+                .add(tangent.mul(steering))
+                .normalize();
+            let (yaw, pitch) = direction_to_angles(forward);
+            ship.yaw = yaw;
+            ship.pitch = pitch.clamp(-1.25, 1.25);
+        }
+
+        if ship.planet_locked {
+            let mut tangent = forward.sub(normal.mul(forward.dot(normal)));
+            if tangent.dot(tangent) < 0.0001 {
+                tangent = right;
+            }
+            tangent = tangent.normalize();
+
+            let target_radius = safe_radius + ORBIT_FLIGHT_ALTITUDE;
+            let radial_correction = ((target_radius - distance) * 0.06).clamp(-0.35, 0.35);
+            forward = tangent
+                .mul((1.0 - radial_correction * radial_correction).sqrt())
+                .add(normal.mul(radial_correction))
+                .normalize();
+
+            let (yaw, pitch) = direction_to_angles(forward);
+            ship.yaw = yaw;
+            ship.pitch = pitch.clamp(-1.25, 1.25);
+        }
+
+        let proposed = ship.position.add(forward.mul(step_distance));
+        let proposed_offset = proposed.sub(planet_center);
+        let proposed_distance = proposed_offset.dot(proposed_offset).sqrt();
+
+        ship.position = if proposed_distance < safe_radius {
+            let surface_normal = if proposed_distance > 0.001 {
+                proposed_offset.mul(1.0 / proposed_distance)
+            } else {
+                normal
+            };
+            let sliding = forward
+                .sub(surface_normal.mul(forward.dot(surface_normal)))
+                .normalize();
+            planet_center
+                .add(surface_normal.mul(safe_radius))
+                .add(sliding.mul(step_distance))
+        } else if ship.planet_locked && proposed_distance > ORBIT_LIMIT_RADIUS {
+            let boundary_normal = proposed_offset.mul(1.0 / proposed_distance);
+            let mut tangent = forward.sub(boundary_normal.mul(forward.dot(boundary_normal)));
+            if tangent.dot(tangent) < 0.0001 {
+                tangent = right;
+            }
+            tangent = tangent.normalize();
+            let curved_normal = boundary_normal
+                .add(tangent.mul(step_distance / ORBIT_LIMIT_RADIUS))
+                .normalize();
+            let (yaw, pitch) = direction_to_angles(tangent);
+            ship.yaw = yaw;
+            ship.pitch = pitch.clamp(-1.25, 1.25);
+            ship.yaw_rate *= 0.7;
+            ship.pitch_rate *= 0.7;
+            planet_center.add(curved_normal.mul(ORBIT_LIMIT_RADIUS))
+        } else {
+            proposed
+        };
+
+        let (sin_rotation, cos_rotation) = planet_rotation.sin_cos();
+        for collider in object_colliders {
+            let local = collider.center;
+            let collider_center = Vec3::new(
+                local.x * cos_rotation - local.z * sin_rotation,
+                local.y,
+                local.x * sin_rotation + local.z * cos_rotation,
+            )
+            .add(planet_center);
+            let separation = collider.radius + ship.spec.collision_radius + 0.8;
+            let collider_offset = ship.position.sub(collider_center);
+            let collider_distance = collider_offset.dot(collider_offset).sqrt();
+
+            if collider_distance < separation {
+                let object_normal = if collider_distance > 0.001 {
+                    collider_offset.mul(1.0 / collider_distance)
+                } else {
+                    normal
+                };
+                let mut tangent = forward.sub(object_normal.mul(forward.dot(object_normal)));
+                if tangent.dot(tangent) < 0.0001 {
+                    tangent = right;
+                }
+                tangent = tangent.normalize();
+                ship.position = collider_center
+                    .add(object_normal.mul(separation))
+                    .add(tangent.mul(step_distance));
+                let (yaw, pitch) = direction_to_angles(tangent);
+                ship.yaw = yaw;
+                ship.pitch = pitch.clamp(-1.25, 1.25);
+                forward = tangent;
+            }
+        }
+    }
+}
+
 fn render_model<F>(
     model: &Model,
     framebuffer: &mut Framebuffer,
     camera: &Camera,
     transform: F,
     water_time: Option<f32>,
+    effect_spec: Option<&ShipSpec>,
 ) where
     F: Fn(Vec3) -> Vec3,
 {
@@ -521,7 +797,7 @@ fn render_model<F>(
                 a,
                 b,
                 c,
-                pack(color_for_material(&face.material), brightness),
+                pack(color_for_material(&face.material, effect_spec), brightness),
             );
         }
     }
@@ -530,6 +806,9 @@ fn render_model<F>(
 fn render_scene(
     ship_model: &Model,
     ship_center: Vec3,
+    turbo_plume: &Model,
+    laser_bolt: &Model,
+    projectiles: &[Projectile],
     planet: &Model,
     planet_center: Vec3,
     planet_scale: f32,
@@ -538,6 +817,8 @@ fn render_scene(
     ship: &Ship,
     world_time: f32,
     travel: f32,
+    turbo_power: f32,
+    fire_charge: f32,
 ) {
     framebuffer.clear(0);
     draw_skybox(framebuffer, travel);
@@ -551,6 +832,7 @@ fn render_scene(
         framebuffer,
         &camera,
         |vertex| vertex.add(sun_position),
+        None,
         None,
     );
     render_model(
@@ -568,46 +850,222 @@ fn render_scene(
             .add(planet_position)
         },
         Some(world_time),
+        None,
     );
 
     let (forward, right, up) = ship.basis();
+    let pulse = 0.9 + (world_time * 28.0).sin() * 0.1;
+    let plume_length = (1.3 + turbo_power * 5.5) * pulse;
+    let plume_radius = 0.16 + turbo_power * 0.16;
+    for side in ship.spec.turbo_sides {
+        let emitter = ship
+            .position
+            .sub(forward.mul(ship.spec.turbo_back))
+            .add(right.mul(*side * ship.spec.turbo_side))
+            .sub(up.mul(ship.spec.turbo_down));
+        render_model(
+            turbo_plume,
+            framebuffer,
+            &camera,
+            |vertex| {
+                emitter
+                    .add(forward.mul(vertex.x * plume_length))
+                    .add(right.mul(vertex.y * plume_radius))
+                    .add(up.mul(vertex.z * plume_radius))
+            },
+            None,
+            Some(ship.spec),
+        );
+    }
+    for projectile in projectiles {
+        let mut laser_right = projectile
+            .direction
+            .cross(Vec3::new(0.0, 1.0, 0.0))
+            .normalize();
+        if laser_right.dot(laser_right) < 0.001 {
+            laser_right = Vec3::new(1.0, 0.0, 0.0);
+        }
+        let laser_up = laser_right.cross(projectile.direction).normalize();
+        render_model(
+            laser_bolt,
+            framebuffer,
+            &camera,
+            |vertex| {
+                projectile
+                    .position
+                    .add(projectile.direction.mul(vertex.x * projectile.scale))
+                    .add(laser_up.mul(vertex.y * projectile.scale))
+                    .add(laser_right.mul(vertex.z * projectile.scale))
+            },
+            None,
+            Some(ship.spec),
+        );
+    }
+    if fire_charge > 0.0 {
+        let charge_scale = 0.35 + fire_charge * 1.15;
+        let charge_position = ship.position.add(forward.mul(1.9));
+        render_model(
+            laser_bolt,
+            framebuffer,
+            &camera,
+            |vertex| {
+                charge_position
+                    .add(forward.mul(vertex.x * charge_scale * 0.35))
+                    .add(up.mul(vertex.y * charge_scale))
+                    .add(right.mul(vertex.z * charge_scale))
+            },
+            None,
+            Some(ship.spec),
+        );
+    }
     render_model(
         ship_model,
         framebuffer,
         &camera,
         |vertex| {
-            let local = vertex.sub(ship_center).mul(SHIP_SCALE);
+            let local = vertex.sub(ship_center).mul(ship.spec.model_scale);
             ship.position
-                .add(forward.mul(-local.x))
-                .add(up.mul(local.y))
-                .add(right.mul(local.z))
+                .add(ship.spec.model_to_world(local, forward, right, up))
         },
+        None,
         None,
     );
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "assets/nave.obj".to_string());
-    let ship_model = load_obj(&path).map_err(|error| format!("Error al cargar {path}: {error}"))?;
-    let ship_center = model_center(&ship_model);
-    let planet_path = "assets/water_planet.obj";
-    let planet =
-        load_obj(planet_path).map_err(|error| format!("Error al cargar {planet_path}: {error}"))?;
-    let planet_center = model_center(&planet);
-    let planet_scale = 24.0 / model_radius(&planet, planet_center).max(0.001);
-    let sun = make_sphere(55.0, 18, 28, true);
+fn draw_selection_panel(framebuffer: &mut Framebuffer, left: usize, right: usize, selected: bool) {
+    let top = 120;
+    let bottom = HEIGHT - 110;
+    let fill = if selected { 0x182b46 } else { 0x101722 };
+    let border = if selected { 0xffd447 } else { 0x43536a };
+    for y in top..bottom {
+        for x in left..right {
+            let edge = x < left + 5 || x + 5 >= right || y < top + 5 || y + 5 >= bottom;
+            framebuffer.pixels[y * WIDTH + x] = if edge { border } else { fill };
+        }
+    }
+}
 
-    println!("Vuelo libre 3D iniciado");
-    println!("W/S o flechas: subir/bajar | Espacio: acelerar | Ctrl: frenar");
-    println!("A/D: direccion | Mantener Q/E: alabeo | R: reiniciar | P: captura");
-    println!("1: warp al planeta acuatico | Shift: velocidad de luz");
+fn select_ship(
+    window: &mut Window,
+    framebuffer: &mut Framebuffer,
+    arwing: &Model,
+    kirby: &Model,
+) -> Result<Option<usize>, minifb::Error> {
+    let choices = [
+        ("Arwing", arwing, &ARWING_SPEC),
+        ("Kirby UFO", kirby, &KIRBY_SPEC),
+    ];
+    let centers = [model_center(arwing), model_center(kirby)];
+    let mut selected = 1_usize;
+    let start = Instant::now();
+
+    while window.is_open() && !window.is_key_down(Key::Escape) {
+        if window.is_key_pressed(Key::Left, KeyRepeat::No)
+            || window.is_key_pressed(Key::A, KeyRepeat::No)
+        {
+            selected = selected.saturating_sub(1);
+        }
+        if window.is_key_pressed(Key::Right, KeyRepeat::No)
+            || window.is_key_pressed(Key::D, KeyRepeat::No)
+        {
+            selected = (selected + 1).min(choices.len() - 1);
+        }
+        if window.is_key_pressed(Key::Enter, KeyRepeat::No) {
+            return Ok(Some(selected));
+        }
+
+        window.set_title(&format!(
+            "Selecciona nave: {} | A/D o flechas | Enter: confirmar",
+            choices[selected].0
+        ));
+        framebuffer.clear(0);
+        draw_skybox(framebuffer, 0.0);
+        draw_selection_panel(framebuffer, 90, WIDTH / 2 - 25, selected == 0);
+        draw_selection_panel(framebuffer, WIDTH / 2 + 25, WIDTH - 90, selected == 1);
+
+        let camera_position = Vec3::new(0.0, 2.0, -15.0);
+        let camera_forward = Vec3::new(0.0, -0.08, 1.0).normalize();
+        let camera_right = camera_forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
+        let camera = Camera {
+            position: camera_position,
+            forward: camera_forward,
+            right: camera_right,
+            up: camera_right.cross(camera_forward).normalize(),
+        };
+        let angle = start.elapsed().as_secs_f32() * 0.65;
+
+        for (index, (_, model, spec)) in choices.iter().enumerate() {
+            let display_scale = if index == selected { 1.72 } else { 1.5 };
+            let position = Vec3::new(if index == 0 { 5.75 } else { -5.75 }, 0.0, 0.0);
+            let forward = Vec3::new(angle.sin(), 0.0, -angle.cos());
+            let right = Vec3::new(angle.cos(), 0.0, angle.sin());
+            let up = Vec3::new(0.0, 1.0, 0.0);
+            render_model(
+                model,
+                framebuffer,
+                &camera,
+                |vertex| {
+                    let local = vertex
+                        .sub(centers[index])
+                        .mul(spec.model_scale * display_scale);
+                    position.add(spec.model_to_world(local, forward, right, up))
+                },
+                None,
+                None,
+            );
+        }
+
+        window.update_with_buffer(&framebuffer.pixels, WIDTH, HEIGHT)?;
+    }
+    Ok(None)
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let arwing_path = "assets/nave.obj";
+    let kirby_path = "assets/kirby.obj";
+    let arwing_model =
+        load_obj(arwing_path).map_err(|error| format!("Error al cargar {arwing_path}: {error}"))?;
+    let kirby_model =
+        load_obj(kirby_path).map_err(|error| format!("Error al cargar {kirby_path}: {error}"))?;
 
     let mut fullscreen = false;
     let mut window = create_window(fullscreen)?;
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
-    let mut ship = Ship::new();
+    let Some(selected_ship) =
+        select_ship(&mut window, &mut framebuffer, &arwing_model, &kirby_model)?
+    else {
+        return Ok(());
+    };
+    let (ship_model, ship_spec) = if selected_ship == 0 {
+        (&arwing_model, &ARWING_SPEC)
+    } else {
+        (&kirby_model, &KIRBY_SPEC)
+    };
+    let ship_center = model_center(ship_model);
+    window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
+
+    let planet_path = "assets/water_planet.obj";
+    let planet =
+        load_obj(planet_path).map_err(|error| format!("Error al cargar {planet_path}: {error}"))?;
+    let planet_center = model_center(&planet);
+    let planet_scale = WATER_PLANET_RADIUS / model_radius(&planet, planet_center).max(0.001);
+    let planet_surface_radius = material_radius(&planet, planet_center, "Oceano") * planet_scale;
+    let object_colliders = build_object_colliders(&planet, planet_center, planet_scale);
+    let sun = make_sphere(55.0, 18, 28, true);
+    let turbo_plume = make_turbo_plume(12);
+    let laser_bolt = make_laser_bolt();
+
+    println!("Vuelo libre 3D iniciado: {}", ship_spec.name);
+    println!("W/S o flechas: subir/bajar | Espacio: acelerar | Ctrl: frenar");
+    println!("A/D: direccion | Q/E: alabeo | Enter: disparar/cargar | R: reiniciar | P: captura");
+    println!("1: warp al planeta acuatico | Shift: velocidad de luz");
+    println!("Backspace: abandonar la zona orbital");
+    println!(
+        "Colisionadores alrededor del planeta: {}",
+        object_colliders.len()
+    );
+
+    let mut ship_controller = ShipController::new(ship_spec);
     let start = Instant::now();
     let mut previous = Instant::now();
     let mut distance = 0.0_f32;
@@ -623,12 +1081,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             window = create_window(fullscreen)?;
         }
         if window.is_key_pressed(Key::R, KeyRepeat::No) {
-            ship = Ship::new();
+            ship_controller.reset();
             distance = 0.0;
         }
         if window.is_key_pressed(Key::Key1, KeyRepeat::No) {
             let destination = water_planet_position(world_time);
-            ship.position = destination.add(Vec3::new(55.0, 8.0, 0.0));
+            let ship = &mut ship_controller.ship;
+            ship.position = destination.add(Vec3::new(45.0, 8.0, 0.0));
             ship.yaw = 0.0;
             ship.pitch = -0.08;
             ship.roll = 0.0;
@@ -637,59 +1096,81 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ship.pitch_rate = 0.0;
             ship.steering_bank = 0.0;
             ship.steering_pitch = 0.0;
-            ship.speed = 12.0;
+            ship.orbit_axis = None;
+            ship.orbit_center = None;
+            ship.orbit_camera_blend = 0.0;
+            ship.planet_locked = false;
+            ship.orbit_release_active = false;
+            ship.speed = ship.spec.cruise_speed;
             println!("Warp completado: planeta acuatico");
         }
 
         let pitch_input = (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8
             - (window.is_key_down(Key::S) || window.is_key_down(Key::Down)) as i8;
         let yaw_input = window.is_key_down(Key::D) as i8 - window.is_key_down(Key::A) as i8;
-
-        let response = 1.0 - (-TURN_RESPONSE * delta_time).exp();
-        let target_pitch_rate = pitch_input as f32 * MAX_PITCH_RATE;
-        let target_yaw_rate = yaw_input as f32 * MAX_YAW_RATE;
-        ship.pitch_rate += (target_pitch_rate - ship.pitch_rate) * response;
-        ship.yaw_rate += (target_yaw_rate - ship.yaw_rate) * response;
-        ship.pitch = (ship.pitch + ship.pitch_rate * delta_time).clamp(-1.25, 1.25);
-        ship.yaw = (ship.yaw + ship.yaw_rate * delta_time).rem_euclid(TAU);
-
-        let target_bank = -(yaw_input as f32) * STEERING_BANK;
-        ship.steering_bank += (target_bank - ship.steering_bank) * response;
-        let target_visual_pitch = pitch_input as f32 * STEERING_PITCH;
-        ship.steering_pitch += (target_visual_pitch - ship.steering_pitch) * response;
-
         let roll_input = window.is_key_down(Key::E) as i8 - window.is_key_down(Key::Q) as i8;
-        ship.roll_target += roll_input as f32 * ROLL_INPUT_SPEED * delta_time;
+        let input = ShipInput {
+            pitch: pitch_input,
+            yaw: yaw_input,
+            roll: roll_input,
+            accelerating: window.is_key_down(Key::Space),
+            braking: window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl),
+            firing: window.is_key_down(Key::Enter),
+        };
+        ship_controller.update(&input, delta_time);
 
-        let roll_difference = ship.roll_target - ship.roll;
-        let roll_step = (ROLL_SPEED * delta_time).min(roll_difference.abs());
-        ship.roll += roll_difference.signum() * roll_step;
-
-        if window.is_key_down(Key::Space) {
-            ship.speed = (ship.speed + 20.0 * delta_time).min(MAX_SPEED);
-        }
-        if window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl) {
-            ship.speed = (ship.speed - 28.0 * delta_time).max(MIN_SPEED);
-        }
-
-        let (forward, _, _) = ship.movement_basis();
         let light_speed = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
-        let active_speed = if light_speed { LIGHT_SPEED } else { ship.speed };
+        let active_speed = if light_speed {
+            LIGHT_SPEED
+        } else {
+            ship_controller.ship.speed
+        };
+        let turbo_power = ship_controller.turbo_power(active_speed);
         let movement = active_speed * delta_time;
-        ship.position = ship.position.add(forward.mul(movement));
+        let ship = &mut ship_controller.ship;
+
+        if window.is_key_pressed(Key::Backspace, KeyRepeat::No) && ship.planet_locked {
+            ship.planet_locked = false;
+            ship.orbit_release_active = true;
+            ship.orbit_axis = None;
+            println!("Orbita liberada");
+        }
+
+        move_around_planet(
+            ship,
+            movement,
+            water_planet_position(world_time),
+            planet_surface_radius,
+            world_time * 0.25,
+            &object_colliders,
+            yaw_input,
+            pitch_input,
+        );
+        let camera_target = if ship.orbit_axis.is_some() { 1.0 } else { 0.0 };
+        let camera_response = 1.0 - (-2.4 * delta_time).exp();
+        ship.orbit_camera_blend += (camera_target - ship.orbit_camera_blend) * camera_response;
+        if ship.orbit_axis.is_none() && ship.orbit_camera_blend < 0.001 {
+            ship.orbit_center = None;
+            ship.orbit_camera_blend = 0.0;
+        }
         distance += movement;
 
         render_scene(
-            &ship_model,
+            ship_model,
             ship_center,
+            &turbo_plume,
+            &laser_bolt,
+            &ship_controller.projectiles,
             &planet,
             planet_center,
             planet_scale,
             &sun,
             &mut framebuffer,
-            &ship,
+            &ship_controller.ship,
             world_time,
             (distance * 0.0025).rem_euclid(1.0),
+            turbo_power,
+            ship_controller.charge_ratio(),
         );
 
         if window.is_key_pressed(Key::P, KeyRepeat::No) {
