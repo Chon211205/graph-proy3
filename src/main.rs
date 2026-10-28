@@ -257,7 +257,11 @@ fn create_window(fullscreen: bool) -> Result<Window, minifb::Error> {
 
 fn color_for_material(name: &str) -> [u8; 3] {
     let name = name.to_ascii_lowercase();
-    if name.contains("sun") {
+    if name.contains("turbo_core") {
+        [220, 252, 255]
+    } else if name.contains("turbo") {
+        [36, 142, 255]
+    } else if name.contains("sun") {
         [255, 174, 48]
     } else if name.contains("tierra") {
         [112, 72, 42]
@@ -488,6 +492,30 @@ fn make_sphere(radius: f32, stacks: usize, slices: usize, sun: bool) -> Model {
                 group: if sun { "sun" } else { "planet" }.to_string(),
             });
         }
+    }
+    Model { vertices, faces }
+}
+
+fn make_turbo_plume(segments: usize) -> Model {
+    let mut vertices = vec![Vec3::new(-1.0, 0.0, 0.0)];
+    for segment in 0..segments {
+        let angle = TAU * segment as f32 / segments as f32;
+        vertices.push(Vec3::new(0.0, angle.cos(), angle.sin()));
+    }
+
+    let mut faces = Vec::new();
+    for segment in 0..segments {
+        let next = (segment + 1) % segments;
+        faces.push(Face {
+            indices: [0, segment + 1, next + 1],
+            material: if segment % 2 == 0 {
+                "turbo_core"
+            } else {
+                "turbo_glow"
+            }
+            .to_string(),
+            group: "turbo".to_string(),
+        });
     }
     Model { vertices, faces }
 }
@@ -808,6 +836,7 @@ fn render_model<F>(
 fn render_scene(
     ship_model: &Model,
     ship_center: Vec3,
+    turbo_plume: &Model,
     planet: &Model,
     planet_center: Vec3,
     planet_scale: f32,
@@ -816,6 +845,7 @@ fn render_scene(
     ship: &Ship,
     world_time: f32,
     travel: f32,
+    turbo_power: f32,
 ) {
     framebuffer.clear(0);
     draw_skybox(framebuffer, travel);
@@ -849,6 +879,28 @@ fn render_scene(
     );
 
     let (forward, right, up) = ship.basis();
+    let pulse = 0.9 + (world_time * 28.0).sin() * 0.1;
+    let plume_length = (1.3 + turbo_power * 5.5) * pulse;
+    let plume_radius = 0.16 + turbo_power * 0.16;
+    for side in [-1.0_f32, 1.0] {
+        let emitter = ship
+            .position
+            .sub(forward.mul(1.12))
+            .add(right.mul(side * 0.72))
+            .sub(up.mul(0.05));
+        render_model(
+            turbo_plume,
+            framebuffer,
+            &camera,
+            |vertex| {
+                emitter
+                    .add(forward.mul(vertex.x * plume_length))
+                    .add(right.mul(vertex.y * plume_radius))
+                    .add(up.mul(vertex.z * plume_radius))
+            },
+            None,
+        );
+    }
     render_model(
         ship_model,
         framebuffer,
@@ -878,6 +930,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let planet_surface_radius = material_radius(&planet, planet_center, "Oceano") * planet_scale;
     let object_colliders = build_object_colliders(&planet, planet_center, planet_scale);
     let sun = make_sphere(55.0, 18, 28, true);
+    let turbo_plume = make_turbo_plume(12);
 
     println!("Vuelo libre 3D iniciado");
     println!("W/S o flechas: subir/bajar | Espacio: acelerar | Ctrl: frenar");
@@ -982,6 +1035,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let light_speed = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
         let active_speed = if light_speed { LIGHT_SPEED } else { ship.speed };
+        let turbo_power = ((active_speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED)).clamp(0.0, 1.0);
         let movement = active_speed * delta_time;
         move_around_planet(
             &mut ship,
@@ -1005,6 +1059,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         render_scene(
             &ship_model,
             ship_center,
+            &turbo_plume,
             &planet,
             planet_center,
             planet_scale,
@@ -1013,6 +1068,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &ship,
             world_time,
             (distance * 0.0025).rem_euclid(1.0),
+            turbo_power,
         );
 
         if window.is_key_pressed(Key::P, KeyRepeat::No) {
