@@ -23,7 +23,8 @@ const BRAKING_RATE: f32 = 28.0;
 const CRUISE_RECOVERY_RATE: f32 = 18.0;
 const LASER_SPEED: f32 = 220.0;
 const LASER_LIFETIME: f32 = 3.0;
-const FIRE_INTERVAL: f32 = 0.12;
+const MAX_CHARGE_TIME: f32 = 1.4;
+const CHARGED_SHOT_THRESHOLD: f32 = 0.35;
 const LIGHT_SPEED: f32 = 600.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
 const SUN_POSITION_X: f32 = -520.0;
@@ -127,6 +128,7 @@ struct Projectile {
     position: Vec3,
     direction: Vec3,
     lifetime: f32,
+    scale: f32,
 }
 
 fn build_object_colliders(model: &Model, model_center: Vec3, scale: f32) -> Vec<ObjectCollider> {
@@ -897,6 +899,7 @@ fn render_scene(
     world_time: f32,
     travel: f32,
     turbo_power: f32,
+    fire_charge: f32,
 ) {
     framebuffer.clear(0);
     draw_skybox(framebuffer, travel);
@@ -968,9 +971,25 @@ fn render_scene(
             |vertex| {
                 projectile
                     .position
-                    .add(projectile.direction.mul(vertex.x))
-                    .add(laser_up.mul(vertex.y))
-                    .add(laser_right.mul(vertex.z))
+                    .add(projectile.direction.mul(vertex.x * projectile.scale))
+                    .add(laser_up.mul(vertex.y * projectile.scale))
+                    .add(laser_right.mul(vertex.z * projectile.scale))
+            },
+            None,
+        );
+    }
+    if fire_charge > 0.0 {
+        let charge_scale = 0.35 + fire_charge * 1.15;
+        let charge_position = ship.position.add(forward.mul(1.9));
+        render_model(
+            laser_bolt,
+            framebuffer,
+            &camera,
+            |vertex| {
+                charge_position
+                    .add(forward.mul(vertex.x * charge_scale * 0.35))
+                    .add(up.mul(vertex.y * charge_scale))
+                    .add(right.mul(vertex.z * charge_scale))
             },
             None,
         );
@@ -1009,7 +1028,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Vuelo libre 3D iniciado");
     println!("W/S o flechas: subir/bajar | Espacio: acelerar | Ctrl: frenar");
-    println!("A/D: direccion | Q/E: alabeo | Enter: disparar | R: reiniciar | P: captura");
+    println!("A/D: direccion | Q/E: alabeo | Enter: disparar/cargar | R: reiniciar | P: captura");
     println!("1: warp al planeta acuatico | Shift: velocidad de luz");
     println!("Backspace: abandonar la zona orbital");
     println!(
@@ -1022,7 +1041,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     let mut ship = Ship::new();
     let mut projectiles = Vec::<Projectile>::new();
-    let mut fire_cooldown = 0.0_f32;
+    let mut fire_charge = 0.0_f32;
+    let mut fire_was_down = false;
     let start = Instant::now();
     let mut previous = Instant::now();
     let mut distance = 0.0_f32;
@@ -1040,7 +1060,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if window.is_key_pressed(Key::R, KeyRepeat::No) {
             ship = Ship::new();
             projectiles.clear();
-            fire_cooldown = 0.0;
+            fire_charge = 0.0;
+            fire_was_down = false;
             distance = 0.0;
         }
         if window.is_key_pressed(Key::Key1, KeyRepeat::No) {
@@ -1098,22 +1119,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let roll_step = (ROLL_SPEED * delta_time).min(roll_difference.abs());
         ship.roll += roll_difference.signum() * roll_step;
 
-        fire_cooldown = (fire_cooldown - delta_time).max(0.0);
-        if window.is_key_down(Key::Enter) && fire_cooldown <= 0.0 {
+        let fire_down = window.is_key_down(Key::Enter);
+        if fire_down {
+            fire_charge = (fire_charge + delta_time).min(MAX_CHARGE_TIME);
+        } else if fire_was_down {
             let (shot_direction, shot_right, shot_up) = ship.basis();
-            for side in [-1.0_f32, 1.0] {
+            if fire_charge >= CHARGED_SHOT_THRESHOLD {
+                let charge = (fire_charge / MAX_CHARGE_TIME).clamp(0.0, 1.0);
                 projectiles.push(Projectile {
-                    position: ship
-                        .position
-                        .add(shot_direction.mul(1.6))
-                        .add(shot_right.mul(side * 1.15))
-                        .sub(shot_up.mul(0.05)),
+                    position: ship.position.add(shot_direction.mul(2.0)),
                     direction: shot_direction,
                     lifetime: LASER_LIFETIME,
+                    scale: 1.5 + charge * 2.5,
                 });
+            } else {
+                for side in [-1.0_f32, 1.0] {
+                    projectiles.push(Projectile {
+                        position: ship
+                            .position
+                            .add(shot_direction.mul(1.6))
+                            .add(shot_right.mul(side * 1.15))
+                            .sub(shot_up.mul(0.05)),
+                        direction: shot_direction,
+                        lifetime: LASER_LIFETIME,
+                        scale: 1.0,
+                    });
+                }
             }
-            fire_cooldown = FIRE_INTERVAL;
+            fire_charge = 0.0;
         }
+        fire_was_down = fire_down;
 
         for projectile in &mut projectiles {
             projectile.position = projectile
@@ -1179,6 +1214,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             world_time,
             (distance * 0.0025).rem_euclid(1.0),
             turbo_power,
+            (fire_charge / MAX_CHARGE_TIME).clamp(0.0, 1.0),
         );
 
         if window.is_key_pressed(Key::P, KeyRepeat::No) {
