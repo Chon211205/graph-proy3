@@ -570,6 +570,33 @@ fn make_sphere(radius: f32, stacks: usize, slices: usize, sun: bool) -> Model {
     Model { vertices, faces }
 }
 
+fn make_level_floor(width: f32, length: f32, segment_length: f32) -> Model {
+    let segments = (length / segment_length).ceil() as usize;
+    let mut vertices = Vec::with_capacity((segments + 1) * 2);
+    for segment in 0..=segments {
+        let y = (segment as f32 * segment_length).min(length);
+        vertices.push(Vec3::new(-width * 0.5, y, 0.04));
+        vertices.push(Vec3::new(width * 0.5, y, 0.04));
+    }
+
+    let mut faces = Vec::with_capacity(segments * 2);
+    for segment in 0..segments {
+        let first = segment * 2;
+        let next = first + 2;
+        faces.push(Face {
+            indices: [first, next, first + 1],
+            material: "Arena_submarina".to_string(),
+            group: "ENV_Fondo_Marino_Segmentado".to_string(),
+        });
+        faces.push(Face {
+            indices: [first + 1, next, next + 1],
+            material: "Arena_submarina".to_string(),
+            group: "ENV_Fondo_Marino_Segmentado".to_string(),
+        });
+    }
+    Model { vertices, faces }
+}
+
 fn make_turbo_plume(segments: usize) -> Model {
     let mut vertices = vec![Vec3::new(-1.0, 0.0, 0.0)];
     for segment in 0..segments {
@@ -1130,6 +1157,7 @@ fn draw_underwater_background(framebuffer: &mut Framebuffer, travel: f32) {
 
 fn render_water_level(
     level: &Model,
+    level_floor: &Model,
     ship_model: &Model,
     ship_center: Vec3,
     turbo_plume: &Model,
@@ -1145,6 +1173,14 @@ fn render_water_level(
     framebuffer.clear(0);
     draw_underwater_background(framebuffer, progress * 0.002);
     let camera = chase_camera(ship);
+    render_model(
+        level_floor,
+        framebuffer,
+        &camera,
+        level_to_world,
+        Some(world_time),
+        None,
+    );
     render_model(
         level,
         framebuffer,
@@ -1445,6 +1481,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let water_level = load_obj(water_level_path)
         .map_err(|error| format!("Error al cargar {water_level_path}: {error}"))?;
     let level_colliders = build_level_colliders(&water_level);
+    let water_level_floor = make_level_floor(140.0, 920.0, 15.0);
     let planet_center = model_center(&planet);
     let planet_scale = WATER_PLANET_RADIUS / model_radius(&planet, planet_center).max(0.001);
     let planet_surface_radius = material_radius(&planet, planet_center, "Oceano") * planet_scale;
@@ -1601,6 +1638,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let turbo_power = ship_controller.turbo_power(ship_controller.ship.speed);
                 render_water_level(
                     &water_level,
+                    &water_level_floor,
                     ship_model,
                     ship_center,
                     &turbo_plume,
