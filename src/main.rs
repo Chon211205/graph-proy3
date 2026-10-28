@@ -10,7 +10,10 @@ use std::time::Instant;
 use framebuffer::Framebuffer;
 use minifb::{Key, KeyRepeat, ScaleMode, Window, WindowOptions};
 use obj_loader::{load_obj, Face, Model, Vec3};
-use ship::{Projectile, Ship, ShipController, ShipInput, ShipSpec, ARWING_SPEC, KIRBY_SPEC};
+use ship::{
+    Projectile, Ship, ShipController, ShipInput, ShipSpec, ARWING_SPEC, ASTRA_SPEC, KIRBY_SPEC,
+    SEBAS_SPEC,
+};
 use triangle::{draw_triangle, draw_triangle_shaded, ScreenVertex};
 
 const WIDTH: usize = 1200;
@@ -938,9 +941,14 @@ fn render_scene(
     );
 }
 
-fn draw_selection_panel(framebuffer: &mut Framebuffer, left: usize, right: usize, selected: bool) {
-    let top = 120;
-    let bottom = HEIGHT - 110;
+fn draw_selection_panel(
+    framebuffer: &mut Framebuffer,
+    left: usize,
+    top: usize,
+    right: usize,
+    bottom: usize,
+    selected: bool,
+) {
     let fill = if selected { 0x182b46 } else { 0x101722 };
     let border = if selected { 0xffd447 } else { 0x43536a };
     for y in top..bottom {
@@ -951,17 +959,81 @@ fn draw_selection_panel(framebuffer: &mut Framebuffer, left: usize, right: usize
     }
 }
 
+fn draw_selection_label(
+    framebuffer: &mut Framebuffer,
+    text: &str,
+    center_x: i32,
+    top_y: i32,
+    scale: i32,
+    color: u32,
+) {
+    let width = text.len() as i32 * 6 * scale - scale;
+    let start_x = center_x - width / 2;
+    for (character_index, character) in text.chars().enumerate() {
+        let rows = match character {
+            'A' => [14, 17, 17, 31, 17, 17, 17],
+            'B' => [30, 17, 17, 30, 17, 17, 30],
+            'C' => [14, 17, 16, 16, 16, 17, 14],
+            'D' => [30, 17, 17, 17, 17, 17, 30],
+            'E' => [31, 16, 16, 30, 16, 16, 31],
+            'F' => [31, 16, 16, 30, 16, 16, 16],
+            'G' => [14, 17, 16, 23, 17, 17, 15],
+            'H' => [17, 17, 17, 31, 17, 17, 17],
+            'I' => [14, 4, 4, 4, 4, 4, 14],
+            'J' => [7, 2, 2, 2, 18, 18, 12],
+            'K' => [17, 18, 20, 24, 20, 18, 17],
+            'L' => [16, 16, 16, 16, 16, 16, 31],
+            'M' => [17, 27, 21, 21, 17, 17, 17],
+            'N' => [17, 25, 25, 21, 19, 19, 17],
+            'O' => [14, 17, 17, 17, 17, 17, 14],
+            'P' => [30, 17, 17, 30, 16, 16, 16],
+            'Q' => [14, 17, 17, 17, 21, 18, 13],
+            'R' => [30, 17, 17, 30, 20, 18, 17],
+            'S' => [15, 16, 16, 14, 1, 1, 30],
+            'T' => [31, 4, 4, 4, 4, 4, 4],
+            'U' => [17, 17, 17, 17, 17, 17, 14],
+            'V' => [17, 17, 17, 17, 17, 10, 4],
+            'W' => [17, 17, 17, 21, 21, 21, 10],
+            'X' => [17, 17, 10, 4, 10, 17, 17],
+            'Y' => [17, 17, 10, 4, 4, 4, 4],
+            'Z' => [31, 1, 2, 4, 8, 16, 31],
+            _ => [0; 7],
+        };
+        let character_x = start_x + character_index as i32 * 6 * scale;
+        for (row, bits) in rows.iter().enumerate() {
+            for column in 0..5 {
+                if bits & (1 << (4 - column)) == 0 {
+                    continue;
+                }
+                for dy in 0..scale {
+                    for dx in 0..scale {
+                        let x = character_x + column * scale + dx;
+                        let y = top_y + row as i32 * scale + dy;
+                        if x >= 0 && y >= 0 && x < WIDTH as i32 && y < HEIGHT as i32 {
+                            framebuffer.pixels[y as usize * WIDTH + x as usize] = color;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn select_ship(
     window: &mut Window,
     framebuffer: &mut Framebuffer,
     arwing: &Model,
     kirby: &Model,
+    astra: &Model,
+    sebas: &Model,
 ) -> Result<Option<usize>, minifb::Error> {
     let choices = [
         ("Arwing", arwing, &ARWING_SPEC),
         ("Kirby UFO", kirby, &KIRBY_SPEC),
+        ("ASTRA", astra, &ASTRA_SPEC),
+        ("Nave Roja", sebas, &SEBAS_SPEC),
     ];
-    let centers = [model_center(arwing), model_center(kirby)];
+    let centers = choices.map(|(_, model, _)| model_center(model));
     let mut selected = 1_usize;
     let start = Instant::now();
 
@@ -969,25 +1041,41 @@ fn select_ship(
         if window.is_key_pressed(Key::Left, KeyRepeat::No)
             || window.is_key_pressed(Key::A, KeyRepeat::No)
         {
-            selected = selected.saturating_sub(1);
+            if selected % 2 == 1 {
+                selected -= 1;
+            }
         }
         if window.is_key_pressed(Key::Right, KeyRepeat::No)
             || window.is_key_pressed(Key::D, KeyRepeat::No)
         {
-            selected = (selected + 1).min(choices.len() - 1);
+            if selected % 2 == 0 {
+                selected += 1;
+            }
+        }
+        if window.is_key_pressed(Key::Up, KeyRepeat::No)
+            || window.is_key_pressed(Key::W, KeyRepeat::No)
+        {
+            selected = selected.saturating_sub(2);
+        }
+        if window.is_key_pressed(Key::Down, KeyRepeat::No)
+            || window.is_key_pressed(Key::S, KeyRepeat::No)
+        {
+            selected = (selected + 2).min(choices.len() - 1);
         }
         if window.is_key_pressed(Key::Enter, KeyRepeat::No) {
             return Ok(Some(selected));
         }
 
         window.set_title(&format!(
-            "Selecciona nave: {} | A/D o flechas | Enter: confirmar",
+            "Selecciona nave: {} | Flechas o WASD | Enter: confirmar",
             choices[selected].0
         ));
         framebuffer.clear(0);
         draw_skybox(framebuffer, 0.0);
-        draw_selection_panel(framebuffer, 90, WIDTH / 2 - 25, selected == 0);
-        draw_selection_panel(framebuffer, WIDTH / 2 + 25, WIDTH - 90, selected == 1);
+        draw_selection_panel(framebuffer, 45, 52, WIDTH / 2 - 15, HEIGHT / 2 - 12, selected == 0);
+        draw_selection_panel(framebuffer, WIDTH / 2 + 15, 52, WIDTH - 45, HEIGHT / 2 - 12, selected == 1);
+        draw_selection_panel(framebuffer, 45, HEIGHT / 2 + 12, WIDTH / 2 - 15, HEIGHT - 48, selected == 2);
+        draw_selection_panel(framebuffer, WIDTH / 2 + 15, HEIGHT / 2 + 12, WIDTH - 45, HEIGHT - 48, selected == 3);
 
         let camera_position = Vec3::new(0.0, 2.0, -15.0);
         let camera_forward = Vec3::new(0.0, -0.08, 1.0).normalize();
@@ -1001,8 +1089,13 @@ fn select_ship(
         let angle = start.elapsed().as_secs_f32() * 0.65;
 
         for (index, (_, model, spec)) in choices.iter().enumerate() {
-            let display_scale = if index == selected { 1.72 } else { 1.5 };
-            let position = Vec3::new(if index == 0 { 5.75 } else { -5.75 }, 0.0, 0.0);
+            let target_radius = if index == selected { 2.4 } else { 2.1 };
+            let display_scale = target_radius / (spec.model_scale * model_radius(model, centers[index]).max(0.001));
+            let position = Vec3::new(
+                if index % 2 == 0 { -4.4 } else { 4.4 },
+                if index < 2 { 5.8 } else { -2.55 },
+                0.0,
+            );
             let forward = Vec3::new(angle.sin(), 0.0, -angle.cos());
             let right = Vec3::new(angle.cos(), 0.0, angle.sin());
             let up = Vec3::new(0.0, 1.0, 0.0);
@@ -1021,6 +1114,21 @@ fn select_ship(
             );
         }
 
+        for (index, (name, _, _)) in choices.iter().enumerate() {
+            let center_x = if index % 2 == 0 {
+                (WIDTH / 4) as i32
+            } else {
+                (WIDTH * 3 / 4) as i32
+            };
+            let top_y = if index < 2 {
+                HEIGHT as i32 / 2 - 56
+            } else {
+                HEIGHT as i32 - 78
+            };
+            let color = if index == selected { 0xffd447 } else { 0xa9bbd2 };
+            draw_selection_label(framebuffer, &name.to_ascii_uppercase(), center_x, top_y, 3, color);
+        }
+
         window.update_with_buffer(&framebuffer.pixels, WIDTH, HEIGHT)?;
     }
     Ok(None)
@@ -1029,23 +1137,37 @@ fn select_ship(
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arwing_path = "assets/nave.obj";
     let kirby_path = "assets/kirby.obj";
+    let astra_path = "assets/nave_astra_simple_mejorada.obj";
+    let sebas_path = "assets/nave_sebas.obj";
     let arwing_model =
         load_obj(arwing_path).map_err(|error| format!("Error al cargar {arwing_path}: {error}"))?;
     let kirby_model =
         load_obj(kirby_path).map_err(|error| format!("Error al cargar {kirby_path}: {error}"))?;
+    let astra_model =
+        load_obj(astra_path).map_err(|error| format!("Error al cargar {astra_path}: {error}"))?;
+    let sebas_model =
+        load_obj(sebas_path).map_err(|error| format!("Error al cargar {sebas_path}: {error}"))?;
 
     let mut fullscreen = false;
     let mut window = create_window(fullscreen)?;
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     let Some(selected_ship) =
-        select_ship(&mut window, &mut framebuffer, &arwing_model, &kirby_model)?
+        select_ship(
+            &mut window,
+            &mut framebuffer,
+            &arwing_model,
+            &kirby_model,
+            &astra_model,
+            &sebas_model,
+        )?
     else {
         return Ok(());
     };
-    let (ship_model, ship_spec) = if selected_ship == 0 {
-        (&arwing_model, &ARWING_SPEC)
-    } else {
-        (&kirby_model, &KIRBY_SPEC)
+    let (ship_model, ship_spec) = match selected_ship {
+        0 => (&arwing_model, &ARWING_SPEC),
+        1 => (&kirby_model, &KIRBY_SPEC),
+        2 => (&astra_model, &ASTRA_SPEC),
+        _ => (&sebas_model, &SEBAS_SPEC),
     };
     let ship_center = model_center(ship_model);
     window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
