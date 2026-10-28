@@ -2,6 +2,7 @@ mod framebuffer;
 mod obj_loader;
 mod triangle;
 
+use std::collections::HashMap;
 use std::f32::consts::{PI, TAU};
 use std::time::Instant;
 
@@ -24,8 +25,12 @@ const WATER_PLANET_RADIUS: f32 = 24.0;
 const SHIP_COLLISION_RADIUS: f32 = 2.0;
 const COLLISION_MARGIN: f32 = 4.0;
 const AVOIDANCE_DISTANCE: f32 = 52.0;
+const ORBIT_LIMIT_RADIUS: f32 = 60.0;
+const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
 const ROLL_INPUT_SPEED: f32 = PI * 0.5;
 const ROLL_SPEED: f32 = PI;
+const MAX_MANUAL_ROLL: f32 = PI * 0.22;
+const AUTO_LEVEL_SPEED: f32 = 3.2;
 const TURN_RESPONSE: f32 = 7.0;
 const MAX_YAW_RATE: f32 = 1.15;
 const MAX_PITCH_RATE: f32 = 1.1;
@@ -44,8 +49,9 @@ struct Ship {
     steering_pitch: f32,
     orbit_axis: Option<Vec3>,
     orbit_center: Option<Vec3>,
-    orbit_radius: f32,
     orbit_camera_blend: f32,
+    planet_locked: bool,
+    orbit_release_active: bool,
     speed: f32,
 }
 
@@ -63,8 +69,9 @@ impl Ship {
             steering_pitch: 0.0,
             orbit_axis: None,
             orbit_center: None,
-            orbit_radius: 0.0,
             orbit_camera_blend: 0.0,
+            planet_locked: false,
+            orbit_release_active: false,
             speed: 12.0,
         }
     }
@@ -102,6 +109,66 @@ struct Camera {
     forward: Vec3,
     right: Vec3,
     up: Vec3,
+}
+
+struct ObjectCollider {
+    center: Vec3,
+    radius: f32,
+}
+
+fn build_object_colliders(model: &Model, model_center: Vec3, scale: f32) -> Vec<ObjectCollider> {
+    let mut bounds: HashMap<&str, (Vec3, Vec3)> = HashMap::new();
+
+    for face in &model.faces {
+        let name = face.group.as_str();
+        if !(name.contains("Palmera")
+            || name.contains("Roca")
+            || name.contains("Bloque")
+            || name.contains("Interrogacion"))
+        {
+            continue;
+        }
+
+        let entry = bounds.entry(name).or_insert((
+            Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY),
+            Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY),
+        ));
+        for index in face.indices {
+            let vertex = model.vertices[index];
+            entry.0.x = entry.0.x.min(vertex.x);
+            entry.0.y = entry.0.y.min(vertex.y);
+            entry.0.z = entry.0.z.min(vertex.z);
+            entry.1.x = entry.1.x.max(vertex.x);
+            entry.1.y = entry.1.y.max(vertex.y);
+            entry.1.z = entry.1.z.max(vertex.z);
+        }
+    }
+
+    bounds
+        .into_values()
+        .map(|(min, max)| {
+            let center = min.add(max).mul(0.5);
+            let half_size = max.sub(min).mul(0.5);
+            ObjectCollider {
+                center: center.sub(model_center).mul(scale),
+                radius: half_size.dot(half_size).sqrt() * scale + 0.6,
+            }
+        })
+        .filter(|collider| collider.radius > 0.7)
+        .collect()
+}
+
+fn material_radius(model: &Model, center: Vec3, material_name: &str) -> f32 {
+    let mut radius: f32 = 0.0;
+    for face in &model.faces {
+        if face.material.contains(material_name) {
+            for index in face.indices {
+                let offset = model.vertices[index].sub(center);
+                radius = radius.max(offset.dot(offset).sqrt());
+            }
+        }
+    }
+    radius
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -413,10 +480,12 @@ fn make_sphere(radius: f32, stacks: usize, slices: usize, sun: bool) -> Model {
             faces.push(Face {
                 indices: [first, second, first + 1],
                 material: material.to_string(),
+                group: if sun { "sun" } else { "planet" }.to_string(),
             });
             faces.push(Face {
                 indices: [first + 1, second, second + 1],
                 material: material.to_string(),
+                group: if sun { "sun" } else { "planet" }.to_string(),
             });
         }
     }
@@ -454,8 +523,8 @@ fn chase_camera(ship: &Ship) -> Camera {
     let (orbit_position, orbit_target) = if let Some(planet_center) = ship.orbit_center {
         let radial = ship.position.sub(planet_center).normalize();
         (
-            planet_center.add(radial.mul(105.0)).add(world_up.mul(32.0)),
-            planet_center.add(radial.mul(WATER_PLANET_RADIUS * 0.55)),
+            planet_center.add(radial.mul(55.0)).add(world_up.mul(16.0)),
+            ship.position.add(forward.mul(3.0)),
         )
     } else {
         (chase_position, chase_target)
@@ -505,18 +574,21 @@ fn move_around_planet(
     ship: &mut Ship,
     movement: f32,
     planet_center: Vec3,
+    planet_surface_radius: f32,
+    planet_rotation: f32,
+    object_colliders: &[ObjectCollider],
     yaw_input: i8,
     pitch_input: i8,
 ) {
-    let safe_radius = WATER_PLANET_RADIUS + SHIP_COLLISION_RADIUS + COLLISION_MARGIN;
-    let steps = (movement / 5.0).ceil().max(1.0) as usize;
+    let safe_radius = planet_surface_radius + SHIP_COLLISION_RADIUS + COLLISION_MARGIN;
+    let steps = movement.ceil().max(1.0) as usize;
     let step_distance = movement / steps as f32;
 
-    if ship.orbit_axis.is_some() {
+    if ship.planet_locked {
         if let Some(previous_center) = ship.orbit_center {
             ship.position = ship.position.add(planet_center.sub(previous_center));
-            ship.orbit_center = Some(planet_center);
         }
+        ship.orbit_center = Some(planet_center);
     }
 
     for _ in 0..steps {
@@ -530,7 +602,29 @@ fn move_around_planet(
         let (mut forward, right, up) = ship.movement_basis();
         let approaching = forward.dot(normal) < 0.0;
 
-        if ship.orbit_axis.is_none() && distance < AVOIDANCE_DISTANCE && approaching {
+        if ship.orbit_release_active && distance > ORBIT_LIMIT_RADIUS + 8.0 {
+            ship.orbit_release_active = false;
+        }
+        if !ship.orbit_release_active && distance < AVOIDANCE_DISTANCE {
+            if !ship.planet_locked {
+                let level_roll = (ship.roll + PI).rem_euclid(TAU) - PI;
+                ship.roll = level_roll.clamp(-MAX_MANUAL_ROLL, MAX_MANUAL_ROLL);
+                ship.roll_target = ship.roll;
+                ship.speed = ship.speed.max(MIN_SPEED);
+            }
+            ship.planet_locked = true;
+        }
+
+        if ship.planet_locked {
+            ship.orbit_axis = Some(normal);
+            ship.orbit_center = Some(planet_center);
+        } else if distance > AVOIDANCE_DISTANCE + 8.0 || ship.orbit_release_active {
+            ship.orbit_axis = None;
+        }
+
+        if distance < AVOIDANCE_DISTANCE && approaching {
+            let strength = ((AVOIDANCE_DISTANCE - distance) / (AVOIDANCE_DISTANCE - safe_radius))
+                .clamp(0.0, 1.0);
             let mut tangent = forward.sub(normal.mul(forward.dot(normal)));
             if tangent.dot(tangent) < 0.0001 {
                 let side = if yaw_input == 0 {
@@ -541,34 +635,30 @@ fn move_around_planet(
                 tangent = right.mul(side).add(up.mul(pitch_input as f32 * 0.35));
             }
             let tangent = tangent.normalize();
-            ship.orbit_axis = Some(normal.cross(tangent).normalize());
-            ship.orbit_center = Some(planet_center);
-            ship.orbit_radius = distance.clamp(safe_radius + 3.0, AVOIDANCE_DISTANCE - 3.0);
+            let steering = 0.12 + strength * 0.55;
+            forward = forward
+                .mul(1.0 - steering)
+                .add(tangent.mul(steering))
+                .normalize();
+            let (yaw, pitch) = direction_to_angles(forward);
+            ship.yaw = yaw;
+            ship.pitch = pitch.clamp(-1.25, 1.25);
         }
 
-        if let Some(axis) = ship.orbit_axis {
-            ship.orbit_radius += pitch_input as f32 * step_distance * 0.18;
-            ship.orbit_radius = ship.orbit_radius.max(safe_radius + 2.0);
-
-            if ship.orbit_radius > AVOIDANCE_DISTANCE + 6.0 {
-                ship.orbit_axis = None;
-            } else {
-                let tangent = axis.cross(normal).normalize();
-                let radial_error = (ship.orbit_radius - distance).clamp(-8.0, 8.0);
-                forward = tangent.add(normal.mul(radial_error * 0.16)).normalize();
-                let center_direction = normal.mul(-1.0);
-                let orbit_bank = -center_direction.dot(right).clamp(-1.0, 1.0) * STEERING_BANK;
-                ship.steering_bank += (orbit_bank - ship.steering_bank) * 0.12;
-
-                let (yaw, pitch) = direction_to_angles(forward);
-                ship.yaw = yaw;
-                ship.pitch = pitch.clamp(-1.25, 1.25);
-                ship.yaw_rate *= 0.82;
-                ship.pitch_rate *= 0.82;
+        if ship.planet_locked {
+            let mut tangent = forward.sub(normal.mul(forward.dot(normal)));
+            if tangent.dot(tangent) < 0.0001 {
+                tangent = right;
             }
-        }
+            tangent = tangent.normalize();
 
-        if ship.orbit_axis.is_some() {
+            let target_radius = safe_radius + ORBIT_FLIGHT_ALTITUDE;
+            let radial_correction = ((target_radius - distance) * 0.06).clamp(-0.35, 0.35);
+            forward = tangent
+                .mul((1.0 - radial_correction * radial_correction).sqrt())
+                .add(normal.mul(radial_correction))
+                .normalize();
+
             let (yaw, pitch) = direction_to_angles(forward);
             ship.yaw = yaw;
             ship.pitch = pitch.clamp(-1.25, 1.25);
@@ -584,10 +674,65 @@ fn move_around_planet(
             } else {
                 normal
             };
-            planet_center.add(surface_normal.mul(safe_radius))
+            let sliding = forward
+                .sub(surface_normal.mul(forward.dot(surface_normal)))
+                .normalize();
+            planet_center
+                .add(surface_normal.mul(safe_radius))
+                .add(sliding.mul(step_distance))
+        } else if ship.planet_locked && proposed_distance > ORBIT_LIMIT_RADIUS {
+            let boundary_normal = proposed_offset.mul(1.0 / proposed_distance);
+            let mut tangent = forward.sub(boundary_normal.mul(forward.dot(boundary_normal)));
+            if tangent.dot(tangent) < 0.0001 {
+                tangent = right;
+            }
+            tangent = tangent.normalize();
+            let curved_normal = boundary_normal
+                .add(tangent.mul(step_distance / ORBIT_LIMIT_RADIUS))
+                .normalize();
+            let (yaw, pitch) = direction_to_angles(tangent);
+            ship.yaw = yaw;
+            ship.pitch = pitch.clamp(-1.25, 1.25);
+            ship.yaw_rate *= 0.7;
+            ship.pitch_rate *= 0.7;
+            planet_center.add(curved_normal.mul(ORBIT_LIMIT_RADIUS))
         } else {
             proposed
         };
+
+        let (sin_rotation, cos_rotation) = planet_rotation.sin_cos();
+        for collider in object_colliders {
+            let local = collider.center;
+            let collider_center = Vec3::new(
+                local.x * cos_rotation - local.z * sin_rotation,
+                local.y,
+                local.x * sin_rotation + local.z * cos_rotation,
+            )
+            .add(planet_center);
+            let separation = collider.radius + SHIP_COLLISION_RADIUS + 0.8;
+            let collider_offset = ship.position.sub(collider_center);
+            let collider_distance = collider_offset.dot(collider_offset).sqrt();
+
+            if collider_distance < separation {
+                let object_normal = if collider_distance > 0.001 {
+                    collider_offset.mul(1.0 / collider_distance)
+                } else {
+                    normal
+                };
+                let mut tangent = forward.sub(object_normal.mul(forward.dot(object_normal)));
+                if tangent.dot(tangent) < 0.0001 {
+                    tangent = right;
+                }
+                tangent = tangent.normalize();
+                ship.position = collider_center
+                    .add(object_normal.mul(separation))
+                    .add(tangent.mul(step_distance));
+                let (yaw, pitch) = direction_to_angles(tangent);
+                ship.yaw = yaw;
+                ship.pitch = pitch.clamp(-1.25, 1.25);
+                forward = tangent;
+            }
+        }
     }
 }
 
@@ -730,12 +875,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         load_obj(planet_path).map_err(|error| format!("Error al cargar {planet_path}: {error}"))?;
     let planet_center = model_center(&planet);
     let planet_scale = WATER_PLANET_RADIUS / model_radius(&planet, planet_center).max(0.001);
+    let planet_surface_radius = material_radius(&planet, planet_center, "Oceano") * planet_scale;
+    let object_colliders = build_object_colliders(&planet, planet_center, planet_scale);
     let sun = make_sphere(55.0, 18, 28, true);
 
     println!("Vuelo libre 3D iniciado");
     println!("W/S o flechas: subir/bajar | Espacio: acelerar | Ctrl: frenar");
     println!("A/D: direccion | Mantener Q/E: alabeo | R: reiniciar | P: captura");
     println!("1: warp al planeta acuatico | Shift: velocidad de luz");
+    println!("Backspace: abandonar la zona orbital");
+    println!(
+        "Colisionadores alrededor del planeta: {}",
+        object_colliders.len()
+    );
 
     let mut fullscreen = false;
     let mut window = create_window(fullscreen)?;
@@ -761,7 +913,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         if window.is_key_pressed(Key::Key1, KeyRepeat::No) {
             let destination = water_planet_position(world_time);
-            ship.position = destination.add(Vec3::new(55.0, 8.0, 0.0));
+            ship.position = destination.add(Vec3::new(45.0, 8.0, 0.0));
             ship.yaw = 0.0;
             ship.pitch = -0.08;
             ship.roll = 0.0;
@@ -772,8 +924,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ship.steering_pitch = 0.0;
             ship.orbit_axis = None;
             ship.orbit_center = None;
-            ship.orbit_radius = 0.0;
             ship.orbit_camera_blend = 0.0;
+            ship.planet_locked = false;
+            ship.orbit_release_active = false;
             ship.speed = 12.0;
             println!("Warp completado: planeta acuatico");
         }
@@ -796,7 +949,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ship.steering_pitch += (target_visual_pitch - ship.steering_pitch) * response;
 
         let roll_input = window.is_key_down(Key::E) as i8 - window.is_key_down(Key::Q) as i8;
-        ship.roll_target += roll_input as f32 * ROLL_INPUT_SPEED * delta_time;
+        if ship.planet_locked {
+            if roll_input != 0 {
+                ship.roll_target = (ship.roll_target
+                    + roll_input as f32 * ROLL_INPUT_SPEED * delta_time)
+                    .clamp(-MAX_MANUAL_ROLL, MAX_MANUAL_ROLL);
+            } else {
+                let level_response = 1.0 - (-AUTO_LEVEL_SPEED * delta_time).exp();
+                ship.roll_target += (0.0 - ship.roll_target) * level_response;
+            }
+        } else {
+            ship.roll_target += roll_input as f32 * ROLL_INPUT_SPEED * delta_time;
+        }
 
         let roll_difference = ship.roll_target - ship.roll;
         let roll_step = (ROLL_SPEED * delta_time).min(roll_difference.abs());
@@ -809,6 +973,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ship.speed = (ship.speed - 28.0 * delta_time).max(MIN_SPEED);
         }
 
+        if window.is_key_pressed(Key::Backspace, KeyRepeat::No) && ship.planet_locked {
+            ship.planet_locked = false;
+            ship.orbit_release_active = true;
+            ship.orbit_axis = None;
+            println!("Orbita liberada");
+        }
+
         let light_speed = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
         let active_speed = if light_speed { LIGHT_SPEED } else { ship.speed };
         let movement = active_speed * delta_time;
@@ -816,6 +987,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &mut ship,
             movement,
             water_planet_position(world_time),
+            planet_surface_radius,
+            world_time * 0.25,
+            &object_colliders,
             yaw_input,
             pitch_input,
         );
