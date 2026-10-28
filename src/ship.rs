@@ -6,6 +6,8 @@ use crate::obj_loader::Vec3;
 pub enum ModelAxes {
     Arwing,
     Kirby,
+    Astra,
+    Sebas,
 }
 
 pub struct ShipSpec {
@@ -145,6 +147,15 @@ impl ShipSpec {
                 .mul(-local.y)
                 .add(up.mul(local.z))
                 .add(right.mul(local.x)),
+            ModelAxes::Astra => forward
+                .mul(local.z)
+                .add(up.mul(local.y))
+                .add(right.mul(local.x)),
+            // This mesh is rolled upside down around its longitudinal axis.
+            ModelAxes::Sebas => forward
+                .mul(-local.y)
+                .add(up.mul(-local.z))
+                .add(right.mul(-local.x)),
         }
     }
 }
