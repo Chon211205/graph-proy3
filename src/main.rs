@@ -1416,6 +1416,49 @@ fn draw_underwater_background(framebuffer: &mut Framebuffer, travel: f32) {
     }
 }
 
+fn apply_underwater_lighting(framebuffer: &mut Framebuffer, time: f32) {
+    let width = framebuffer.width as f32;
+    let height = framebuffer.height as f32;
+
+    for y in 0..framebuffer.height {
+        let depth = y as f32 / height;
+        let surface_light = (1.0 - depth).powf(1.65);
+        let vertical_darkness = 0.50 + surface_light * 0.34;
+
+        for x in 0..framebuffer.width {
+            let normalized_x = x as f32 / width * 2.0 - 1.0;
+            let edge_darkness = (1.0 - normalized_x * normalized_x * 0.30).clamp(0.62, 1.0);
+
+            // Un haz ancho que nace en la superficie y se abre al descender.
+            let swaying_center = (time * 0.22).sin() * 0.16;
+            let cone_width = 0.12 + depth * 0.62;
+            let cone = (1.0 - (normalized_x - swaying_center).abs() / cone_width).clamp(0.0, 1.0)
+                * (1.0 - depth * 0.72);
+
+            // Causticas suaves: se notan arriba y desaparecen en la profundidad.
+            let caustic = (normalized_x * 18.0 + depth * 11.0 + time * 1.7)
+                .sin()
+                .max(0.0)
+                .powf(5.0)
+                * surface_light
+                * 0.13;
+            let light =
+                (vertical_darkness * edge_darkness + cone * 0.22 + caustic).clamp(0.30, 1.0);
+
+            let pixel = framebuffer.pixels[y * framebuffer.width + x];
+            let red = ((pixel >> 16) & 255) as f32;
+            let green = ((pixel >> 8) & 255) as f32;
+            let blue = (pixel & 255) as f32;
+
+            // El agua absorbe primero los rojos y conserva mas azul/cian.
+            let red = (red * light * 0.67).clamp(0.0, 255.0) as u32;
+            let green = (green * light * 0.91 + cone * 5.0).clamp(0.0, 255.0) as u32;
+            let blue = (blue * light + surface_light * 4.0 + cone * 8.0).clamp(0.0, 255.0) as u32;
+            framebuffer.pixels[y * framebuffer.width + x] = (red << 16) | (green << 8) | blue;
+        }
+    }
+}
+
 fn render_water_level(
     level: &Model,
     level_floor: &Model,
@@ -1485,6 +1528,7 @@ fn render_water_level(
         fire_charge,
         false,
     );
+    apply_underwater_lighting(framebuffer, world_time);
 }
 
 fn draw_selection_panel(
