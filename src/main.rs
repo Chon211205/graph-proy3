@@ -5,7 +5,7 @@ mod obj_loader;
 mod ship;
 mod triangle;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::f32::consts::{PI, TAU};
 use std::time::Instant;
 
@@ -959,6 +959,32 @@ fn model_radius(model: &Model, center: Vec3) -> f32 {
         .iter()
         .map(|vertex| vertex.sub(center).dot(vertex.sub(center)).sqrt())
         .fold(0.0, f32::max)
+}
+
+fn move_swordfish_wheels_outward(model: &mut Model) {
+    // The OBJ has no wheel groups, so identify side-mounted rubber and hubs by position.
+    let wheel_vertices: HashSet<usize> = model
+        .faces
+        .iter()
+        .filter(|face| face.material == "Titanio" || face.material == "Grafito")
+        .filter(|face| {
+            let center = face
+                .indices
+                .iter()
+                .map(|&index| model.vertices[index])
+                .fold(Vec3::default(), |sum, vertex| sum.add(vertex))
+                .mul(1.0 / face.indices.len() as f32);
+            center.x.abs() > 0.9 && center.z.abs() > 0.9 && center.y < 1.4
+        })
+        .flat_map(|face| face.indices)
+        .collect();
+    if wheel_vertices.is_empty() {
+        return;
+    }
+    for index in wheel_vertices {
+        let vertex = &mut model.vertices[index];
+        vertex.x += vertex.x.signum() * 0.45;
+    }
 }
 
 fn chase_camera(ship: &Ship) -> Camera {
@@ -2029,8 +2055,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         .map_err(|error| format!("Error al cargar {astra_car_path}: {error}"))?;
     let cowboyb_model = load_obj(cowboyb_path)
         .map_err(|error| format!("Error al cargar {cowboyb_path}: {error}"))?;
-    let cowboyb_car_model = load_obj(cowboyb_car_path)
+    let mut cowboyb_car_model = load_obj(cowboyb_car_path)
         .map_err(|error| format!("Error al cargar {cowboyb_car_path}: {error}"))?;
+    move_swordfish_wheels_outward(&mut cowboyb_car_model);
     let astra_submarine_model = load_obj(astra_submarine_path)
         .map_err(|error| format!("Error al cargar {astra_submarine_path}: {error}"))?;
     let cowboyb_submarine_model = load_obj(cowboyb_submarine_path)
