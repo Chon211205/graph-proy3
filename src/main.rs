@@ -17,7 +17,7 @@ use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use ship::{
     ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC,
     COWBOYB_CAR_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC,
-    MCQUEEN_SPEC, Projectile, Ship, ShipController, ShipInput, ShipSpec,
+    MCQUEEN_CAR_SPEC, MCQUEEN_SPEC, Projectile, Ship, ShipController, ShipInput, ShipSpec,
 };
 use triangle::{ScreenVertex, draw_triangle_shaded_region};
 
@@ -2390,7 +2390,7 @@ fn select_ship(
     choices: &[(&Model, &ShipSpec)],
     ship_forms: &[Vec<(&Model, &ShipSpec, &str)>],
     initial_selection: usize,
-) -> Result<Option<usize>, minifb::Error> {
+) -> Result<Option<(usize, usize)>, minifb::Error> {
     crate::input::clear();
     window.update();
     let mut selected = initial_selection % choices.len();
@@ -2451,7 +2451,7 @@ fn select_ship(
             );
         }
         if crate::input::pressed(Key::Enter) {
-            return Ok(Some(selected));
+            return Ok(Some((selected, variants[selected])));
         }
         window.set_title("Hangar | A/D: nave | V: cambiar forma | Enter: jugar | Esc: menu");
         menu::draw_backdrop(framebuffer);
@@ -2585,6 +2585,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         load_obj("assets/vehicles/buzz_submarino.obj")?,
     ];
     let mcqueen_model = load_obj("assets/vehicles/mcqueen_nave.obj")?;
+    let mcqueen_car_model = load_obj("assets/vehicles/mcqueen_carro.obj")?;
+    let mcqueen_car_center = model_center(&mcqueen_car_model);
     let choices = [
         (&arwing_model, &ARWING_SPEC),
         (&kirby_model, &KIRBY_SPEC),
@@ -2617,9 +2619,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             (&buzz_variants[1], &BUZZ_SPEC, "MODO CARRO"),
             (&buzz_variants[2], &BUZZ_SPEC, "SUBMARINO"),
         ],
-        vec![(&mcqueen_model, &MCQUEEN_SPEC, "SOLO MODO ESPACIAL")],
+        vec![
+            (&mcqueen_model, &MCQUEEN_SPEC, "MODO ESPACIAL"),
+            (&mcqueen_car_model, &MCQUEEN_CAR_SPEC, "MODO CARRO"),
+        ],
     ];
-    let mut selected_ship = loop {
+    let (mut selected_ship, initial_form) = loop {
         if menu::show(&mut window, &mut framebuffer, false)? == menu::Action::Quit {
             return Ok(false);
         }
@@ -2631,13 +2636,16 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         }
     };
     let (mut ship_model, mut ship_spec) = choices[selected_ship];
+    if selected_ship == 5 && initial_form == 1 {
+        ship_spec = &MCQUEEN_CAR_SPEC;
+    }
     let mut base_center = model_center(ship_model);
     let buzz_centers = [
         model_center(&buzz_variants[0]),
         model_center(&buzz_variants[1]),
         model_center(&buzz_variants[2]),
     ];
-    let mut car_mode = false;
+    let mut car_mode = selected_ship == 5 && initial_form == 1;
     let (mut level_ship_model, mut level_ship_spec) = match selected_ship {
         0 => (&arwing_submarine_model, &ARWING_SUBMARINE_SPEC),
         1 => (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC),
@@ -2724,7 +2732,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             match menu::show(&mut window, &mut framebuffer, true)? {
                 menu::Action::Quit => return Ok(false),
                 menu::Action::Hangar => {
-                    if let Some(new_selection) = select_ship(
+                    if let Some((new_selection, new_form)) = select_ship(
                         &mut window,
                         &mut framebuffer,
                         &choices,
@@ -2733,6 +2741,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     )? {
                         selected_ship = new_selection;
                         (ship_model, ship_spec) = choices[selected_ship];
+                        if selected_ship == 5 && new_form == 1 {
+                            ship_spec = &MCQUEEN_CAR_SPEC;
+                        }
                         base_center = model_center(ship_model);
                         (level_ship_model, level_ship_spec) = match selected_ship {
                             0 => (&arwing_submarine_model, &ARWING_SUBMARINE_SPEC),
@@ -2748,7 +2759,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         game_mode = GameMode::FreeWorld;
                         water_level_state = WaterLevelState::new();
                         bubble_emitter.clear();
-                        car_mode = false;
+                        car_mode = selected_ship == 5 && new_form == 1;
                         distance = 0.0;
                     }
                 }
@@ -2762,8 +2773,19 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             previous = Instant::now();
             continue;
         }
-        if selected_ship == 4 && game_mode == GameMode::FreeWorld && crate::input::pressed(Key::T) {
+        if matches!(selected_ship, 4 | 5)
+            && game_mode == GameMode::FreeWorld
+            && crate::input::pressed(Key::T)
+        {
             car_mode = !car_mode;
+            if selected_ship == 5 {
+                ship_spec = if car_mode {
+                    &MCQUEEN_CAR_SPEC
+                } else {
+                    &MCQUEEN_SPEC
+                };
+                ship_controller.ship.spec = ship_spec;
+            }
         }
         let now = Instant::now();
         let frame_time = now.duration_since(previous).as_secs_f32();
@@ -2846,6 +2868,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             } else {
                 usize::from(car_mode)
             }]
+        } else if selected_ship == 5 && car_mode {
+            &mcqueen_car_model
         } else {
             ship_model
         };
@@ -2855,6 +2879,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             } else {
                 usize::from(car_mode)
             }]
+        } else if selected_ship == 5 && car_mode {
+            mcqueen_car_center
         } else {
             base_center
         };
@@ -2901,7 +2927,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 
                 if ship.planet_locked {
                     window.set_title(if selected_ship == 5 {
-                        "Rayo McQueen | Solo modo espacial | Backspace: salir de orbita"
+                        "Rayo McQueen | T: nave/carro | Backspace: salir de orbita"
                     } else {
                         "Planeta acuatico | Enter: iniciar nivel | Backspace: salir"
                     });
@@ -2988,6 +3014,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             } else {
                 "BUZZ - NAVE"
             }
+        } else if selected_ship == 5 {
+            if car_mode {
+                "RAYO MCQUEEN - CARRO"
+            } else {
+                "RAYO MCQUEEN - NAVE"
+            }
         } else {
             ship_spec.name
         };
@@ -3034,6 +3066,91 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mcqueen_car_has_four_exposed_wheels_and_renders_from_multiple_angles() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let model = load_obj(root.join("assets/vehicles/mcqueen_carro.obj")).unwrap();
+        let spaceship = load_obj(root.join("assets/vehicles/mcqueen_nave.obj")).unwrap();
+        assert_ne!(model.faces.len(), spaceship.faces.len());
+        assert!(
+            model
+                .vertices
+                .iter()
+                .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
+        );
+        let mut wheel_vertices = HashSet::new();
+        for face in &model.faces {
+            assert!(
+                face.indices
+                    .iter()
+                    .all(|&index| index < model.vertices.len())
+            );
+            if face.group == "Neumatico" {
+                wheel_vertices.extend(face.indices);
+            }
+        }
+        for x_sign in [-1.0_f32, 1.0] {
+            for z_sign in [-1.0_f32, 1.0] {
+                let count = wheel_vertices
+                    .iter()
+                    .filter(|&&index| {
+                        let v = model.vertices[index];
+                        v.x * x_sign > 1.5 && v.z * z_sign > 1.0
+                    })
+                    .count();
+                assert_eq!(count, 64, "missing wheel at {x_sign}, {z_sign}");
+            }
+        }
+        for (group, color) in [
+            ("Numero_95", [255, 211, 36]),
+            ("Carroceria", [225, 26, 35]),
+            ("Iris", [32, 105, 220]),
+            ("Neumatico", [26, 29, 38]),
+        ] {
+            assert!(
+                model
+                    .faces
+                    .iter()
+                    .any(|face| face.group == group && face.color == MaterialColor::Fixed(color))
+            );
+        }
+        let center = model_center(&model);
+        assert!(
+            (1.5..2.5).contains(&(model_radius(&model, center) * MCQUEEN_CAR_SPEC.model_scale))
+        );
+        let mut frame = Framebuffer::new(WIDTH, HEIGHT);
+        frame.clear(0x080e1d);
+        for (index, angle) in [0.35_f32, 1.57, 3.5].into_iter().enumerate() {
+            let forward = Vec3::new(angle.sin(), 0.0, -angle.cos());
+            let side = Vec3::new(angle.cos(), 0.0, angle.sin());
+            let before = frame.pixels.iter().filter(|&&p| p != 0x080e1d).count();
+            render_model(
+                &model,
+                &mut frame,
+                &test_camera(),
+                |v| {
+                    let local = MCQUEEN_CAR_SPEC.model_to_world(
+                        v.sub(center).mul(0.80),
+                        forward,
+                        side,
+                        Vec3::new(0.0, 1.0, 0.0),
+                    );
+                    Vec3::new(
+                        local.x + (index as f32 - 1.0) * 7.0,
+                        local.y * 0.90 + local.z * 0.43,
+                        14.0 + local.z * 0.90 - local.y * 0.43,
+                    )
+                },
+                None,
+                None,
+            );
+            assert!(frame.pixels.iter().filter(|&&p| p != 0x080e1d).count() > before + 1000);
+        }
+        if let Ok(path) = std::env::var("MCQUEEN_CAR_PREVIEW") {
+            frame.save_png(&path).unwrap();
+        }
+    }
 
     #[test]
     fn mcqueen_spaceship_loads_and_renders_from_multiple_angles() {
