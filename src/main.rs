@@ -48,6 +48,7 @@ const WATER_ENEMY_SCALE: f32 = 1.05;
 const LEVEL_CHUNK_LENGTH: f32 = 32.0;
 const LEVEL_RENDER_BEHIND: f32 = 48.0;
 const LEVEL_RENDER_AHEAD: f32 = 112.0;
+const COLLISION_GRID_CELL_SIZE: f32 = 12.0;
 
 fn render_worker_count() -> usize {
     static WORKER_COUNT: OnceLock<usize> = OnceLock::new();
@@ -64,6 +65,50 @@ struct Camera {
 struct ObjectCollider {
     center: Vec3,
     radius: f32,
+}
+
+struct SpatialCollisionGrid {
+    cell_size: f32,
+    cells: HashMap<(i32, i32, i32), Vec<usize>>,
+}
+
+impl SpatialCollisionGrid {
+    fn new(cell_size: f32) -> Self {
+        debug_assert!(cell_size > 0.0);
+        Self {
+            cell_size,
+            cells: HashMap::new(),
+        }
+    }
+
+    fn coordinate(&self, value: f32) -> i32 {
+        (value / self.cell_size).floor() as i32
+    }
+
+    fn insert_sphere(&mut self, index: usize, center: Vec3, radius: f32) {
+        let min_x = self.coordinate(center.x - radius);
+        let max_x = self.coordinate(center.x + radius);
+        let min_y = self.coordinate(center.y - radius);
+        let max_y = self.coordinate(center.y + radius);
+        let min_z = self.coordinate(center.z - radius);
+        let max_z = self.coordinate(center.z + radius);
+        for x in min_x..=max_x {
+            for y in min_y..=max_y {
+                for z in min_z..=max_z {
+                    self.cells.entry((x, y, z)).or_default().push(index);
+                }
+            }
+        }
+    }
+
+    fn candidates(&self, point: Vec3) -> &[usize] {
+        let key = (
+            self.coordinate(point.x),
+            self.coordinate(point.y),
+            self.coordinate(point.z),
+        );
+        self.cells.get(&key).map(Vec::as_slice).unwrap_or(&[])
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -479,9 +524,29 @@ fn resolve_water_enemy_collisions(
     ship: &mut Ship,
     projectiles: &mut Vec<Projectile>,
 ) {
+    let enemy_positions: Vec<Vec3> = state
+        .enemies
+        .iter()
+        .map(|enemy| enemy.position(state.elapsed))
+        .collect();
+    let mut collision_grid = SpatialCollisionGrid::new(COLLISION_GRID_CELL_SIZE);
+    for (index, enemy) in state.enemies.iter().enumerate() {
+        if enemy.alive {
+            collision_grid.insert_sphere(
+                index,
+                enemy_positions[index],
+                enemy.collision_radius() + ship.spec.collision_radius.max(2.0),
+            );
+        }
+    }
+
     for projectile in projectiles.iter_mut().filter(|shot| shot.lifetime > 0.0) {
-        for enemy in state.enemies.iter_mut().filter(|enemy| enemy.alive) {
-            let offset = projectile.position.sub(enemy.position(state.elapsed));
+        for &enemy_index in collision_grid.candidates(projectile.position) {
+            let enemy = &mut state.enemies[enemy_index];
+            if !enemy.alive {
+                continue;
+            }
+            let offset = projectile.position.sub(enemy_positions[enemy_index]);
             let hit_radius = enemy.collision_radius() + projectile.scale * 0.35;
             if offset.dot(offset) <= hit_radius * hit_radius {
                 enemy.alive = false;
@@ -492,8 +557,12 @@ fn resolve_water_enemy_collisions(
         }
     }
 
-    for enemy in state.enemies.iter().filter(|enemy| enemy.alive) {
-        let enemy_position = enemy.position(state.elapsed);
+    for &enemy_index in collision_grid.candidates(ship.position) {
+        let enemy = &state.enemies[enemy_index];
+        if !enemy.alive {
+            continue;
+        }
+        let enemy_position = enemy_positions[enemy_index];
         let offset = ship.position.sub(enemy_position);
         let separation = ship.spec.collision_radius + enemy.collision_radius();
         let distance_squared = offset.dot(offset);
@@ -1010,6 +1079,28 @@ fn move_around_planet(
         ship.orbit_center = Some(planet_center);
     }
 
+    let (sin_rotation, cos_rotation) = planet_rotation.sin_cos();
+    let rotated_collider_centers: Vec<Vec3> = object_colliders
+        .iter()
+        .map(|collider| {
+            let local = collider.center;
+            Vec3::new(
+                local.x * cos_rotation - local.z * sin_rotation,
+                local.y,
+                local.x * sin_rotation + local.z * cos_rotation,
+            )
+            .add(planet_center)
+        })
+        .collect();
+    let mut object_grid = SpatialCollisionGrid::new(COLLISION_GRID_CELL_SIZE);
+    for (index, collider) in object_colliders.iter().enumerate() {
+        object_grid.insert_sphere(
+            index,
+            rotated_collider_centers[index],
+            collider.radius + ship.spec.collision_radius + 0.8,
+        );
+    }
+
     for _ in 0..steps {
         let offset = ship.position.sub(planet_center);
         let distance = offset.dot(offset).sqrt();
@@ -1119,15 +1210,9 @@ fn move_around_planet(
             proposed
         };
 
-        let (sin_rotation, cos_rotation) = planet_rotation.sin_cos();
-        for collider in object_colliders {
-            let local = collider.center;
-            let collider_center = Vec3::new(
-                local.x * cos_rotation - local.z * sin_rotation,
-                local.y,
-                local.x * sin_rotation + local.z * cos_rotation,
-            )
-            .add(planet_center);
+        for &collider_index in object_grid.candidates(ship.position) {
+            let collider = &object_colliders[collider_index];
+            let collider_center = rotated_collider_centers[collider_index];
             let separation = collider.radius + ship.spec.collision_radius + 0.8;
             let collider_offset = ship.position.sub(collider_center);
             let collider_distance = collider_offset.dot(collider_offset).sqrt();
@@ -2411,6 +2496,24 @@ mod tests {
         let spatial = LevelSpatialIndex::new(&model, vec![collider]);
         assert!(!spatial.nearby_colliders(31.5).is_empty());
         assert!(!spatial.nearby_colliders(32.5).is_empty());
+    }
+
+    #[test]
+    fn collision_grid_handles_negative_cells_and_sphere_boundaries() {
+        let mut grid = SpatialCollisionGrid::new(10.0);
+        grid.insert_sphere(7, Vec3::new(-0.5, 0.0, 0.0), 1.0);
+        assert_eq!(grid.candidates(Vec3::new(-1.0, 0.0, 0.0)), &[7]);
+        assert_eq!(grid.candidates(Vec3::new(0.25, 0.0, 0.0)), &[7]);
+        assert!(grid.candidates(Vec3::new(25.0, 0.0, 0.0)).is_empty());
+    }
+
+    #[test]
+    fn collision_grid_returns_only_local_candidates() {
+        let mut grid = SpatialCollisionGrid::new(8.0);
+        grid.insert_sphere(0, Vec3::new(1.0, 1.0, 1.0), 2.0);
+        grid.insert_sphere(1, Vec3::new(100.0, 100.0, 100.0), 2.0);
+        assert!(grid.candidates(Vec3::new(1.0, 1.0, 1.0)).contains(&0));
+        assert!(!grid.candidates(Vec3::new(1.0, 1.0, 1.0)).contains(&1));
     }
 
     #[test]
