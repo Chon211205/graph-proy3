@@ -11,13 +11,13 @@ use std::time::Instant;
 
 use framebuffer::Framebuffer;
 use minifb::{Key, ScaleMode, Window, WindowOptions};
-use obj_loader::{Face, Model, Vec3, load_obj};
+use obj_loader::{load_obj, Face, Model, Vec3};
 use ship::{
     Projectile, Ship, ShipController, ShipInput, ShipSpec, ARWING_SPEC, ARWING_SUBMARINE_SPEC,
-    ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC,
+    ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC,
     KIRBY_SUBMARINE_SPEC,
 };
-use triangle::{ScreenVertex, draw_triangle, draw_triangle_shaded};
+use triangle::{draw_triangle, draw_triangle_shaded, ScreenVertex};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
@@ -1600,12 +1600,20 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             return Ok(false);
         }
     };
-    let ship_center = model_center(ship_model);
+    let (ship_model, ship_spec) = choices[selected_ship];
+    let base_center = model_center(ship_model);
+    let buzz_centers = [
+        model_center(&buzz_variants[0]),
+        model_center(&buzz_variants[1]),
+        model_center(&buzz_variants[2]),
+    ];
+    let mut car_mode = false;
     let (level_ship_model, level_ship_spec) = match selected_ship {
         0 => (&arwing_submarine_model, &ARWING_SUBMARINE_SPEC),
         1 => (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC),
         2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
         3 => (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC),
+        4 => (&buzz_variants[2], &BUZZ_SPEC),
         _ => unreachable!(),
     };
     let level_ship_center = model_center(level_ship_model);
@@ -1643,7 +1651,6 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut game_mode = GameMode::FreeWorld;
     let mut water_level_state = WaterLevelState::new();
     let mut bubble_emitter = BubbleEmitter::new();
-    let start = Instant::now();
     let mut previous = Instant::now();
     let mut world_time = 0.0_f32;
     let mut distance = 0.0_f32;
@@ -1894,18 +1901,14 @@ mod tests {
         let mut sizes = Vec::new();
         for form in ["nave", "carro", "submarino"] {
             let model = load_obj(root.join(format!("assets/vehicles/buzz_{form}.obj"))).unwrap();
-            assert!(
-                model
-                    .vertices
-                    .iter()
-                    .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
-            );
-            assert!(
-                model
-                    .faces
-                    .iter()
-                    .all(|face| face.indices.iter().all(|&i| i < model.vertices.len()))
-            );
+            assert!(model
+                .vertices
+                .iter()
+                .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
+            assert!(model
+                .faces
+                .iter()
+                .all(|face| face.indices.iter().all(|&i| i < model.vertices.len())));
             for material in [
                 "buzz_white",
                 "buzz_green",

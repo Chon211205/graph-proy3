@@ -220,6 +220,22 @@ pub static COWBOYB_SPEC: ShipSpec = ShipSpec {
     laser_core_color: [255, 225, 170],
 };
 
+pub static BUZZ_SPEC: ShipSpec = ShipSpec {
+    name: "Buzz Lightyear",
+    model_scale: 0.27,
+    model_axes: ModelAxes::Astra,
+    turbo_back: 1.55,
+    turbo_side: 0.72,
+    turbo_sides: DUAL_SIDES,
+    turbo_color: [153, 226, 38],
+    turbo_core_color: [238, 242, 248],
+    muzzle_forward: 1.85,
+    muzzle_side: 0.88,
+    laser_color: [153, 226, 38],
+    laser_core_color: [238, 242, 248],
+    ..ASTRA_SPEC
+};
+
 pub static ASTRA_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     name: "ASTRA Submarino",
     model_scale: 0.34,
