@@ -30,12 +30,20 @@ Se necesita Rust con soporte para edición 2024 y las herramientas nativas de co
 | 1 | Transportarse cerca del planeta acuático |
 | Enter estando en órbita | Entrar al nivel submarino |
 | Backspace | Abandonar órbita o volver del nivel al espacio |
-| T | Alternar la apariencia nave/carro de Buzz en vuelo libre |
+| T | Alternar la apariencia nave/carro de Buzz o Rayo McQueen en vuelo libre |
 | R | Reiniciar posición o recorrido submarino |
 | F11 | Alternar pantalla completa |
 | P | Guardar `captura.png` |
 
 Completa el recorrido submarino esquivando obstáculos. Buzz cambia automáticamente a submarino en ese nivel y recupera su forma anterior al salir. La forma carro es una transformación visual con los controles del vuelo libre; no incorpora un circuito terrestre ni física de conducción.
+
+## Rayo McQueen
+
+En el hangar, selecciona Rayo McQueen y pulsa **V** para alternar nave/carro/submarino. **Enter** inicia con la forma de Rayo que estés viendo; si eliges submarino, empiezas directamente en el nivel acuático. Durante el vuelo libre, **T** alterna nave/carro conservando posición y velocidad. El carro usa los controles de vuelo existentes, sin física terrestre.
+
+Desde el espacio, **1** te acerca al planeta acuático. Ya en órbita, **Enter** inicia el nivel y transforma a Rayo en submarino. **Backspace** vuelve al espacio y recupera la forma anterior; también se recupera al completar el recorrido. Si empezaste directamente en submarino, regresarás en forma de nave.
+
+El carro `assets/vehicles/mcqueen_carro.obj` tiene carrocería roja, rayos y número 95 amarillos, ojos azules y cuatro ruedas negras con llantas rojas. El submarino `assets/vehicles/mcqueen_submarino.obj` mantiene esa paleta e incorpora periscopio, aletas, flotadores, faros y dos hélices con aros protectores. El juego define los colores en su renderizador.
 
 ## Modelos de Buzz
 

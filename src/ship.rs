@@ -222,6 +222,45 @@ pub static COWBOYB_SPEC: ShipSpec = ShipSpec {
     laser_core_color: [255, 225, 170],
 };
 
+pub static MCQUEEN_SPEC: ShipSpec = ShipSpec {
+    name: "Rayo McQueen",
+    model_scale: 0.30,
+    model_axes: ModelAxes::Astra,
+    turbo_back: 1.02,
+    turbo_side: 0.585,
+    turbo_down: 0.10,
+    turbo_color: [255, 116, 20],
+    turbo_core_color: [255, 232, 135],
+    muzzle_forward: 0.70,
+    muzzle_side: 0.39,
+    muzzle_down: 0.10,
+    laser_color: [255, 211, 36],
+    laser_core_color: [255, 249, 220],
+    ..ASTRA_SPEC
+};
+
+pub static MCQUEEN_CAR_SPEC: ShipSpec = ShipSpec {
+    model_scale: 0.38,
+    turbo_back: 1.36,
+    turbo_side: 0.34,
+    turbo_down: 0.32,
+    muzzle_forward: 1.45,
+    muzzle_side: 0.43,
+    muzzle_down: 0.05,
+    ..MCQUEEN_SPEC
+};
+
+pub static MCQUEEN_SUBMARINE_SPEC: ShipSpec = ShipSpec {
+    model_scale: 0.38,
+    turbo_back: 1.25,
+    turbo_side: 0.70,
+    turbo_down: 0.50,
+    muzzle_forward: 1.10,
+    muzzle_side: 0.36,
+    muzzle_down: 0.55,
+    ..MCQUEEN_SPEC
+};
+
 pub static BUZZ_SPEC: ShipSpec = ShipSpec {
     name: "Buzz Lightyear",
     model_scale: 0.27,
