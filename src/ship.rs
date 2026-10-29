@@ -258,6 +258,12 @@ pub static COWBOYB_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     ..COWBOYB_SPEC
 };
 
+pub static COWBOYB_CAR_SPEC: ShipSpec = ShipSpec {
+    name: "Swordfish II",
+    model_axes: ModelAxes::Astra,
+    ..COWBOYB_SPEC
+};
+
 pub static ARWING_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     name: "Arwing Submarino",
     model_scale: 0.07,

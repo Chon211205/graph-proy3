@@ -14,8 +14,8 @@ use minifb::{Key, ScaleMode, Window, WindowOptions};
 use obj_loader::{load_obj, Face, Model, Vec3};
 use ship::{
     Projectile, Ship, ShipController, ShipInput, ShipSpec, ARWING_SPEC, ARWING_SUBMARINE_SPEC,
-    ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC,
-    KIRBY_SUBMARINE_SPEC,
+    ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC, COWBOYB_CAR_SPEC, COWBOYB_SPEC,
+    COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC,
 };
 use triangle::{draw_triangle, draw_triangle_shaded, ScreenVertex};
 
@@ -1853,13 +1853,13 @@ fn select_ship(
     window: &mut Window,
     framebuffer: &mut Framebuffer,
     choices: &[(&Model, &ShipSpec)],
-    buzz_variants: &[Model; 3],
+    ship_forms: &[Vec<(&Model, &ShipSpec, &str)>],
     initial_selection: usize,
 ) -> Result<Option<usize>, minifb::Error> {
     crate::input::clear();
     window.update();
     let mut selected = initial_selection % choices.len();
-    let mut variant = 0;
+    let mut variants = vec![0; choices.len()];
     let start = Instant::now();
     let forward = Vec3::new(0.0, -0.13, 1.0).normalize();
     let right = forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
@@ -1871,12 +1871,8 @@ fn select_ship(
     };
     let card_positions = [(48, 145), (238, 145), (428, 145), (48, 385), (238, 385)];
     let mut thumbnails = Vec::with_capacity(choices.len());
-    for (index, (model, spec)) in choices.iter().enumerate() {
-        let model = if index == 4 {
-            &buzz_variants[variant]
-        } else {
-            model
-        };
+    for (index, forms) in ship_forms.iter().enumerate() {
+        let (model, spec, _) = forms[0];
         let (left, top) = card_positions[index];
         thumbnails.push(hangar_thumbnail(
             model,
@@ -1899,11 +1895,12 @@ fn select_ship(
             selected = (selected + 1) % choices.len();
         }
         if crate::input::pressed(Key::V) {
-            variant = (variant + 1) % 3;
-            let (left, top) = card_positions[4];
-            thumbnails[4] = hangar_thumbnail(
-                &buzz_variants[variant],
-                choices[4].1,
+            variants[selected] = (variants[selected] + 1) % ship_forms[selected].len();
+            let (model, spec, _) = ship_forms[selected][variants[selected]];
+            let (left, top) = card_positions[selected];
+            thumbnails[selected] = hangar_thumbnail(
+                model,
+                spec,
                 framebuffer,
                 &camera,
                 left + 90,
@@ -1914,7 +1911,7 @@ fn select_ship(
         if crate::input::pressed(Key::Enter) {
             return Ok(Some(selected));
         }
-        window.set_title("Hangar | A/D: nave | V: formas de Buzz | Enter: jugar | Esc: menu");
+        window.set_title("Hangar | A/D: nave | V: cambiar forma | Enter: jugar | Esc: menu");
         menu::draw_backdrop(framebuffer);
         draw_selection_label(framebuffer, "SELECCIONA", 194, 34, 4, 0xe9f2ff);
         draw_selection_label(framebuffer, "TU NAVE", 438, 34, 4, 0x42dff0);
@@ -1954,12 +1951,7 @@ fn select_ship(
             );
         }
         draw_hangar_card(framebuffer, 638, 135, 540, 520, true);
-        let (base_model, spec) = choices[selected];
-        let model = if selected == 4 {
-            &buzz_variants[variant]
-        } else {
-            base_model
-        };
+        let (model, spec, form_label) = ship_forms[selected][variants[selected]];
         let center = model_center(model);
         let angle = start.elapsed().as_secs_f32() * 0.50;
         let heading = Vec3::new(angle.sin(), 0.0, -angle.cos());
@@ -1999,15 +1991,12 @@ fn select_ship(
             4,
             0xffd329,
         );
-        if selected == 4 {
-            let names = ["NAVE", "CARRO", "SUBMARINO"];
-            draw_selection_label(framebuffer, names[variant], 908, 622, 2, 0x42dff0);
-            draw_selection_label(framebuffer, "V: CAMBIAR FORMA", 908, 641, 1, 0xb7c8d8);
-        }
+        draw_selection_label(framebuffer, form_label, 908, 622, 2, 0x42dff0);
         draw_selection_panel(framebuffer, 0, 690, WIDTH, 800, false);
-        draw_selection_label(framebuffer, "A / D: SELECCIONAR", 238, 724, 2, 0xc9d9ea);
-        draw_selection_label(framebuffer, "ENTER: CONFIRMAR", 600, 724, 2, 0xc9d9ea);
-        draw_selection_label(framebuffer, "ESC: VOLVER", 958, 724, 2, 0xc9d9ea);
+        draw_selection_label(framebuffer, "A / D: SELECCIONAR", 150, 724, 2, 0xc9d9ea);
+        draw_selection_label(framebuffer, "V: CAMBIAR FORMA", 430, 724, 2, 0xc9d9ea);
+        draw_selection_label(framebuffer, "ENTER: CONFIRMAR", 740, 724, 2, 0xc9d9ea);
+        draw_selection_label(framebuffer, "ESC: VOLVER", 1050, 724, 2, 0xc9d9ea);
         crate::input::clear();
         window.update_with_buffer(&framebuffer.pixels, WIDTH, HEIGHT)?;
     }
@@ -2023,7 +2012,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let arwing_path = "assets/vehicles/nave.obj";
     let kirby_path = "assets/vehicles/kirby.obj";
     let astra_path = "assets/vehicles/nave_astra.obj";
+    let astra_car_path = "assets/vehicles/astra_carro.obj";
     let cowboyb_path = "assets/vehicles/nave_cowboyb.obj";
+    let cowboyb_car_path = "assets/vehicles/cb_carro.obj";
     let astra_submarine_path = "assets/vehicles/astra_submarino.obj";
     let cowboyb_submarine_path = "assets/vehicles/cb_submarino.obj";
     let arwing_submarine_path = "assets/vehicles/arwingsub.obj";
@@ -2034,8 +2025,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         load_obj(kirby_path).map_err(|error| format!("Error al cargar {kirby_path}: {error}"))?;
     let astra_model =
         load_obj(astra_path).map_err(|error| format!("Error al cargar {astra_path}: {error}"))?;
+    let astra_car_model = load_obj(astra_car_path)
+        .map_err(|error| format!("Error al cargar {astra_car_path}: {error}"))?;
     let cowboyb_model = load_obj(cowboyb_path)
         .map_err(|error| format!("Error al cargar {cowboyb_path}: {error}"))?;
+    let cowboyb_car_model = load_obj(cowboyb_car_path)
+        .map_err(|error| format!("Error al cargar {cowboyb_car_path}: {error}"))?;
     let astra_submarine_model = load_obj(astra_submarine_path)
         .map_err(|error| format!("Error al cargar {astra_submarine_path}: {error}"))?;
     let cowboyb_submarine_model = load_obj(cowboyb_submarine_path)
@@ -2060,11 +2055,36 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         (&cowboyb_model, &COWBOYB_SPEC),
         (&buzz_variants[0], &BUZZ_SPEC),
     ];
+    let ship_forms = [
+        vec![
+            (&arwing_model, &ARWING_SPEC, "MODO ESPACIAL"),
+            (&arwing_submarine_model, &ARWING_SUBMARINE_SPEC, "SUBMARINO"),
+        ],
+        vec![
+            (&kirby_model, &KIRBY_SPEC, "MODO ESPACIAL"),
+            (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC, "SUBMARINO"),
+        ],
+        vec![
+            (&astra_model, &ASTRA_SPEC, "MODO ESPACIAL"),
+            (&astra_car_model, &ASTRA_SPEC, "MODO CARRO"),
+            (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC, "SUBMARINO"),
+        ],
+        vec![
+            (&cowboyb_model, &COWBOYB_SPEC, "MODO ESPACIAL"),
+            (&cowboyb_car_model, &COWBOYB_CAR_SPEC, "MODO CARRO"),
+            (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC, "SUBMARINO"),
+        ],
+        vec![
+            (&buzz_variants[0], &BUZZ_SPEC, "MODO ESPACIAL"),
+            (&buzz_variants[1], &BUZZ_SPEC, "MODO CARRO"),
+            (&buzz_variants[2], &BUZZ_SPEC, "SUBMARINO"),
+        ],
+    ];
     let mut selected_ship = loop {
         if menu::show(&mut window, &mut framebuffer, false)? == menu::Action::Quit {
             return Ok(false);
         }
-        if let Some(index) = select_ship(&mut window, &mut framebuffer, &choices, &buzz_variants, 0)? {
+        if let Some(index) = select_ship(&mut window, &mut framebuffer, &choices, &ship_forms, 0)? {
             break index;
         }
         if !window.is_open() {
@@ -2151,7 +2171,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         &mut window,
                         &mut framebuffer,
                         &choices,
-                        &buzz_variants,
+                        &ship_forms,
                         selected_ship,
                     )? {
                         selected_ship = new_selection;
