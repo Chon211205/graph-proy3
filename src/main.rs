@@ -33,6 +33,8 @@ const ORBIT_LIMIT_RADIUS: f32 = 60.0;
 const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
 const WATER_LEVEL_LENGTH: f32 = 880.0;
 const WATER_LEVEL_HALF_WIDTH: f32 = 64.0;
+const WATER_LEVEL_SOFT_BORDER: f32 = 50.0;
+const WATER_LEVEL_BORDER_STRENGTH: f32 = 26.0;
 const WATER_LEVEL_MIN_HEIGHT: f32 = 2.5;
 const WATER_LEVEL_MAX_HEIGHT: f32 = 42.0;
 
@@ -138,7 +140,18 @@ impl WaterLevelState {
 
     fn update(&mut self, ship: &mut Ship, input: &ShipInput, delta_time: f32) {
         self.progress += ship.speed * delta_time;
-        self.lateral = (self.lateral + input.yaw as f32 * 17.0 * delta_time)
+        self.lateral += input.yaw as f32 * 17.0 * delta_time;
+
+        let border_distance = self.lateral.abs();
+        if border_distance > WATER_LEVEL_SOFT_BORDER {
+            let border_zone = WATER_LEVEL_HALF_WIDTH - WATER_LEVEL_SOFT_BORDER;
+            let border_force =
+                ((border_distance - WATER_LEVEL_SOFT_BORDER) / border_zone).clamp(0.0, 1.0);
+            self.lateral -=
+                self.lateral.signum() * WATER_LEVEL_BORDER_STRENGTH * border_force * delta_time;
+        }
+        self.lateral = self
+            .lateral
             .clamp(-WATER_LEVEL_HALF_WIDTH, WATER_LEVEL_HALF_WIDTH);
         self.height = (self.height + input.pitch as f32 * 15.0 * delta_time)
             .clamp(WATER_LEVEL_MIN_HEIGHT, WATER_LEVEL_MAX_HEIGHT);
@@ -674,6 +687,70 @@ fn make_level_floor(width: f32, length: f32, segment_length: f32) -> Model {
             material: "Arena_submarina".to_string(),
             group: "ENV_Fondo_Marino_Segmentado".to_string(),
         });
+    }
+    Model { vertices, faces }
+}
+
+fn make_level_side_walls(length: f32, segment_length: f32) -> Model {
+    let segments = (length / segment_length).ceil() as usize;
+    let mut vertices = Vec::with_capacity((segments + 1) * 6);
+
+    for segment in 0..=segments {
+        let progress = (segment as f32 * segment_length).min(length);
+        let route_curve = (progress * 0.012).sin() * 3.5;
+        let rock_variation = (progress * 0.041).sin() * 2.4 + (progress * 0.017 + 1.7).sin() * 1.6;
+
+        for side in [-1.0_f32, 1.0] {
+            vertices.push(Vec3::new(
+                route_curve + side * WATER_LEVEL_HALF_WIDTH,
+                progress,
+                0.04,
+            ));
+            vertices.push(Vec3::new(
+                route_curve + side * (WATER_LEVEL_HALF_WIDTH + 7.0 + rock_variation * 0.25),
+                progress,
+                13.0 + rock_variation,
+            ));
+            vertices.push(Vec3::new(
+                route_curve + side * (WATER_LEVEL_HALF_WIDTH + 15.0 + rock_variation * 0.5),
+                progress,
+                52.0 + rock_variation * 1.8,
+            ));
+        }
+    }
+
+    let mut faces = Vec::with_capacity(segments * 8);
+    for segment in 0..segments {
+        let current = segment * 6;
+        let next = current + 6;
+        for side_offset in [0_usize, 3] {
+            for strip in 0..2 {
+                let a = current + side_offset + strip;
+                let b = a + 1;
+                let c = next + side_offset + strip;
+                let d = c + 1;
+                faces.push(Face {
+                    indices: [a, c, b],
+                    material: if strip == 0 {
+                        "Roca_submarina"
+                    } else {
+                        "Roca_oscura_submarina"
+                    }
+                    .to_string(),
+                    group: "ENV_Paredes_Canon_Submarino".to_string(),
+                });
+                faces.push(Face {
+                    indices: [b, c, d],
+                    material: if strip == 0 {
+                        "Roca_submarina"
+                    } else {
+                        "Roca_oscura_submarina"
+                    }
+                    .to_string(),
+                    group: "ENV_Paredes_Canon_Submarino".to_string(),
+                });
+            }
+        }
     }
     Model { vertices, faces }
 }
@@ -1251,28 +1328,98 @@ fn render_ship_components(
 }
 
 fn draw_underwater_background(framebuffer: &mut Framebuffer, travel: f32) {
+    let blend = |base: u32, overlay: [u8; 3], amount: f32| {
+        let amount = amount.clamp(0.0, 1.0);
+        let channel = |shift: u32, value: u8| {
+            let current = ((base >> shift) & 255) as f32;
+            (current + (value as f32 - current) * amount) as u32
+        };
+        (channel(16, overlay[0]) << 16) | (channel(8, overlay[1]) << 8) | channel(0, overlay[2])
+    };
+
+    // Gradiente de profundidad: superficie luminosa y abismo azul verdoso.
     for y in 0..framebuffer.height {
         let depth = y as f32 / framebuffer.height as f32;
-        let red = (3.0 + depth * 4.0) as u32;
-        let green = (22.0 + depth * 24.0) as u32;
-        let blue = (42.0 + depth * 36.0) as u32;
+        let surface_glow = (1.0 - depth).powf(3.2);
+        let red = (2.0 + surface_glow * 16.0 + depth * 2.0) as u32;
+        let green = (20.0 + surface_glow * 72.0 + depth * 10.0) as u32;
+        let blue = (43.0 + surface_glow * 92.0 + depth * 18.0) as u32;
         let color = (red << 16) | (green << 8) | blue;
         let row = y * framebuffer.width;
         framebuffer.pixels[row..row + framebuffer.width].fill(color);
     }
-    for index in 0..90_u32 {
+
+    // Rayos volumetricos que bajan desde la superficie.
+    for ray in 0..6 {
+        let origin = framebuffer.width as f32
+            * (0.08 + ray as f32 * 0.18 + (travel * 0.19 + ray as f32).sin() * 0.025);
+        let direction = -0.20 + ray as f32 * 0.075;
+        for y in 0..(framebuffer.height * 3 / 4) {
+            let depth = y as f32 / framebuffer.height as f32;
+            let center = origin + direction * y as f32;
+            let half_width = 5.0 + depth * (32.0 + ray as f32 * 5.0);
+            let left = (center - half_width).max(0.0) as usize;
+            let right = (center + half_width).min(framebuffer.width as f32 - 1.0) as usize;
+            let strength = (0.12 * (1.0 - depth).powf(1.4)).max(0.0);
+            for x in left..=right {
+                let edge = 1.0 - ((x as f32 - center).abs() / half_width);
+                let pixel = &mut framebuffer.pixels[y * framebuffer.width + x];
+                *pixel = blend(*pixel, [70, 180, 205], strength * edge);
+            }
+        }
+    }
+
+    // Siluetas del relieve lejano para cerrar visualmente el horizonte.
+    for x in 0..framebuffer.width {
+        let phase = x as f32 * 0.012 + travel * 14.0;
+        let ridge = framebuffer.height as f32 * 0.70
+            + phase.sin() * 24.0
+            + (phase * 0.37 + 1.4).sin() * 38.0;
+        for y in ridge.max(0.0) as usize..framebuffer.height {
+            let depth = (y as f32 - ridge) / (framebuffer.height as f32 - ridge).max(1.0);
+            framebuffer.pixels[y * framebuffer.width + x] = blend(
+                framebuffer.pixels[y * framebuffer.width + x],
+                [4, 31, 43],
+                0.48 + depth * 0.30,
+            );
+        }
+    }
+
+    // Ondulaciones brillantes de la superficie vistas desde abajo.
+    for band in 0..3 {
+        for x in 0..framebuffer.width {
+            let wave = (x as f32 * (0.018 + band as f32 * 0.004)
+                + travel * (8.0 + band as f32 * 2.0))
+                .sin();
+            let y = 18 + band * 18 + (wave * 7.0) as i32;
+            if y >= 0 && y < framebuffer.height as i32 {
+                let index = y as usize * framebuffer.width + x;
+                framebuffer.pixels[index] = blend(framebuffer.pixels[index], [105, 222, 232], 0.28);
+            }
+        }
+    }
+
+    // Plancton y particulas suspendidas con paralaje lento.
+    for index in 0..150_u32 {
         let seed = hash(index.wrapping_mul(7919));
-        let x = (seed as usize % framebuffer.width + (travel * 170.0) as usize) % framebuffer.width;
+        let x = (seed as usize % framebuffer.width
+            + (travel * (70.0 + (index % 9) as f32 * 11.0)) as usize)
+            % framebuffer.width;
         let y = (hash(seed ^ 0x9e3779b9) as usize % framebuffer.height + framebuffer.height
-            - ((travel * (18.0 + (index % 7) as f32)) as usize % framebuffer.height))
+            - ((travel * (14.0 + (index % 7) as f32)) as usize % framebuffer.height))
             % framebuffer.height;
-        framebuffer.pixels[y * framebuffer.width + x] = 0x65cfe2;
+        let color = if index % 5 == 0 { 0x8ce4e8 } else { 0x4ca7b8 };
+        framebuffer.pixels[y * framebuffer.width + x] = color;
+        if index % 6 == 0 && x + 1 < framebuffer.width {
+            framebuffer.pixels[y * framebuffer.width + x + 1] = color;
+        }
     }
 }
 
 fn render_water_level(
     level: &Model,
     level_floor: &Model,
+    level_side_walls: &Model,
     bubble_model: &Model,
     bubbles: &[BubbleParticle],
     ship_model: &Model,
@@ -1292,6 +1439,14 @@ fn render_water_level(
     let camera = chase_camera(ship);
     render_model(
         level_floor,
+        framebuffer,
+        &camera,
+        level_to_world,
+        Some(world_time),
+        None,
+    );
+    render_model(
+        level_side_walls,
         framebuffer,
         &camera,
         level_to_world,
@@ -1627,6 +1782,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         .map_err(|error| format!("Error al cargar {water_level_path}: {error}"))?;
     let level_colliders = build_level_colliders(&water_level);
     let water_level_floor = make_level_floor(140.0, 920.0, 15.0);
+    let water_level_side_walls = make_level_side_walls(920.0, 12.0);
     let planet_center = model_center(&planet);
     let planet_scale = WATER_PLANET_RADIUS / model_radius(&planet, planet_center).max(0.001);
     let planet_surface_radius = material_radius(&planet, planet_center, "Oceano") * planet_scale;
@@ -1829,6 +1985,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 render_water_level(
                     &water_level,
                     &water_level_floor,
+                    &water_level_side_walls,
                     &bubble_model,
                     &bubble_emitter.particles,
                     level_ship_model,
