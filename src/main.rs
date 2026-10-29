@@ -1754,17 +1754,140 @@ fn draw_selection_label(
     }
 }
 
+fn hangar_thumbnail(
+    model: &Model,
+    spec: &ShipSpec,
+    framebuffer: &mut Framebuffer,
+    camera: &Camera,
+    screen_x: usize,
+    screen_y: usize,
+    angle: f32,
+) -> Vec<u32> {
+    const CARD_WIDTH: usize = 180;
+    const CARD_HEIGHT: usize = 220;
+    const TRANSPARENT: u32 = 0x0100_0000;
+    framebuffer.clear(TRANSPARENT);
+    let center = model_center(model);
+    let depth = 25.0;
+    let focal = HEIGHT as f32 / (60.0_f32.to_radians() * 0.5).tan() * 0.5;
+    let target = camera
+        .position
+        .add(camera.forward.mul(depth))
+        .add(
+            camera
+                .right
+                .mul((screen_x as f32 - WIDTH as f32 * 0.5) * depth / focal),
+        )
+        .add(
+            camera
+                .up
+                .mul((HEIGHT as f32 * 0.5 - screen_y as f32) * depth / focal),
+        );
+    let heading = Vec3::new(angle.sin(), 0.0, -angle.cos());
+    let side = Vec3::new(angle.cos(), 0.0, angle.sin());
+    let scale = 2.1 / model_radius(model, center).max(0.001);
+    render_model(
+        model,
+        framebuffer,
+        camera,
+        |vertex| {
+            target.add(spec.model_to_world(
+                vertex.sub(center).mul(scale),
+                heading,
+                side,
+                Vec3::new(0.0, 1.0, 0.0),
+            ))
+        },
+        None,
+        None,
+    );
+    let left = screen_x - CARD_WIDTH / 2;
+    let top = screen_y - CARD_HEIGHT / 2;
+    let mut thumbnail = vec![TRANSPARENT; CARD_WIDTH * CARD_HEIGHT];
+    for y in 0..CARD_HEIGHT {
+        let source = (top + y) * WIDTH + left;
+        let target = y * CARD_WIDTH;
+        thumbnail[target..target + CARD_WIDTH]
+            .copy_from_slice(&framebuffer.pixels[source..source + CARD_WIDTH]);
+    }
+    thumbnail
+}
+
+fn draw_hangar_card(
+    framebuffer: &mut Framebuffer,
+    left: usize,
+    top: usize,
+    width: usize,
+    height: usize,
+    selected: bool,
+) {
+    let tint = if selected { 0x071a25 } else { 0x06111c };
+    let alpha = if selected { 120 } else { 145 };
+    for y in top..top + height {
+        for x in left..left + width {
+            let index = y * WIDTH + x;
+            let pixel = framebuffer.pixels[index];
+            let blend = |shift: u32| {
+                let foreground = (tint >> shift) & 0xff;
+                let background = (pixel >> shift) & 0xff;
+                (foreground * alpha + background * (255 - alpha)) / 255
+            };
+            framebuffer.pixels[index] = (blend(16) << 16) | (blend(8) << 8) | blend(0);
+        }
+    }
+    let border = if selected { 0x42dff0 } else { 0x35658c };
+    let thickness = if selected { 3 } else { 2 };
+    for inset in 0..thickness {
+        for x in left + inset..left + width - inset {
+            framebuffer.pixels[(top + inset) * WIDTH + x] = border;
+            framebuffer.pixels[(top + height - 1 - inset) * WIDTH + x] = border;
+        }
+        for y in top + inset..top + height - inset {
+            framebuffer.pixels[y * WIDTH + left + inset] = border;
+            framebuffer.pixels[y * WIDTH + left + width - 1 - inset] = border;
+        }
+    }
+}
+
 fn select_ship(
     window: &mut Window,
     framebuffer: &mut Framebuffer,
     choices: &[(&Model, &ShipSpec)],
     buzz_variants: &[Model; 3],
+    initial_selection: usize,
 ) -> Result<Option<usize>, minifb::Error> {
     crate::input::clear();
     window.update();
-    let mut selected = 0_usize;
+    let mut selected = initial_selection % choices.len();
     let mut variant = 0;
     let start = Instant::now();
+    let forward = Vec3::new(0.0, -0.13, 1.0).normalize();
+    let right = forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
+    let camera = Camera {
+        position: Vec3::new(0.0, 2.0, -15.0),
+        forward,
+        right,
+        up: right.cross(forward).normalize(),
+    };
+    let card_positions = [(48, 145), (238, 145), (428, 145), (48, 385), (238, 385)];
+    let mut thumbnails = Vec::with_capacity(choices.len());
+    for (index, (model, spec)) in choices.iter().enumerate() {
+        let model = if index == 4 {
+            &buzz_variants[variant]
+        } else {
+            model
+        };
+        let (left, top) = card_positions[index];
+        thumbnails.push(hangar_thumbnail(
+            model,
+            spec,
+            framebuffer,
+            &camera,
+            left + 90,
+            top + 105,
+            0.36,
+        ));
+    }
     while window.is_open() {
         if crate::input::pressed(Key::Escape) {
             return Ok(None);
@@ -1777,27 +1900,60 @@ fn select_ship(
         }
         if crate::input::pressed(Key::V) {
             variant = (variant + 1) % 3;
+            let (left, top) = card_positions[4];
+            thumbnails[4] = hangar_thumbnail(
+                &buzz_variants[variant],
+                choices[4].1,
+                framebuffer,
+                &camera,
+                left + 90,
+                top + 105,
+                0.36,
+            );
         }
         if crate::input::pressed(Key::Enter) {
             return Ok(Some(selected));
         }
         window.set_title("Hangar | A/D: nave | V: formas de Buzz | Enter: jugar | Esc: menu");
-        framebuffer.clear(0);
-        draw_skybox(framebuffer, 0.0);
-        draw_selection_label(framebuffer, "ELIGE TU NAVE", 600, 35, 4, 0x99e226);
-        for (i, (_, spec)) in choices.iter().enumerate() {
-            let y = 120 + i * 94;
-            draw_selection_panel(framebuffer, 40, y, 420, y + 76, i == selected);
+        menu::draw_backdrop(framebuffer);
+        draw_selection_label(framebuffer, "SELECCIONA", 194, 34, 4, 0xe9f2ff);
+        draw_selection_label(framebuffer, "TU NAVE", 438, 34, 4, 0x42dff0);
+        for x in 48..626 {
+            framebuffer.pixels[92 * WIDTH + x] = if x < 610 { 0x1389bd } else { 0x42dff0 };
+        }
+        draw_selection_label(
+            framebuffer,
+            "CINCO NAVES DISPONIBLES",
+            235,
+            108,
+            2,
+            0x91a9bd,
+        );
+        for (index, ((_, spec), (left, top))) in choices.iter().zip(card_positions).enumerate() {
+            draw_hangar_card(framebuffer, left, top, 180, 220, index == selected);
+            let thumbnail = &thumbnails[index];
+            for y in 0..220 {
+                for x in 0..180 {
+                    let pixel = thumbnail[y * 180 + x];
+                    if pixel != 0x0100_0000 {
+                        framebuffer.pixels[(top + y) * WIDTH + left + x] = pixel;
+                    }
+                }
+            }
             draw_selection_label(
                 framebuffer,
                 &spec.name.to_ascii_uppercase(),
-                230,
-                y as i32 + 27,
-                3,
-                if i == selected { 0x99e226 } else { 0xa9bbd2 },
+                left as i32 + 90,
+                top as i32 + 185,
+                2,
+                if index == selected {
+                    0xf0f3fa
+                } else {
+                    0xa9bbd2
+                },
             );
         }
-        draw_selection_panel(framebuffer, 450, 120, 1160, 650, true);
+        draw_hangar_card(framebuffer, 638, 135, 540, 520, true);
         let (base_model, spec) = choices[selected];
         let model = if selected == 4 {
             &buzz_variants[variant]
@@ -1805,24 +1961,27 @@ fn select_ship(
             base_model
         };
         let center = model_center(model);
-        let forward = Vec3::new(0.0, -0.13, 1.0).normalize();
-        let right = forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
-        let camera = Camera {
-            position: Vec3::new(0.0, 2.0, -15.0),
-            forward,
-            right,
-            up: right.cross(forward).normalize(),
-        };
         let angle = start.elapsed().as_secs_f32() * 0.50;
         let heading = Vec3::new(angle.sin(), 0.0, -angle.cos());
         let side = Vec3::new(angle.cos(), 0.0, angle.sin());
-        let scale = 3.4 / model_radius(model, center).max(0.001);
+        let depth = 18.0;
+        let focal = HEIGHT as f32 / (60.0_f32.to_radians() * 0.5).tan() * 0.5;
+        let target = camera
+            .position
+            .add(camera.forward.mul(depth))
+            .add(
+                camera
+                    .right
+                    .mul((900.0 - WIDTH as f32 * 0.5) * depth / focal),
+            )
+            .add(camera.up.mul((HEIGHT as f32 * 0.5 - 360.0) * depth / focal));
+        let scale = 4.2 / model_radius(model, center).max(0.001);
         render_model(
             model,
             framebuffer,
             &camera,
             |v| {
-                Vec3::new(-3.8, 0.0, 0.0).add(spec.model_to_world(
+                target.add(spec.model_to_world(
                     v.sub(center).mul(scale),
                     heading,
                     side,
@@ -1835,39 +1994,20 @@ fn select_ship(
         draw_selection_label(
             framebuffer,
             &spec.name.to_ascii_uppercase(),
-            805,
-            155,
-            3,
-            0xf0f3fa,
+            908,
+            570,
+            4,
+            0xffd329,
         );
         if selected == 4 {
             let names = ["NAVE", "CARRO", "SUBMARINO"];
-            draw_selection_label(framebuffer, names[variant], 805, 560, 3, 0x99e226);
-            draw_selection_label(
-                framebuffer,
-                "V: VER OTRA TRANSFORMACION",
-                805,
-                610,
-                2,
-                0xb7a1df,
-            );
+            draw_selection_label(framebuffer, names[variant], 908, 622, 2, 0x42dff0);
+            draw_selection_label(framebuffer, "V: CAMBIAR FORMA", 908, 641, 1, 0xb7c8d8);
         }
-        draw_selection_label(
-            framebuffer,
-            "A / D: ELEGIR    ENTER: JUGAR    ESC: MENU",
-            600,
-            695,
-            2,
-            0xd5deec,
-        );
-        draw_selection_label(
-            framebuffer,
-            "BUZZ: T CAMBIA NAVE / CARRO - SUBMARINO AUTOMATICO",
-            600,
-            745,
-            2,
-            0xb7a1df,
-        );
+        draw_selection_panel(framebuffer, 0, 690, WIDTH, 800, false);
+        draw_selection_label(framebuffer, "A / D: SELECCIONAR", 238, 724, 2, 0xc9d9ea);
+        draw_selection_label(framebuffer, "ENTER: CONFIRMAR", 600, 724, 2, 0xc9d9ea);
+        draw_selection_label(framebuffer, "ESC: VOLVER", 958, 724, 2, 0xc9d9ea);
         crate::input::clear();
         window.update_with_buffer(&framebuffer.pixels, WIDTH, HEIGHT)?;
     }
@@ -1920,26 +2060,26 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         (&cowboyb_model, &COWBOYB_SPEC),
         (&buzz_variants[0], &BUZZ_SPEC),
     ];
-    let selected_ship = loop {
+    let mut selected_ship = loop {
         if menu::show(&mut window, &mut framebuffer, false)? == menu::Action::Quit {
             return Ok(false);
         }
-        if let Some(index) = select_ship(&mut window, &mut framebuffer, &choices, &buzz_variants)? {
+        if let Some(index) = select_ship(&mut window, &mut framebuffer, &choices, &buzz_variants, 0)? {
             break index;
         }
         if !window.is_open() {
             return Ok(false);
         }
     };
-    let (ship_model, ship_spec) = choices[selected_ship];
-    let base_center = model_center(ship_model);
+    let (mut ship_model, mut ship_spec) = choices[selected_ship];
+    let mut base_center = model_center(ship_model);
     let buzz_centers = [
         model_center(&buzz_variants[0]),
         model_center(&buzz_variants[1]),
         model_center(&buzz_variants[2]),
     ];
     let mut car_mode = false;
-    let (level_ship_model, level_ship_spec) = match selected_ship {
+    let (mut level_ship_model, mut level_ship_spec) = match selected_ship {
         0 => (&arwing_submarine_model, &ARWING_SUBMARINE_SPEC),
         1 => (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC),
         2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
@@ -1947,7 +2087,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         4 => (&buzz_variants[2], &BUZZ_SPEC),
         _ => unreachable!(),
     };
-    let level_ship_center = model_center(level_ship_model);
+    let mut level_ship_center = model_center(level_ship_model);
     window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
 
     let planet_path = "assets/planets/water_planet.obj";
@@ -2006,7 +2146,34 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         if crate::input::pressed(Key::Escape) {
             match menu::show(&mut window, &mut framebuffer, true)? {
                 menu::Action::Quit => return Ok(false),
-                menu::Action::Hangar => return Ok(true),
+                menu::Action::Hangar => {
+                    if let Some(new_selection) = select_ship(
+                        &mut window,
+                        &mut framebuffer,
+                        &choices,
+                        &buzz_variants,
+                        selected_ship,
+                    )? {
+                        selected_ship = new_selection;
+                        (ship_model, ship_spec) = choices[selected_ship];
+                        base_center = model_center(ship_model);
+                        (level_ship_model, level_ship_spec) = match selected_ship {
+                            0 => (&arwing_submarine_model, &ARWING_SUBMARINE_SPEC),
+                            1 => (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC),
+                            2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
+                            3 => (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC),
+                            4 => (&buzz_variants[2], &BUZZ_SPEC),
+                            _ => unreachable!(),
+                        };
+                        level_ship_center = model_center(level_ship_model);
+                        ship_controller = ShipController::new(ship_spec);
+                        game_mode = GameMode::FreeWorld;
+                        water_level_state = WaterLevelState::new();
+                        bubble_emitter.clear();
+                        car_mode = false;
+                        distance = 0.0;
+                    }
+                }
                 menu::Action::Play => {}
             }
             previous = Instant::now();
