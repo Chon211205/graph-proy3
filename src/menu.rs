@@ -54,11 +54,11 @@ pub enum Action {
     Quit,
 }
 
-fn background(frame: &mut Framebuffer) {
+pub(crate) fn draw_backdrop(frame: &mut Framebuffer) {
+    frame.clear(0);
     if let Some(pixels) = MENU_BACKGROUND.get_or_init(load_background) {
         frame.pixels.copy_from_slice(pixels);
     } else {
-        frame.clear(0);
         draw_skybox(frame, 0.0);
     }
 }
@@ -94,7 +94,7 @@ pub fn instructions(window: &mut Window, frame: &mut Framebuffer) -> Result<(), 
         {
             break;
         }
-        background(frame);
+        draw_backdrop(frame);
         brand(frame, true);
         left_text(frame, "EXPLORA EL ESPACIO Y COMPLETA EL NIVEL SUBMARINO", 85, 155, 2, 0x91a9bd);
         panel(frame, 55, 215, 580, 565, false);
@@ -186,7 +186,7 @@ pub fn show(
                 _ => instructions(window, frame)?,
             }
         }
-        background(frame);
+        draw_backdrop(frame);
         brand(frame, false);
         if paused {
             left_text(frame, "JUEGO EN PAUSA", 85, 405, 3, 0x91a9bd);
@@ -210,7 +210,6 @@ pub fn show(
             }
         }
         left_text(frame, "UP DOWN / W S  ELEGIR     ENTER  CONFIRMAR", 84, 710, 1, 0xf0eee7);
-        left_text(frame, "CINCO NAVES - BUZZ CON TRES TRANSFORMACIONES", 84, 744, 1, 0x91a9bd);
         crate::input::clear();
         window.update_with_buffer(&frame.pixels, WIDTH, HEIGHT)?;
     }
