@@ -19,7 +19,7 @@ use ship::{
     COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC, Projectile, Ship, ShipController,
     ShipInput, ShipSpec,
 };
-use triangle::{ScreenVertex, draw_triangle, draw_triangle_shaded};
+use triangle::{ScreenVertex, draw_triangle_shaded_region};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
@@ -1259,6 +1259,109 @@ fn move_around_planet(
     }
 }
 
+enum TriangleStyle {
+    Flat(u32),
+    Procedural {
+        shader: SurfaceShader,
+        points: [Vec3; 3],
+        time: f32,
+        brightness: f32,
+        fresnel: f32,
+    },
+}
+
+struct TriangleCommand {
+    vertices: [ScreenVertex; 3],
+    style: TriangleStyle,
+}
+
+struct TriangleBatch {
+    commands: Vec<TriangleCommand>,
+}
+
+impl TriangleBatch {
+    fn new() -> Self {
+        Self {
+            commands: Vec::new(),
+        }
+    }
+
+    fn flush(&mut self, framebuffer: &mut Framebuffer) {
+        self.flush_with_workers(framebuffer, render_worker_count());
+    }
+
+    fn flush_with_workers(&mut self, framebuffer: &mut Framebuffer, worker_count: usize) {
+        if self.commands.is_empty() {
+            return;
+        }
+        let width = framebuffer.width;
+        let height = framebuffer.height;
+        let worker_count = worker_count.clamp(1, height.max(1));
+        let tile_height = height.div_ceil(worker_count).div_ceil(32) * 32;
+        let commands = &self.commands;
+        let (pixels, depth) = framebuffer.buffers_mut();
+        thread::scope(|scope| {
+            for (tile_index, (tile_pixels, tile_depth)) in pixels
+                .chunks_mut(tile_height * width)
+                .zip(depth.chunks_mut(tile_height * width))
+                .enumerate()
+            {
+                let region_y = tile_index * tile_height;
+                scope.spawn(move || {
+                    for command in commands {
+                        let [a, b, c] = command.vertices;
+                        match &command.style {
+                            TriangleStyle::Flat(color) => draw_triangle_shaded_region(
+                                tile_pixels,
+                                tile_depth,
+                                width,
+                                height,
+                                region_y,
+                                a,
+                                b,
+                                c,
+                                |_, _, _, _, _| *color,
+                            ),
+                            TriangleStyle::Procedural {
+                                shader,
+                                points,
+                                time,
+                                brightness,
+                                fresnel,
+                            } => draw_triangle_shaded_region(
+                                tile_pixels,
+                                tile_depth,
+                                width,
+                                height,
+                                region_y,
+                                a,
+                                b,
+                                c,
+                                |w0, w1, w2, x, y| {
+                                    let point = points[0]
+                                        .mul(w0)
+                                        .add(points[1].mul(w1))
+                                        .add(points[2].mul(w2));
+                                    procedural_surface_color(
+                                        *shader,
+                                        point,
+                                        x,
+                                        y,
+                                        *time,
+                                        *brightness,
+                                        *fresnel,
+                                    )
+                                },
+                            ),
+                        }
+                    }
+                });
+            }
+        });
+        self.commands.clear();
+    }
+}
+
 fn render_model<F>(
     model: &Model,
     framebuffer: &mut Framebuffer,
@@ -1269,10 +1372,32 @@ fn render_model<F>(
 ) where
     F: Fn(Vec3) -> Vec3 + Sync,
 {
-    let mut camera_vertices = Vec::new();
-    render_model_with_scratch(
+    let mut batch = TriangleBatch::new();
+    queue_model(
         model,
-        framebuffer,
+        &mut batch,
+        camera,
+        transform,
+        water_time,
+        effect_spec,
+    );
+    batch.flush(framebuffer);
+}
+
+fn queue_model<F>(
+    model: &Model,
+    batch: &mut TriangleBatch,
+    camera: &Camera,
+    transform: F,
+    water_time: Option<f32>,
+    effect_spec: Option<&ShipSpec>,
+) where
+    F: Fn(Vec3) -> Vec3 + Sync,
+{
+    let mut camera_vertices = Vec::new();
+    queue_model_with_scratch(
+        model,
+        batch,
         camera,
         transform,
         water_time,
@@ -1281,9 +1406,9 @@ fn render_model<F>(
     );
 }
 
-fn render_model_with_scratch<F>(
+fn queue_model_with_scratch<F>(
     model: &Model,
-    framebuffer: &mut Framebuffer,
+    batch: &mut TriangleBatch,
     camera: &Camera,
     transform: F,
     water_time: Option<f32>,
@@ -1409,14 +1534,48 @@ fn render_model_with_scratch<F>(
             let fresnel = (1.0 - normal.dot(view_direction).abs()).powf(3.0);
             let time = water_time.unwrap_or_default();
 
-            draw_triangle_shaded(framebuffer, a, b, c, |w0, w1, w2, x, y| {
-                let point = p0.mul(w0).add(p1.mul(w1)).add(p2.mul(w2));
-                procedural_surface_color(shader, point, x, y, time, brightness, fresnel)
+            batch.commands.push(TriangleCommand {
+                vertices: [a, b, c],
+                style: TriangleStyle::Procedural {
+                    shader,
+                    points: [p0, p1, p2],
+                    time,
+                    brightness,
+                    fresnel,
+                },
             });
         } else {
-            draw_triangle(framebuffer, a, b, c, pack(flat_color, brightness));
+            batch.commands.push(TriangleCommand {
+                vertices: [a, b, c],
+                style: TriangleStyle::Flat(pack(flat_color, brightness)),
+            });
         }
     }
+}
+
+#[cfg(test)]
+fn render_model_with_scratch<F>(
+    model: &Model,
+    framebuffer: &mut Framebuffer,
+    camera: &Camera,
+    transform: F,
+    water_time: Option<f32>,
+    effect_spec: Option<&ShipSpec>,
+    camera_vertices: &mut Vec<Vec3>,
+) where
+    F: Fn(Vec3) -> Vec3 + Sync,
+{
+    let mut batch = TriangleBatch::new();
+    queue_model_with_scratch(
+        model,
+        &mut batch,
+        camera,
+        transform,
+        water_time,
+        effect_spec,
+        camera_vertices,
+    );
+    batch.flush(framebuffer);
 }
 
 fn render_scene(
@@ -1430,6 +1589,7 @@ fn render_scene(
     planet_scale: f32,
     sun: &Model,
     framebuffer: &mut Framebuffer,
+    batch: &mut TriangleBatch,
     ship: &Ship,
     world_time: f32,
     travel: f32,
@@ -1439,21 +1599,22 @@ fn render_scene(
     framebuffer.clear(0);
     draw_skybox(framebuffer, travel);
     let camera = chase_camera(ship);
+    debug_assert!(batch.commands.is_empty());
     let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let planet_position = water_planet_position(world_time);
     let planet_rotation = world_time * 0.25;
 
-    render_model(
+    queue_model(
         sun,
-        framebuffer,
+        batch,
         &camera,
         |vertex| vertex.add(sun_position),
         None,
         None,
     );
-    render_model(
+    queue_model(
         planet,
-        framebuffer,
+        batch,
         &camera,
         |vertex| {
             let vertex = vertex.sub(planet_center).mul(planet_scale);
@@ -1475,7 +1636,7 @@ fn render_scene(
         turbo_plume,
         laser_bolt,
         projectiles,
-        framebuffer,
+        batch,
         &camera,
         ship,
         world_time,
@@ -1483,6 +1644,7 @@ fn render_scene(
         fire_charge,
         true,
     );
+    batch.flush(framebuffer);
 }
 
 fn render_ship_components(
@@ -1491,7 +1653,7 @@ fn render_ship_components(
     turbo_plume: &Model,
     laser_bolt: &Model,
     projectiles: &[Projectile],
-    framebuffer: &mut Framebuffer,
+    batch: &mut TriangleBatch,
     camera: &Camera,
     ship: &Ship,
     world_time: f32,
@@ -1510,9 +1672,9 @@ fn render_ship_components(
                 .sub(forward.mul(ship.spec.turbo_back))
                 .add(right.mul(*side * ship.spec.turbo_side))
                 .sub(up.mul(ship.spec.turbo_down));
-            render_model(
+            queue_model(
                 turbo_plume,
-                framebuffer,
+                batch,
                 &camera,
                 |vertex| {
                     emitter
@@ -1537,9 +1699,9 @@ fn render_ship_components(
             laser_right = Vec3::new(1.0, 0.0, 0.0);
         }
         let laser_up = laser_right.cross(projectile.direction).normalize();
-        render_model(
+        queue_model(
             laser_bolt,
-            framebuffer,
+            batch,
             &camera,
             |vertex| {
                 projectile
@@ -1555,9 +1717,9 @@ fn render_ship_components(
     if fire_charge > 0.0 {
         let charge_scale = 0.35 + fire_charge * 1.15;
         let charge_position = ship.position.add(forward.mul(1.9));
-        render_model(
+        queue_model(
             laser_bolt,
-            framebuffer,
+            batch,
             &camera,
             |vertex| {
                 charge_position
@@ -1569,9 +1731,9 @@ fn render_ship_components(
             Some(ship.spec),
         );
     }
-    render_model(
+    queue_model(
         ship_model,
-        framebuffer,
+        batch,
         camera,
         |vertex| {
             let local = vertex.sub(ship_center).mul(ship.spec.model_scale);
@@ -1746,7 +1908,7 @@ fn render_water_enemies(
     enemies: &[WaterEnemy],
     elapsed: f32,
     current_progress: f32,
-    framebuffer: &mut Framebuffer,
+    batch: &mut TriangleBatch,
     camera: &Camera,
     instance_buffers: &mut [Vec<Vec3>; 3],
 ) {
@@ -1766,9 +1928,9 @@ fn render_water_enemies(
             };
             let forward = Vec3::new(angle.cos(), 0.0, angle.sin());
             let right = Vec3::new(-angle.sin(), 0.0, angle.cos());
-            render_model_with_scratch(
+            queue_model_with_scratch(
                 model,
-                framebuffer,
+                batch,
                 camera,
                 |vertex| {
                     let local = vertex.sub(center).mul(WATER_ENEMY_SCALE);
@@ -1800,6 +1962,7 @@ fn render_water_level(
     laser_bolt: &Model,
     projectiles: &[Projectile],
     framebuffer: &mut Framebuffer,
+    batch: &mut TriangleBatch,
     ship: &Ship,
     world_time: f32,
     progress: f32,
@@ -1809,10 +1972,11 @@ fn render_water_level(
     framebuffer.clear(0);
     draw_underwater_background(framebuffer, progress * 0.002);
     let camera = chase_camera(ship);
+    debug_assert!(batch.commands.is_empty());
     for chunk in level.visible_chunks(progress) {
-        render_model(
+        queue_model(
             chunk,
-            framebuffer,
+            batch,
             &camera,
             level_to_world,
             Some(world_time),
@@ -1825,14 +1989,14 @@ fn render_water_level(
         enemies,
         enemy_elapsed,
         progress,
-        framebuffer,
+        batch,
         &camera,
         enemy_instance_buffers,
     );
     for bubble in bubbles.iter().filter(|bubble| bubble.lifetime > 0.0) {
-        render_model(
+        queue_model(
             bubble_model,
-            framebuffer,
+            batch,
             &camera,
             |vertex| bubble.position.add(vertex.mul(bubble.scale)),
             None,
@@ -1845,7 +2009,7 @@ fn render_water_level(
         turbo_plume,
         laser_bolt,
         projectiles,
-        framebuffer,
+        batch,
         &camera,
         ship,
         world_time,
@@ -1853,6 +2017,7 @@ fn render_water_level(
         fire_charge,
         false,
     );
+    batch.flush(framebuffer);
     apply_underwater_lighting(framebuffer, world_time);
 }
 
@@ -2168,6 +2333,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     ];
     let mut enemy_instance_buffers: [Vec<Vec3>; 3] =
         std::array::from_fn(|index| Vec::with_capacity(enemy_models[index].vertices.len()));
+    let mut triangle_batch = TriangleBatch::new();
     let level_colliders = build_level_colliders(&water_level);
     let water_level_spatial = LevelSpatialIndex::new(&water_level, level_colliders);
     drop(water_level);
@@ -2357,6 +2523,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     planet_scale,
                     &sun,
                     &mut framebuffer,
+                    &mut triangle_batch,
                     &ship_controller.ship,
                     world_time,
                     (distance * 0.0025).rem_euclid(1.0),
@@ -2394,6 +2561,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &laser_bolt,
                     &ship_controller.projectiles,
                     &mut framebuffer,
+                    &mut triangle_batch,
                     &ship_controller.ship,
                     world_time,
                     water_level_state.progress,
@@ -2541,6 +2709,36 @@ mod tests {
         );
         assert_eq!(camera_vertices.len(), model.vertices.len());
         assert_eq!(camera_vertices.as_ptr(), allocation);
+    }
+
+    #[test]
+    fn tiled_rasterizer_preserves_depth_across_tile_boundaries() {
+        let mut framebuffer = Framebuffer::new(64, 64);
+        let vertices = |z| {
+            [
+                ScreenVertex { x: 4.0, y: 4.0, z },
+                ScreenVertex { x: 60.0, y: 4.0, z },
+                ScreenVertex {
+                    x: 32.0,
+                    y: 60.0,
+                    z,
+                },
+            ]
+        };
+        let mut batch = TriangleBatch::new();
+        batch.commands.push(TriangleCommand {
+            vertices: vertices(0.5),
+            style: TriangleStyle::Flat(0xff0000),
+        });
+        batch.commands.push(TriangleCommand {
+            vertices: vertices(1.0),
+            style: TriangleStyle::Flat(0x00ff00),
+        });
+        batch.flush_with_workers(&mut framebuffer, 2);
+
+        assert_eq!(framebuffer.pixels[31 * 64 + 32], 0x00ff00);
+        assert_eq!(framebuffer.pixels[32 * 64 + 32], 0x00ff00);
+        assert!(batch.commands.is_empty());
     }
 
     #[test]

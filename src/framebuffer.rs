@@ -20,17 +20,8 @@ impl Framebuffer {
         self.depth.fill(f32::NEG_INFINITY);
     }
 
-    /// Writes a pixel that has already been clipped to the framebuffer bounds.
-    /// Keeping clipping outside the inner rasterizer loop avoids four comparisons
-    /// for every covered pixel.
-    #[inline]
-    pub fn pixel_clipped(&mut self, x: usize, y: usize, z: f32, color: u32) {
-        debug_assert!(x < self.width && y < self.height);
-        let index = y * self.width + x;
-        if z > self.depth[index] {
-            self.depth[index] = z;
-            self.pixels[index] = color;
-        }
+    pub fn buffers_mut(&mut self) -> (&mut [u32], &mut [f32]) {
+        (&mut self.pixels, &mut self.depth)
     }
 
     pub fn save_png(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
