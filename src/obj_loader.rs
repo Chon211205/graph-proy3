@@ -183,7 +183,19 @@ fn classify_surface(name: &str) -> SurfaceShader {
 }
 
 fn classify_color(name: &str) -> MaterialColor {
-    let fixed = if name.starts_with("buzz_") {
+    let fixed = if name.starts_with("mcqueen_") {
+        match name {
+            "mcqueen_red" => [225, 26, 35],
+            "mcqueen_darkred" => [151, 14, 24],
+            "mcqueen_yellow" => [255, 211, 36],
+            "mcqueen_orange" => [255, 116, 20],
+            "mcqueen_white" => [247, 249, 252],
+            "mcqueen_glass" => [73, 156, 211],
+            "mcqueen_blue" => [32, 105, 220],
+            "mcqueen_dark" => [26, 29, 38],
+            _ => [225, 26, 35],
+        }
+    } else if name.starts_with("buzz_") {
         match name {
             "buzz_white" => [238, 242, 248],
             "buzz_green" => [153, 226, 38],

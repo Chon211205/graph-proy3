@@ -15,9 +15,9 @@ use framebuffer::Framebuffer;
 use minifb::{Key, ScaleMode, Window, WindowOptions};
 use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use ship::{
-    ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC, COWBOYB_SPEC,
-    COWBOYB_CAR_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC, Projectile, Ship,
-    ShipController, ShipInput, ShipSpec,
+    ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC,
+    COWBOYB_CAR_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC,
+    MCQUEEN_SPEC, Projectile, Ship, ShipController, ShipInput, ShipSpec,
 };
 use triangle::{ScreenVertex, draw_triangle_shaded_region};
 
@@ -2404,7 +2404,14 @@ fn select_ship(
         right,
         up: right.cross(forward).normalize(),
     };
-    let card_positions = [(48, 145), (238, 145), (428, 145), (48, 385), (238, 385)];
+    let card_positions = [
+        (48, 145),
+        (238, 145),
+        (428, 145),
+        (48, 385),
+        (238, 385),
+        (428, 385),
+    ];
     let mut thumbnails = Vec::with_capacity(choices.len());
     for (index, forms) in ship_forms.iter().enumerate() {
         let (model, spec, _) = forms[0];
@@ -2453,14 +2460,7 @@ fn select_ship(
         for x in 48..626 {
             framebuffer.pixels[92 * WIDTH + x] = if x < 610 { 0x1389bd } else { 0x42dff0 };
         }
-        draw_selection_label(
-            framebuffer,
-            "CINCO NAVES DISPONIBLES",
-            235,
-            108,
-            2,
-            0x91a9bd,
-        );
+        draw_selection_label(framebuffer, "SEIS NAVES DISPONIBLES", 235, 108, 2, 0x91a9bd);
         for (index, ((_, spec), (left, top))) in choices.iter().zip(card_positions).enumerate() {
             draw_hangar_card(framebuffer, left, top, 180, 220, index == selected);
             let thumbnail = &thumbnails[index];
@@ -2584,12 +2584,14 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         load_obj("assets/vehicles/buzz_carro.obj")?,
         load_obj("assets/vehicles/buzz_submarino.obj")?,
     ];
+    let mcqueen_model = load_obj("assets/vehicles/mcqueen_nave.obj")?;
     let choices = [
         (&arwing_model, &ARWING_SPEC),
         (&kirby_model, &KIRBY_SPEC),
         (&astra_model, &ASTRA_SPEC),
         (&cowboyb_model, &COWBOYB_SPEC),
         (&buzz_variants[0], &BUZZ_SPEC),
+        (&mcqueen_model, &MCQUEEN_SPEC),
     ];
     let ship_forms = [
         vec![
@@ -2615,6 +2617,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             (&buzz_variants[1], &BUZZ_SPEC, "MODO CARRO"),
             (&buzz_variants[2], &BUZZ_SPEC, "SUBMARINO"),
         ],
+        vec![(&mcqueen_model, &MCQUEEN_SPEC, "SOLO MODO ESPACIAL")],
     ];
     let mut selected_ship = loop {
         if menu::show(&mut window, &mut framebuffer, false)? == menu::Action::Quit {
@@ -2641,6 +2644,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
         3 => (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC),
         4 => (&buzz_variants[2], &BUZZ_SPEC),
+        5 => (&mcqueen_model, &MCQUEEN_SPEC),
         _ => unreachable!(),
     };
     let mut level_ship_center = model_center(level_ship_model);
@@ -2736,6 +2740,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
                             3 => (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC),
                             4 => (&buzz_variants[2], &BUZZ_SPEC),
+                            5 => (&mcqueen_model, &MCQUEEN_SPEC),
                             _ => unreachable!(),
                         };
                         level_ship_center = model_center(level_ship_model);
@@ -2807,6 +2812,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         let mut entered_level = false;
         if game_mode == GameMode::FreeWorld
             && ship_controller.ship.planet_locked
+            && selected_ship != 5
             && crate::input::pressed(Key::Enter)
         {
             ship_controller = ShipController::new(level_ship_spec);
@@ -2894,7 +2900,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 distance += movement;
 
                 if ship.planet_locked {
-                    window.set_title("Planeta acuatico | Enter: iniciar nivel | Backspace: salir");
+                    window.set_title(if selected_ship == 5 {
+                        "Rayo McQueen | Solo modo espacial | Backspace: salir de orbita"
+                    } else {
+                        "Planeta acuatico | Enter: iniciar nivel | Backspace: salir"
+                    });
                 } else {
                     window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
                 }
@@ -3024,6 +3034,82 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mcqueen_spaceship_loads_and_renders_from_multiple_angles() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let model = load_obj(root.join("assets/vehicles/mcqueen_nave.obj")).unwrap();
+        assert!(
+            model
+                .vertices
+                .iter()
+                .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
+        );
+        assert!(
+            model
+                .faces
+                .iter()
+                .all(|face| face.indices.iter().all(|&i| i < model.vertices.len()))
+        );
+        for (material, rgb) in [
+            ("mcqueen_red", [225, 26, 35]),
+            ("mcqueen_yellow", [255, 211, 36]),
+            ("mcqueen_blue", [32, 105, 220]),
+            ("mcqueen_white", [247, 249, 252]),
+        ] {
+            assert!(
+                model.faces.iter().any(
+                    |face| face.material == material && face.color == MaterialColor::Fixed(rgb)
+                )
+            );
+        }
+        for group in [
+            "Numero_95",
+            "Rayo_ala",
+            "Ojo_blanco",
+            "Reactor_rojo",
+            "Sonrisa",
+        ] {
+            assert!(model.faces.iter().any(|face| face.group == group));
+        }
+        let center = model_center(&model);
+        assert!((1.5..2.5).contains(&(model_radius(&model, center) * MCQUEEN_SPEC.model_scale)));
+        let mut frame = Framebuffer::new(WIDTH, HEIGHT);
+        frame.clear(0x080e1d);
+        for (index, angle) in [0.35_f32, 1.57, 3.5].into_iter().enumerate() {
+            let forward = Vec3::new(angle.sin(), 0.0, -angle.cos());
+            let side = Vec3::new(angle.cos(), 0.0, angle.sin());
+            let before = frame.pixels.iter().filter(|&&p| p != 0x080e1d).count();
+            render_model(
+                &model,
+                &mut frame,
+                &test_camera(),
+                |v| {
+                    let local = MCQUEEN_SPEC.model_to_world(
+                        v.sub(center).mul(0.66),
+                        forward,
+                        side,
+                        Vec3::new(0.0, 1.0, 0.0),
+                    );
+                    Vec3::new(
+                        local.x + (index as f32 - 1.0) * 7.0,
+                        local.y * 0.90 + local.z * 0.43,
+                        14.0 + local.z * 0.90 - local.y * 0.43,
+                    )
+                },
+                None,
+                None,
+            );
+            let after = frame.pixels.iter().filter(|&&p| p != 0x080e1d).count();
+            assert!(
+                after > before + 1000,
+                "invisible spaceship at angle {angle}"
+            );
+        }
+        if let Ok(path) = std::env::var("MCQUEEN_PREVIEW") {
+            frame.save_png(&path).unwrap();
+        }
+    }
 
     fn test_camera() -> Camera {
         Camera {
