@@ -24,6 +24,8 @@ use triangle::{ScreenVertex, draw_triangle, draw_triangle_shaded};
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
 const NEAR_PLANE: f32 = 0.2;
+const FAR_PLANE: f32 = 750.0;
+const VERTICAL_FOV: f32 = 60.0_f32.to_radians();
 const LIGHT_SPEED: f32 = 600.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
 const SUN_POSITION_X: f32 = -520.0;
@@ -272,7 +274,7 @@ fn extract_model_group(model: &Model, group_name: &str) -> Result<Model, String>
     if faces.is_empty() {
         return Err(format!("No se encontro el grupo {group_name}"));
     }
-    Ok(Model { vertices, faces })
+    Ok(Model::new(vertices, faces))
 }
 
 fn stretch_model_group_height(model: &mut Model, group_name: &str, base: f32, factor: f32) {
@@ -287,6 +289,7 @@ fn stretch_model_group_height(model: &mut Model, group_name: &str, base: f32, fa
             vertex.z = base + (vertex.z - base) * factor;
         }
     }
+    model.recalculate_bounds();
 }
 
 fn build_level_colliders(model: &Model) -> Vec<LevelCollider> {
@@ -708,7 +711,7 @@ fn make_sphere(radius: f32, stacks: usize, slices: usize, sun: bool) -> Model {
             faces.push(Face::new([first + 1, second, second + 1], material, group));
         }
     }
-    Model { vertices, faces }
+    Model::new(vertices, faces)
 }
 
 fn make_turbo_plume(segments: usize) -> Model {
@@ -731,7 +734,7 @@ fn make_turbo_plume(segments: usize) -> Model {
             "turbo",
         ));
     }
-    Model { vertices, faces }
+    Model::new(vertices, faces)
 }
 
 fn make_laser_bolt() -> Model {
@@ -755,7 +758,7 @@ fn make_laser_bolt() -> Model {
         faces.push(Face::new([0, current, next], material, "laser"));
         faces.push(Face::new([1, next, current], material, "laser"));
     }
-    Model { vertices, faces }
+    Model::new(vertices, faces)
 }
 
 fn make_bubble_model() -> Model {
@@ -781,7 +784,7 @@ fn make_bubble_model() -> Model {
         .into_iter()
         .map(|indices| Face::new(indices, "bubble_submarine", "bubble_submarine"))
         .collect();
-    Model { vertices, faces }
+    Model::new(vertices, faces)
 }
 
 fn model_center(model: &Model) -> Vec3 {
@@ -1049,6 +1052,45 @@ fn render_model<F>(
 ) where
     F: Fn(Vec3) -> Vec3 + Sync,
 {
+    let tan_half_vertical = (VERTICAL_FOV * 0.5).tan();
+    let tan_half_horizontal = tan_half_vertical * WIDTH as f32 / HEIGHT as f32;
+    let (local_center, local_radius) = model.bounds();
+    let world_center = transform(local_center);
+    let transformed_radius = if local_radius > 0.0 {
+        [
+            Vec3::new(local_radius, 0.0, 0.0),
+            Vec3::new(0.0, local_radius, 0.0),
+            Vec3::new(0.0, 0.0, local_radius),
+        ]
+        .into_iter()
+        .map(|axis| transform(local_center.add(axis)).sub(world_center))
+        .map(|axis| axis.dot(axis).sqrt())
+        .fold(0.0, f32::max)
+    } else {
+        0.0
+    };
+    let relative_center = world_center.sub(camera.position);
+    let camera_center = Vec3::new(
+        relative_center.dot(camera.right),
+        relative_center.dot(camera.up),
+        relative_center.dot(camera.forward),
+    );
+    let horizontal_plane_length = (1.0 + tan_half_horizontal * tan_half_horizontal).sqrt();
+    let vertical_plane_length = (1.0 + tan_half_vertical * tan_half_vertical).sqrt();
+    if camera_center.z + transformed_radius < NEAR_PLANE
+        || camera_center.z - transformed_radius > FAR_PLANE
+        || camera_center.z * tan_half_horizontal + camera_center.x
+            < -transformed_radius * horizontal_plane_length
+        || camera_center.z * tan_half_horizontal - camera_center.x
+            < -transformed_radius * horizontal_plane_length
+        || camera_center.z * tan_half_vertical + camera_center.y
+            < -transformed_radius * vertical_plane_length
+        || camera_center.z * tan_half_vertical - camera_center.y
+            < -transformed_radius * vertical_plane_length
+    {
+        return;
+    }
+
     let transform_vertex = |vertex: &Vec3| {
         let relative = transform(*vertex).sub(camera.position);
         Vec3::new(
@@ -1077,7 +1119,7 @@ fn render_model<F>(
     } else {
         model.vertices.iter().map(transform_vertex).collect()
     };
-    let focal = HEIGHT as f32 / (60.0_f32.to_radians() * 0.5).tan() * 0.5;
+    let focal = HEIGHT as f32 / tan_half_vertical * 0.5;
     let light = Vec3::new(-0.3, 0.8, -0.5).normalize();
     for face in &model.faces {
         let [i0, i1, i2] = face.indices;
@@ -1085,6 +1127,22 @@ fn render_model<F>(
         let v1 = camera_vertices[i1];
         let v2 = camera_vertices[i2];
         if v0.z <= NEAR_PLANE || v1.z <= NEAR_PLANE || v2.z <= NEAR_PLANE {
+            continue;
+        }
+        if (v0.z > FAR_PLANE && v1.z > FAR_PLANE && v2.z > FAR_PLANE)
+            || (v0.x < -v0.z * tan_half_horizontal
+                && v1.x < -v1.z * tan_half_horizontal
+                && v2.x < -v2.z * tan_half_horizontal)
+            || (v0.x > v0.z * tan_half_horizontal
+                && v1.x > v1.z * tan_half_horizontal
+                && v2.x > v2.z * tan_half_horizontal)
+            || (v0.y < -v0.z * tan_half_vertical
+                && v1.y < -v1.z * tan_half_vertical
+                && v2.y < -v2.z * tan_half_vertical)
+            || (v0.y > v0.z * tan_half_vertical
+                && v1.y > v1.z * tan_half_vertical
+                && v2.y > v2.z * tan_half_vertical)
+        {
             continue;
         }
         let project = |vertex: Vec3| ScreenVertex {
@@ -2137,6 +2195,60 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_camera() -> Camera {
+        Camera {
+            position: Vec3::default(),
+            forward: Vec3::new(0.0, 0.0, 1.0),
+            right: Vec3::new(1.0, 0.0, 0.0),
+            up: Vec3::new(0.0, 1.0, 0.0),
+        }
+    }
+
+    fn test_triangle(z: f32) -> Model {
+        Model::new(
+            vec![
+                Vec3::new(-1.0, -1.0, z),
+                Vec3::new(1.0, -1.0, z),
+                Vec3::new(0.0, 1.0, z),
+            ],
+            vec![Face::new([0, 1, 2], "metal", "test")],
+        )
+    }
+
+    #[test]
+    fn frustum_and_distance_culling_keep_visible_geometry_only() {
+        let camera = test_camera();
+        let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
+        render_model(
+            &test_triangle(5.0),
+            &mut framebuffer,
+            &camera,
+            |vertex| vertex,
+            None,
+            None,
+        );
+        assert!(framebuffer.pixels.iter().any(|&pixel| pixel != 0));
+
+        framebuffer.clear(0);
+        render_model(
+            &test_triangle(-5.0),
+            &mut framebuffer,
+            &camera,
+            |vertex| vertex,
+            None,
+            None,
+        );
+        render_model(
+            &test_triangle(FAR_PLANE + 10.0),
+            &mut framebuffer,
+            &camera,
+            |vertex| vertex,
+            None,
+            None,
+        );
+        assert!(framebuffer.pixels.iter().all(|&pixel| pixel == 0));
+    }
 
     #[test]
     fn buzz_assets_load_with_valid_geometry_and_recognized_materials() {

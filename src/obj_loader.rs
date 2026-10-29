@@ -101,6 +101,54 @@ impl Face {
 pub struct Model {
     pub vertices: Vec<Vec3>,
     pub faces: Vec<Face>,
+    bounds_center: Vec3,
+    bounds_radius: f32,
+}
+
+impl Model {
+    pub fn new(vertices: Vec<Vec3>, faces: Vec<Face>) -> Self {
+        let mut model = Self {
+            vertices,
+            faces,
+            bounds_center: Vec3::default(),
+            bounds_radius: 0.0,
+        };
+        model.recalculate_bounds();
+        model
+    }
+
+    pub fn bounds(&self) -> (Vec3, f32) {
+        (self.bounds_center, self.bounds_radius)
+    }
+
+    pub fn recalculate_bounds(&mut self) {
+        let Some(&first) = self.vertices.first() else {
+            self.bounds_center = Vec3::default();
+            self.bounds_radius = 0.0;
+            return;
+        };
+        let mut min = first;
+        let mut max = first;
+        for vertex in &self.vertices[1..] {
+            min.x = min.x.min(vertex.x);
+            min.y = min.y.min(vertex.y);
+            min.z = min.z.min(vertex.z);
+            max.x = max.x.max(vertex.x);
+            max.y = max.y.max(vertex.y);
+            max.z = max.z.max(vertex.z);
+        }
+        self.bounds_center = min.add(max).mul(0.5);
+        self.bounds_radius = self
+            .vertices
+            .iter()
+            .map(|vertex| {
+                vertex
+                    .sub(self.bounds_center)
+                    .dot(vertex.sub(self.bounds_center))
+            })
+            .fold(0.0, f32::max)
+            .sqrt();
+    }
 }
 
 fn classify_surface(name: &str) -> SurfaceShader {
@@ -264,10 +312,7 @@ fn read_index(token: &str, count: usize) -> Result<usize, String> {
 pub fn load_obj(path: impl AsRef<Path>) -> Result<Model, String> {
     let file = File::open(path).map_err(|e| e.to_string())?;
 
-    let mut model = Model {
-        vertices: Vec::new(),
-        faces: Vec::new(),
-    };
+    let mut model = Model::new(Vec::new(), Vec::new());
 
     let mut material = "Hull White".to_string();
     let mut group = "default".to_string();
@@ -318,6 +363,8 @@ pub fn load_obj(path: impl AsRef<Path>) -> Result<Model, String> {
     if model.vertices.is_empty() || model.faces.is_empty() {
         return Err("OBJ sin vertices o caras".into());
     }
+
+    model.recalculate_bounds();
 
     Ok(model)
 }
