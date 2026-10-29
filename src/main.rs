@@ -49,6 +49,7 @@ const LEVEL_CHUNK_LENGTH: f32 = 32.0;
 const LEVEL_RENDER_BEHIND: f32 = 48.0;
 const LEVEL_RENDER_AHEAD: f32 = 112.0;
 const COLLISION_GRID_CELL_SIZE: f32 = 12.0;
+const MAX_BUBBLE_PARTICLES: usize = 256;
 
 fn render_worker_count() -> usize {
     static WORKER_COUNT: OnceLock<usize> = OnceLock::new();
@@ -273,8 +274,24 @@ impl BubbleEmitter {
     }
 
     fn clear(&mut self) {
-        self.particles.clear();
+        for particle in &mut self.particles {
+            particle.lifetime = 0.0;
+        }
         self.timer = 0.0;
+    }
+
+    fn spawn(&mut self, particle: BubbleParticle) {
+        if let Some(slot) = self.particles.iter_mut().find(|slot| slot.lifetime <= 0.0) {
+            *slot = particle;
+        } else if self.particles.len() < MAX_BUBBLE_PARTICLES {
+            self.particles.push(particle);
+        } else if let Some(slot) = self
+            .particles
+            .iter_mut()
+            .min_by(|a, b| a.lifetime.total_cmp(&b.lifetime))
+        {
+            *slot = particle;
+        }
     }
 
     fn update(&mut self, ship: &Ship, delta_time: f32) {
@@ -284,7 +301,7 @@ impl BubbleEmitter {
             for side in ship.spec.turbo_sides {
                 let random = hash(self.serial.wrapping_mul(977).wrapping_add(17));
                 let jitter = random as f32 / u32::MAX as f32 - 0.5;
-                self.particles.push(BubbleParticle {
+                self.spawn(BubbleParticle {
                     position: ship
                         .position
                         .sub(forward.mul(ship.spec.turbo_back + 0.25))
@@ -302,13 +319,16 @@ impl BubbleEmitter {
             self.timer += 0.075;
         }
 
-        for bubble in &mut self.particles {
+        for bubble in self
+            .particles
+            .iter_mut()
+            .filter(|bubble| bubble.lifetime > 0.0)
+        {
             bubble.position = bubble.position.add(bubble.velocity.mul(delta_time));
             bubble.velocity = bubble.velocity.add(Vec3::new(0.0, 0.45 * delta_time, 0.0));
             bubble.lifetime -= delta_time;
             bubble.scale += delta_time * 0.035;
         }
-        self.particles.retain(|bubble| bubble.lifetime > 0.0);
     }
 }
 
@@ -522,7 +542,7 @@ fn resolve_level_collisions(
 fn resolve_water_enemy_collisions(
     state: &mut WaterLevelState,
     ship: &mut Ship,
-    projectiles: &mut Vec<Projectile>,
+    projectiles: &mut [Projectile],
 ) {
     let enemy_positions: Vec<Vec3> = state
         .enemies
@@ -585,7 +605,6 @@ fn resolve_water_enemy_collisions(
             (state.lateral + correction.z).clamp(-WATER_LEVEL_HALF_WIDTH, WATER_LEVEL_HALF_WIDTH);
         ship.position = ship.position.add(correction);
     }
-    projectiles.retain(|projectile| projectile.lifetime > 0.0);
 }
 
 fn build_object_colliders(model: &Model, model_center: Vec3, scale: f32) -> Vec<ObjectCollider> {
@@ -1481,7 +1500,10 @@ fn render_ship_components(
             );
         }
     }
-    for projectile in projectiles {
+    for projectile in projectiles
+        .iter()
+        .filter(|projectile| projectile.lifetime > 0.0)
+    {
         let mut laser_right = projectile
             .direction
             .cross(Vec3::new(0.0, 1.0, 0.0))
@@ -1774,7 +1796,7 @@ fn render_water_level(
         framebuffer,
         &camera,
     );
-    for bubble in bubbles {
+    for bubble in bubbles.iter().filter(|bubble| bubble.lifetime > 0.0) {
         render_model(
             bubble_model,
             framebuffer,
@@ -2514,6 +2536,35 @@ mod tests {
         grid.insert_sphere(1, Vec3::new(100.0, 100.0, 100.0), 2.0);
         assert!(grid.candidates(Vec3::new(1.0, 1.0, 1.0)).contains(&0));
         assert!(!grid.candidates(Vec3::new(1.0, 1.0, 1.0)).contains(&1));
+    }
+
+    fn test_bubble(lifetime: f32) -> BubbleParticle {
+        BubbleParticle {
+            position: Vec3::default(),
+            velocity: Vec3::default(),
+            lifetime,
+            scale: 1.0,
+        }
+    }
+
+    #[test]
+    fn bubble_pool_reuses_slots_and_preserves_capacity_on_clear() {
+        let mut emitter = BubbleEmitter::new();
+        emitter.spawn(test_bubble(0.0));
+        emitter.spawn(test_bubble(2.0));
+        assert_eq!(emitter.particles.len(), 1);
+        emitter.clear();
+        assert_eq!(emitter.particles.len(), 1);
+        assert_eq!(emitter.particles[0].lifetime, 0.0);
+    }
+
+    #[test]
+    fn bubble_pool_never_exceeds_safety_limit() {
+        let mut emitter = BubbleEmitter::new();
+        for _ in 0..MAX_BUBBLE_PARTICLES + 20 {
+            emitter.spawn(test_bubble(2.0));
+        }
+        assert_eq!(emitter.particles.len(), MAX_BUBBLE_PARTICLES);
     }
 
     #[test]
