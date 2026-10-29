@@ -10,6 +10,7 @@ pub enum ModelAxes {
     CowboyB,
 }
 
+#[derive(Clone, Copy)]
 pub struct ShipSpec {
     pub name: &'static str,
     pub model_scale: f32,
@@ -216,6 +217,17 @@ pub static COWBOYB_SPEC: ShipSpec = ShipSpec {
     muzzle_sides: DUAL_SIDES,
     laser_color: [255, 55, 45],
     laser_core_color: [255, 225, 170],
+};
+
+pub static BUZZ_SPEC: ShipSpec = ShipSpec {
+    name: "Buzz Lightyear",
+    model_scale: 0.30,
+    model_axes: ModelAxes::Astra,
+    turbo_color: [144, 240, 40],
+    turbo_core_color: [230, 255, 200],
+    laser_color: [255, 45, 55],
+    laser_core_color: [255, 220, 230],
+    ..ASTRA_SPEC
 };
 
 impl ShipSpec {
