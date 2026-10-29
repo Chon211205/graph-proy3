@@ -219,7 +219,10 @@ fn classify_color(name: &str) -> MaterialColor {
         [125, 58, 188]
     } else if name.contains("jelly_pink") {
         [241, 91, 178]
-    } else if name.contains("cyan_glow") {
+    } else if name.contains("cyan_glow")
+        || name.contains("engine_cyan")
+        || name.contains("cyan_engine")
+    {
         [40, 225, 242]
     } else if name.contains("red_glow") {
         [255, 42, 46]
@@ -239,6 +242,22 @@ fn classify_color(name: &str) -> MaterialColor {
         [18, 44, 98]
     } else if name.contains("azul_cobalto") {
         [34, 106, 190]
+    } else if name.contains("kirby_smooth_pink") {
+        [255, 158, 198]
+    } else if name.contains("kirby_pink_highlights") {
+        [255, 194, 218]
+    } else if name.contains("kirby_blue_eye_gradient") {
+        [42, 105, 215]
+    } else if name.contains("kirby_light_blue_iris") {
+        [100, 205, 245]
+    } else if name.contains("eye_white_highlights") {
+        [250, 252, 255]
+    } else if name.contains("dark_gold") {
+        [112, 76, 26]
+    } else if name.contains("polished_gold_highlights") {
+        [255, 218, 92]
+    } else if name.contains("submarine_metallic_gold") {
+        [196, 146, 42]
     } else if name.contains("soft_pink") {
         [255, 158, 198]
     } else if name.contains("light_pink") || name.contains("rosy_cheeks") {

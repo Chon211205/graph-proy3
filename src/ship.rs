@@ -60,7 +60,7 @@ const CENTER_SIDE: &[f32] = &[0.0];
 
 pub static ARWING_SPEC: ShipSpec = ShipSpec {
     name: "Arwing",
-    model_scale: 0.055,
+    model_scale: 0.16,
     model_axes: ModelAxes::Arwing,
     collision_radius: 2.0,
     min_speed: 4.0,
@@ -81,7 +81,7 @@ pub static ARWING_SPEC: ShipSpec = ShipSpec {
     chase_distance: 12.0,
     chase_height: 4.0,
     chase_look_ahead: 8.0,
-    turbo_back: 1.12,
+    turbo_back: 1.45,
     turbo_side: 0.72,
     turbo_down: 0.05,
     turbo_sides: DUAL_SIDES,
@@ -101,7 +101,7 @@ pub static ARWING_SPEC: ShipSpec = ShipSpec {
 
 pub static KIRBY_SPEC: ShipSpec = ShipSpec {
     name: "Kirby UFO",
-    model_scale: 0.25,
+    model_scale: 0.18,
     model_axes: ModelAxes::Kirby,
     collision_radius: 2.0,
     min_speed: 4.0,
@@ -287,9 +287,9 @@ impl ShipSpec {
     pub fn model_to_world(&self, local: Vec3, forward: Vec3, right: Vec3, up: Vec3) -> Vec3 {
         match self.model_axes {
             ModelAxes::Arwing => forward
-                .mul(-local.x)
-                .add(up.mul(local.y))
-                .add(right.mul(local.z)),
+                .mul(local.x)
+                .add(right.mul(local.y))
+                .add(up.mul(local.z)),
             ModelAxes::ArwingSubmarine => forward
                 .mul(-local.x)
                 .add(up.mul(local.z))

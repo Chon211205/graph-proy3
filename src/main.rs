@@ -2349,7 +2349,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
-    let arwing_path = "assets/vehicles/nave.obj";
+    let arwing_path = "assets/vehicles/arwing.obj";
     let kirby_path = "assets/vehicles/kirby.obj";
     let astra_path = "assets/vehicles/nave_astra.obj";
     let cowboyb_path = "assets/vehicles/nave_cowboyb.obj";
@@ -3041,6 +3041,58 @@ mod tests {
         assert_ne!(sizes[0], sizes[1]);
         assert_ne!(sizes[0], sizes[2]);
         assert_ne!(sizes[1], sizes[2]);
+    }
+
+    #[test]
+    fn detailed_arwing_asset_has_expected_scale_and_axes() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let model = load_obj(root.join("assets/vehicles/arwing.obj")).unwrap();
+        assert!(model.vertices.len() > 3_000);
+        assert!(model.faces.len() > 6_000);
+        let radius = model_radius(&model, model_center(&model)) * ARWING_SPEC.model_scale;
+        assert!((1.5..3.5).contains(&radius), "unexpected radius {radius}");
+        assert!(model.faces.iter().any(|face| {
+            face.material.to_ascii_lowercase().contains("engine_cyan")
+                && face.color == MaterialColor::Fixed([40, 225, 242])
+        }));
+
+        let forward = Vec3::new(1.0, 0.0, 0.0);
+        let right = Vec3::new(0.0, 0.0, 1.0);
+        let up = Vec3::new(0.0, 1.0, 0.0);
+        let transformed = ARWING_SPEC.model_to_world(Vec3::new(1.0, 2.0, 3.0), forward, right, up);
+        assert_eq!(
+            (transformed.x, transformed.y, transformed.z),
+            (1.0, 3.0, 2.0)
+        );
+    }
+
+    #[test]
+    fn detailed_kirby_asset_has_expected_scale_axes_and_palette() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let model = load_obj(root.join("assets/vehicles/kirby.obj")).unwrap();
+        assert!(model.vertices.len() > 10_000);
+        assert!(model.faces.len() > 19_000);
+        let radius = model_radius(&model, model_center(&model)) * KIRBY_SPEC.model_scale;
+        assert!((1.5..2.0).contains(&radius), "unexpected radius {radius}");
+
+        let forward = Vec3::new(1.0, 0.0, 0.0);
+        let right = Vec3::new(0.0, 0.0, 1.0);
+        let up = Vec3::new(0.0, 1.0, 0.0);
+        let transformed = KIRBY_SPEC.model_to_world(Vec3::new(2.0, -1.0, 3.0), forward, right, up);
+        assert_eq!(
+            (transformed.x, transformed.y, transformed.z),
+            (1.0, 3.0, 2.0)
+        );
+        assert!(model.faces.iter().any(|face| {
+            face.material.to_ascii_lowercase().contains("cyan_engine")
+                && face.color == MaterialColor::Fixed([40, 225, 242])
+        }));
+        assert!(model.faces.iter().any(|face| {
+            face.material
+                .to_ascii_lowercase()
+                .contains("kirby_smooth_pink")
+                && face.color == MaterialColor::Fixed([255, 158, 198])
+        }));
     }
 
     #[test]
