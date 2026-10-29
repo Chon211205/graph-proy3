@@ -50,10 +50,109 @@ const LEVEL_RENDER_BEHIND: f32 = 48.0;
 const LEVEL_RENDER_AHEAD: f32 = 112.0;
 const COLLISION_GRID_CELL_SIZE: f32 = 12.0;
 const MAX_BUBBLE_PARTICLES: usize = 256;
+const RESOLUTION_SCALES: [f32; 4] = [1.0, 0.9, 0.75, 0.6];
 
 fn render_worker_count() -> usize {
     static WORKER_COUNT: OnceLock<usize> = OnceLock::new();
     *WORKER_COUNT.get_or_init(|| thread::available_parallelism().map_or(1, usize::from))
+}
+
+struct DynamicResolution {
+    enabled: bool,
+    scale_index: usize,
+    fps_average: f32,
+    low_time: f32,
+    high_time: f32,
+    cooldown: f32,
+}
+
+impl DynamicResolution {
+    fn new() -> Self {
+        Self {
+            enabled: true,
+            scale_index: 0,
+            fps_average: 60.0,
+            low_time: 0.0,
+            high_time: 0.0,
+            cooldown: 0.0,
+        }
+    }
+
+    fn dimensions(&self) -> (usize, usize) {
+        let scale = RESOLUTION_SCALES[self.scale_index];
+        (
+            ((WIDTH as f32 * scale).round() as usize).max(1),
+            ((HEIGHT as f32 * scale).round() as usize).max(1),
+        )
+    }
+
+    fn toggle(&mut self) -> bool {
+        self.enabled = !self.enabled;
+        self.low_time = 0.0;
+        self.high_time = 0.0;
+        if !self.enabled && self.scale_index != 0 {
+            self.scale_index = 0;
+            return true;
+        }
+        false
+    }
+
+    fn update(&mut self, frame_time: f32) -> bool {
+        let frame_time = frame_time.max(0.000_1);
+        let fps = 1.0 / frame_time;
+        let smoothing = 1.0 - (-frame_time * 3.0).exp();
+        self.fps_average += (fps - self.fps_average) * smoothing;
+        self.cooldown = (self.cooldown - frame_time).max(0.0);
+        if !self.enabled || self.cooldown > 0.0 {
+            return false;
+        }
+
+        if self.fps_average < 50.0 {
+            self.low_time += frame_time;
+            self.high_time = 0.0;
+        } else if self.fps_average > 58.0 {
+            self.high_time += frame_time;
+            self.low_time = 0.0;
+        } else {
+            self.low_time = 0.0;
+            self.high_time = 0.0;
+        }
+
+        if self.low_time >= 1.0 && self.scale_index + 1 < RESOLUTION_SCALES.len() {
+            self.scale_index += 1;
+            self.low_time = 0.0;
+            self.cooldown = 2.0;
+            true
+        } else if self.high_time >= 3.0 && self.scale_index > 0 {
+            self.scale_index -= 1;
+            self.high_time = 0.0;
+            self.cooldown = 3.0;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn percentage(&self) -> u32 {
+        (RESOLUTION_SCALES[self.scale_index] * 100.0).round() as u32
+    }
+}
+
+fn upscale_scene(source: &Framebuffer, target: &mut Framebuffer) {
+    debug_assert_eq!((target.width, target.height), (WIDTH, HEIGHT));
+    if source.width == target.width && source.height == target.height {
+        target.pixels.copy_from_slice(&source.pixels);
+        return;
+    }
+    for y in 0..target.height {
+        let source_y = y * source.height / target.height;
+        let target_row = y * target.width;
+        let source_row = source_y * source.width;
+        for x in 0..target.width {
+            let source_x = x * source.width / target.width;
+            target.pixels[target_row + x] = source.pixels[source_row + source_x];
+        }
+    }
 }
 
 struct Camera {
@@ -1277,13 +1376,23 @@ struct TriangleCommand {
 
 struct TriangleBatch {
     commands: Vec<TriangleCommand>,
+    viewport_width: usize,
+    viewport_height: usize,
 }
 
 impl TriangleBatch {
-    fn new() -> Self {
+    fn new(viewport_width: usize, viewport_height: usize) -> Self {
         Self {
             commands: Vec::new(),
+            viewport_width,
+            viewport_height,
         }
+    }
+
+    fn resize(&mut self, width: usize, height: usize) {
+        debug_assert!(self.commands.is_empty());
+        self.viewport_width = width;
+        self.viewport_height = height;
     }
 
     fn flush(&mut self, framebuffer: &mut Framebuffer) {
@@ -1296,6 +1405,7 @@ impl TriangleBatch {
         }
         let width = framebuffer.width;
         let height = framebuffer.height;
+        debug_assert_eq!((width, height), (self.viewport_width, self.viewport_height));
         let worker_count = worker_count.clamp(1, height.max(1));
         let tile_height = height.div_ceil(worker_count).div_ceil(32) * 32;
         let commands = &self.commands;
@@ -1372,7 +1482,7 @@ fn render_model<F>(
 ) where
     F: Fn(Vec3) -> Vec3 + Sync,
 {
-    let mut batch = TriangleBatch::new();
+    let mut batch = TriangleBatch::new(framebuffer.width, framebuffer.height);
     queue_model(
         model,
         &mut batch,
@@ -1418,7 +1528,8 @@ fn queue_model_with_scratch<F>(
     F: Fn(Vec3) -> Vec3 + Sync,
 {
     let tan_half_vertical = (VERTICAL_FOV * 0.5).tan();
-    let tan_half_horizontal = tan_half_vertical * WIDTH as f32 / HEIGHT as f32;
+    let tan_half_horizontal =
+        tan_half_vertical * batch.viewport_width as f32 / batch.viewport_height as f32;
     let (local_center, local_radius) = model.bounds();
     let world_center = transform(local_center);
     let transformed_radius = if local_radius > 0.0 {
@@ -1486,7 +1597,7 @@ fn queue_model_with_scratch<F>(
         camera_vertices.reserve(model.vertices.len());
         camera_vertices.extend(model.vertices.iter().map(transform_vertex));
     }
-    let focal = HEIGHT as f32 / tan_half_vertical * 0.5;
+    let focal = batch.viewport_height as f32 / tan_half_vertical * 0.5;
     let light = Vec3::new(-0.3, 0.8, -0.5).normalize();
     for face in &model.faces {
         let [i0, i1, i2] = face.indices;
@@ -1513,8 +1624,8 @@ fn queue_model_with_scratch<F>(
             continue;
         }
         let project = |vertex: Vec3| ScreenVertex {
-            x: WIDTH as f32 * 0.5 + vertex.x * focal / vertex.z,
-            y: HEIGHT as f32 * 0.5 - vertex.y * focal / vertex.z,
+            x: batch.viewport_width as f32 * 0.5 + vertex.x * focal / vertex.z,
+            y: batch.viewport_height as f32 * 0.5 - vertex.y * focal / vertex.z,
             z: 1.0 / vertex.z,
         };
         let normal = v1.sub(v0).cross(v2.sub(v0)).normalize();
@@ -1565,7 +1676,7 @@ fn render_model_with_scratch<F>(
 ) where
     F: Fn(Vec3) -> Vec3 + Sync,
 {
-    let mut batch = TriangleBatch::new();
+    let mut batch = TriangleBatch::new(framebuffer.width, framebuffer.height);
     queue_model_with_scratch(
         model,
         &mut batch,
@@ -2333,7 +2444,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     ];
     let mut enemy_instance_buffers: [Vec<Vec3>; 3] =
         std::array::from_fn(|index| Vec::with_capacity(enemy_models[index].vertices.len()));
-    let mut triangle_batch = TriangleBatch::new();
+    let mut scene_framebuffer = Framebuffer::new(WIDTH, HEIGHT);
+    let mut triangle_batch = TriangleBatch::new(WIDTH, HEIGHT);
+    let mut dynamic_resolution = DynamicResolution::new();
     let level_colliders = build_level_colliders(&water_level);
     let water_level_spatial = LevelSpatialIndex::new(&water_level, level_colliders);
     drop(water_level);
@@ -2388,9 +2501,22 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             car_mode = !car_mode;
         }
         let now = Instant::now();
-        let delta_time = now.duration_since(previous).as_secs_f32().min(0.05);
+        let frame_time = now.duration_since(previous).as_secs_f32();
+        let delta_time = frame_time.min(0.05);
         previous = now;
         world_time += delta_time;
+
+        let resolution_changed = dynamic_resolution.update(frame_time);
+        let toggled_resolution = if crate::input::pressed(Key::F2) {
+            dynamic_resolution.toggle()
+        } else {
+            false
+        };
+        if resolution_changed || toggled_resolution {
+            let (render_width, render_height) = dynamic_resolution.dimensions();
+            scene_framebuffer = Framebuffer::new(render_width, render_height);
+            triangle_batch.resize(render_width, render_height);
+        }
 
         if crate::input::pressed(Key::F11) {
             fullscreen = !fullscreen;
@@ -2522,7 +2648,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     planet_center,
                     planet_scale,
                     &sun,
-                    &mut framebuffer,
+                    &mut scene_framebuffer,
                     &mut triangle_batch,
                     &ship_controller.ship,
                     world_time,
@@ -2560,7 +2686,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &turbo_plume,
                     &laser_bolt,
                     &ship_controller.projectiles,
-                    &mut framebuffer,
+                    &mut scene_framebuffer,
                     &mut triangle_batch,
                     &ship_controller.ship,
                     world_time,
@@ -2578,6 +2704,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 }
             }
         }
+
+        upscale_scene(&scene_framebuffer, &mut framebuffer);
 
         let form = if selected_ship == 4 {
             if game_mode == GameMode::WaterLevel {
@@ -2614,6 +2742,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             2,
             0xffffff,
         );
+        let resolution_label = if dynamic_resolution.enabled {
+            format!("F2: RES AUTO {}%", dynamic_resolution.percentage())
+        } else {
+            "F2: RES AUTO OFF".to_string()
+        };
+        draw_selection_label(&mut framebuffer, &resolution_label, 1040, 766, 2, 0x9fc5df);
         if crate::input::pressed(Key::P) {
             framebuffer.save_png("captura.png")?;
             println!("Captura guardada: captura.png");
@@ -2725,7 +2859,7 @@ mod tests {
                 },
             ]
         };
-        let mut batch = TriangleBatch::new();
+        let mut batch = TriangleBatch::new(framebuffer.width, framebuffer.height);
         batch.commands.push(TriangleCommand {
             vertices: vertices(0.5),
             style: TriangleStyle::Flat(0xff0000),
@@ -2739,6 +2873,43 @@ mod tests {
         assert_eq!(framebuffer.pixels[31 * 64 + 32], 0x00ff00);
         assert_eq!(framebuffer.pixels[32 * 64 + 32], 0x00ff00);
         assert!(batch.commands.is_empty());
+    }
+
+    #[test]
+    fn dynamic_resolution_reacts_only_to_sustained_frame_rates() {
+        let mut resolution = DynamicResolution::new();
+        for _ in 0..80 {
+            resolution.update(1.0 / 40.0);
+        }
+        assert_eq!(resolution.scale_index, 1);
+        assert_eq!(resolution.dimensions(), (1080, 720));
+
+        for _ in 0..600 {
+            resolution.update(1.0 / 100.0);
+        }
+        assert_eq!(resolution.scale_index, 0);
+        assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
+    }
+
+    #[test]
+    fn disabling_dynamic_resolution_restores_full_size() {
+        let mut resolution = DynamicResolution::new();
+        resolution.scale_index = RESOLUTION_SCALES.len() - 1;
+        assert!(resolution.toggle());
+        assert!(!resolution.enabled);
+        assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
+    }
+
+    #[test]
+    fn scene_upscaling_covers_the_full_presentation_buffer() {
+        let mut source = Framebuffer::new(2, 2);
+        source.pixels = vec![1, 2, 3, 4];
+        let mut target = Framebuffer::new(WIDTH, HEIGHT);
+        upscale_scene(&source, &mut target);
+        assert_eq!(target.pixels[0], 1);
+        assert_eq!(target.pixels[WIDTH - 1], 2);
+        assert_eq!(target.pixels[(HEIGHT - 1) * WIDTH], 3);
+        assert_eq!(target.pixels[HEIGHT * WIDTH - 1], 4);
     }
 
     #[test]
