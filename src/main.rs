@@ -37,6 +37,7 @@ const WATER_LEVEL_SOFT_BORDER: f32 = 50.0;
 const WATER_LEVEL_BORDER_STRENGTH: f32 = 26.0;
 const WATER_LEVEL_MIN_HEIGHT: f32 = 2.5;
 const WATER_LEVEL_MAX_HEIGHT: f32 = 42.0;
+const WATER_ENEMY_SCALE: f32 = 0.85;
 
 struct Camera {
     position: Vec3,
@@ -65,6 +66,18 @@ struct WaterLevelState {
     progress: f32,
     lateral: f32,
     height: f32,
+    elapsed: f32,
+    enemies: Vec<WaterEnemy>,
+    defeated_enemies: usize,
+}
+
+struct WaterEnemy {
+    kind: usize,
+    progress: f32,
+    lateral: f32,
+    height: f32,
+    phase: f32,
+    alive: bool,
 }
 
 struct BubbleParticle {
@@ -131,14 +144,28 @@ impl BubbleEmitter {
 
 impl WaterLevelState {
     fn new() -> Self {
+        let enemies = (0..18)
+            .map(|index| WaterEnemy {
+                kind: index % 3,
+                progress: 72.0 + index as f32 * 43.0,
+                lateral: [-32.0, 24.0, -10.0, 35.0, 5.0, -27.0][index % 6],
+                height: [9.0, 18.0, 28.0, 13.0, 33.0, 22.0][index % 6],
+                phase: index as f32 * 1.37,
+                alive: true,
+            })
+            .collect();
         Self {
             progress: 8.0,
             lateral: 0.0,
             height: 10.0,
+            elapsed: 0.0,
+            enemies,
+            defeated_enemies: 0,
         }
     }
 
     fn update(&mut self, ship: &mut Ship, input: &ShipInput, delta_time: f32) {
+        self.elapsed += delta_time;
         self.progress += ship.speed * delta_time;
         self.lateral += input.yaw as f32 * 17.0 * delta_time;
 
@@ -173,8 +200,65 @@ impl WaterLevelState {
     }
 }
 
+impl WaterEnemy {
+    fn position(&self, time: f32) -> Vec3 {
+        let route_curve = (self.progress * 0.012).sin() * 3.5;
+        let route_height = (self.progress * 0.018).sin() * 1.5;
+        let (lateral_motion, vertical_motion) = match self.kind {
+            0 => (
+                (time * 0.65 + self.phase).sin() * 2.0,
+                (time * 1.3 + self.phase).sin(),
+            ),
+            1 => (
+                (time * 1.15 + self.phase).sin() * 13.0,
+                (time * 1.8 + self.phase).sin() * 2.0,
+            ),
+            _ => (
+                (time * 0.55 + self.phase).sin() * 5.0,
+                (time * 1.1 + self.phase).sin() * 4.0,
+            ),
+        };
+        Vec3::new(
+            -self.progress,
+            self.height + route_height + vertical_motion,
+            self.lateral + route_curve + lateral_motion,
+        )
+    }
+
+    fn collision_radius(&self) -> f32 {
+        [2.0, 2.5, 2.1][self.kind]
+    }
+}
+
 fn level_to_world(vertex: Vec3) -> Vec3 {
     Vec3::new(-vertex.y, vertex.z, vertex.x)
+}
+
+fn extract_model_group(model: &Model, group_name: &str) -> Result<Model, String> {
+    let mut index_map = HashMap::new();
+    let mut vertices = Vec::new();
+    let mut faces = Vec::new();
+
+    for face in model.faces.iter().filter(|face| face.group == group_name) {
+        let mut indices = [0_usize; 3];
+        for (target, source) in indices.iter_mut().zip(face.indices) {
+            *target = *index_map.entry(source).or_insert_with(|| {
+                let index = vertices.len();
+                vertices.push(model.vertices[source]);
+                index
+            });
+        }
+        faces.push(Face {
+            indices,
+            material: face.material.clone(),
+            group: face.group.clone(),
+        });
+    }
+
+    if faces.is_empty() {
+        return Err(format!("No se encontro el grupo {group_name}"));
+    }
+    Ok(Model { vertices, faces })
 }
 
 fn build_level_colliders(model: &Model) -> Vec<LevelCollider> {
@@ -236,6 +320,51 @@ fn resolve_level_collisions(
             ship.position = ship.position.add(correction);
         }
     }
+}
+
+fn resolve_water_enemy_collisions(
+    state: &mut WaterLevelState,
+    ship: &mut Ship,
+    projectiles: &mut Vec<Projectile>,
+) {
+    for projectile in projectiles.iter_mut().filter(|shot| shot.lifetime > 0.0) {
+        for enemy in state.enemies.iter_mut().filter(|enemy| enemy.alive) {
+            let offset = projectile.position.sub(enemy.position(state.elapsed));
+            let hit_radius = enemy.collision_radius() + projectile.scale * 0.35;
+            if offset.dot(offset) <= hit_radius * hit_radius {
+                enemy.alive = false;
+                projectile.lifetime = 0.0;
+                state.defeated_enemies += 1;
+                break;
+            }
+        }
+    }
+
+    for enemy in state.enemies.iter().filter(|enemy| enemy.alive) {
+        let enemy_position = enemy.position(state.elapsed);
+        let offset = ship.position.sub(enemy_position);
+        let separation = ship.spec.collision_radius + enemy.collision_radius();
+        let distance_squared = offset.dot(offset);
+        if distance_squared >= separation * separation {
+            continue;
+        }
+
+        let lateral_offset = Vec3::new(0.0, offset.y, offset.z);
+        let lateral_distance = lateral_offset.dot(lateral_offset).sqrt();
+        let normal = if lateral_distance > 0.001 {
+            lateral_offset.mul(1.0 / lateral_distance)
+        } else {
+            Vec3::new(0.0, 1.0, 0.0)
+        };
+        let distance = distance_squared.sqrt();
+        let correction = normal.mul(separation - distance + 0.25);
+        state.height =
+            (state.height + correction.y).clamp(WATER_LEVEL_MIN_HEIGHT, WATER_LEVEL_MAX_HEIGHT);
+        state.lateral =
+            (state.lateral + correction.z).clamp(-WATER_LEVEL_HALF_WIDTH, WATER_LEVEL_HALF_WIDTH);
+        ship.position = ship.position.add(correction);
+    }
+    projectiles.retain(|projectile| projectile.lifetime > 0.0);
 }
 
 fn build_object_colliders(model: &Model, model_center: Vec3, scale: f32) -> Vec<ObjectCollider> {
@@ -393,7 +522,23 @@ fn color_for_material(name: &str, effect_spec: Option<&ShipSpec>) -> [u8; 3] {
             _ => [238, 242, 248],
         };
     }
-    if name.contains("laser_core") {
+    if name.contains("spike_orange") {
+        [239, 113, 38]
+    } else if name.contains("spike_yellow") || name.contains("yellow_glow") {
+        [250, 214, 54]
+    } else if name.contains("shark_blue") {
+        [42, 104, 150]
+    } else if name.contains("shark_light") {
+        [138, 191, 203]
+    } else if name.contains("jelly_purple") {
+        [125, 58, 188]
+    } else if name.contains("jelly_pink") {
+        [241, 91, 178]
+    } else if name.contains("cyan_glow") {
+        [40, 225, 242]
+    } else if name.contains("red_glow") {
+        [255, 42, 46]
+    } else if name.contains("laser_core") {
         effect_spec.map_or([255, 245, 190], |spec| spec.laser_core_color)
     } else if name.contains("bubble_submarine") {
         [155, 232, 255]
@@ -1459,10 +1604,53 @@ fn apply_underwater_lighting(framebuffer: &mut Framebuffer, time: f32) {
     }
 }
 
+fn render_water_enemies(
+    enemy_models: &[Model; 3],
+    enemy_centers: &[Vec3; 3],
+    enemies: &[WaterEnemy],
+    elapsed: f32,
+    current_progress: f32,
+    framebuffer: &mut Framebuffer,
+    camera: &Camera,
+) {
+    for enemy in enemies
+        .iter()
+        .filter(|enemy| enemy.alive && (enemy.progress - current_progress).abs() < 150.0)
+    {
+        let position = enemy.position(elapsed);
+        let angle = match enemy.kind {
+            0 => elapsed * 0.55 + enemy.phase,
+            1 => (elapsed * 1.15 + enemy.phase).cos() * 0.18,
+            _ => (elapsed * 0.45 + enemy.phase).sin() * 0.12,
+        };
+        let forward = Vec3::new(angle.cos(), 0.0, angle.sin());
+        let right = Vec3::new(-angle.sin(), 0.0, angle.cos());
+        let up = Vec3::new(0.0, 1.0, 0.0);
+        render_model(
+            &enemy_models[enemy.kind],
+            framebuffer,
+            camera,
+            |vertex| {
+                let local = vertex.sub(enemy_centers[enemy.kind]).mul(WATER_ENEMY_SCALE);
+                position
+                    .add(forward.mul(local.x))
+                    .add(right.mul(local.y))
+                    .add(up.mul(local.z))
+            },
+            None,
+            None,
+        );
+    }
+}
+
 fn render_water_level(
     level: &Model,
     level_floor: &Model,
     level_side_walls: &Model,
+    enemy_models: &[Model; 3],
+    enemy_centers: &[Vec3; 3],
+    enemies: &[WaterEnemy],
+    enemy_elapsed: f32,
     bubble_model: &Model,
     bubbles: &[BubbleParticle],
     ship_model: &Model,
@@ -1503,6 +1691,15 @@ fn render_water_level(
         level_to_world,
         Some(world_time),
         None,
+    );
+    render_water_enemies(
+        enemy_models,
+        enemy_centers,
+        enemies,
+        enemy_elapsed,
+        progress,
+        framebuffer,
+        &camera,
     );
     for bubble in bubbles {
         render_model(
@@ -1824,6 +2021,19 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let water_level_path = "assets/levels/waterlevel.obj";
     let water_level = load_obj(water_level_path)
         .map_err(|error| format!("Error al cargar {water_level_path}: {error}"))?;
+    let enemy_path = "assets/enemies/acuaticenemies.obj";
+    let enemy_source =
+        load_obj(enemy_path).map_err(|error| format!("Error al cargar {enemy_path}: {error}"))?;
+    let enemy_models = [
+        extract_model_group(&enemy_source, "ENEMY_PUFFER_MINE")?,
+        extract_model_group(&enemy_source, "ENEMY_SHARK_DRONE")?,
+        extract_model_group(&enemy_source, "ENEMY_JELLY_BOT")?,
+    ];
+    let enemy_centers = [
+        model_center(&enemy_models[0]),
+        model_center(&enemy_models[1]),
+        model_center(&enemy_models[2]),
+    ];
     let level_colliders = build_level_colliders(&water_level);
     let water_level_floor = make_level_floor(140.0, 920.0, 15.0);
     let water_level_side_walls = make_level_side_walls(920.0, 12.0);
@@ -2024,12 +2234,21 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &mut ship_controller.ship,
                     &level_colliders,
                 );
+                resolve_water_enemy_collisions(
+                    &mut water_level_state,
+                    &mut ship_controller.ship,
+                    &mut ship_controller.projectiles,
+                );
                 bubble_emitter.update(&ship_controller.ship, delta_time);
                 let turbo_power = ship_controller.turbo_power(ship_controller.ship.speed);
                 render_water_level(
                     &water_level,
                     &water_level_floor,
                     &water_level_side_walls,
+                    &enemy_models,
+                    &enemy_centers,
+                    &water_level_state.enemies,
+                    water_level_state.elapsed,
                     &bubble_model,
                     &bubble_emitter.particles,
                     level_ship_model,
@@ -2074,6 +2293,14 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             2,
             0x99e226,
         );
+        if game_mode == GameMode::WaterLevel {
+            let enemy_counter = format!(
+                "ENEMIGOS: {}/{}",
+                water_level_state.defeated_enemies,
+                water_level_state.enemies.len()
+            );
+            draw_selection_label(&mut framebuffer, &enemy_counter, 1035, 24, 2, 0x65dfea);
+        }
         draw_selection_label(
             &mut framebuffer,
             "ESC: PAUSA   F1: CONTROLES",
@@ -2132,5 +2359,16 @@ mod tests {
         assert_ne!(sizes[0], sizes[1]);
         assert_ne!(sizes[0], sizes[2]);
         assert_ne!(sizes[1], sizes[2]);
+    }
+
+    #[test]
+    fn aquatic_enemy_asset_contains_all_enemy_groups() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let source = load_obj(root.join("assets/enemies/acuaticenemies.obj")).unwrap();
+        for group in ["ENEMY_PUFFER_MINE", "ENEMY_SHARK_DRONE", "ENEMY_JELLY_BOT"] {
+            let enemy = extract_model_group(&source, group).unwrap();
+            assert!(!enemy.vertices.is_empty(), "{group} sin vertices");
+            assert!(!enemy.faces.is_empty(), "{group} sin caras");
+        }
     }
 }
