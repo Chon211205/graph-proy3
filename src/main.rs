@@ -1,4 +1,6 @@
 mod framebuffer;
+mod input;
+mod menu;
 mod obj_loader;
 mod ship;
 mod triangle;
@@ -8,14 +10,14 @@ use std::f32::consts::{PI, TAU};
 use std::time::Instant;
 
 use framebuffer::Framebuffer;
-use minifb::{Key, KeyRepeat, ScaleMode, Window, WindowOptions};
-use obj_loader::{load_obj, Face, Model, Vec3};
+use minifb::{Key, ScaleMode, Window, WindowOptions};
+use obj_loader::{Face, Model, Vec3, load_obj};
 use ship::{
     Projectile, Ship, ShipController, ShipInput, ShipSpec, ARWING_SPEC, ARWING_SUBMARINE_SPEC,
     ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC,
     KIRBY_SUBMARINE_SPEC,
 };
-use triangle::{draw_triangle, draw_triangle_shaded, ScreenVertex};
+use triangle::{ScreenVertex, draw_triangle, draw_triangle_shaded};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
@@ -358,12 +360,26 @@ fn create_window(fullscreen: bool) -> Result<Window, minifb::Error> {
     if fullscreen {
         window.set_position(0, 0);
     }
+    input::attach(&mut window);
     window.set_target_fps(60);
     Ok(window)
 }
 
 fn color_for_material(name: &str, effect_spec: Option<&ShipSpec>) -> [u8; 3] {
     let name = name.to_ascii_lowercase();
+    if name.starts_with("buzz_") {
+        return match name.as_str() {
+            "buzz_white" => [238, 242, 248],
+            "buzz_green" => [153, 226, 38],
+            "buzz_purple" => [116, 61, 177],
+            "buzz_red" => [235, 46, 60],
+            "buzz_glass" => [80, 177, 200],
+            "buzz_dark" => [29, 36, 54],
+            "buzz_blue" => [45, 132, 240],
+            "buzz_gold" => [245, 190, 42],
+            _ => [238, 242, 248],
+        };
+    }
     if name.contains("laser_core") {
         effect_spec.map_or([255, 245, 190], |spec| spec.laser_core_color)
     } else if name.contains("bubble_submarine") {
@@ -1372,6 +1388,19 @@ fn draw_selection_label(
             'X' => [17, 17, 10, 4, 10, 17, 17],
             'Y' => [17, 17, 10, 4, 4, 4, 4],
             'Z' => [31, 1, 2, 4, 8, 16, 31],
+            '0' => [14, 17, 19, 21, 25, 17, 14],
+            '1' => [4, 12, 4, 4, 4, 4, 14],
+            '2' => [14, 17, 1, 2, 4, 8, 31],
+            '3' => [30, 1, 1, 14, 1, 1, 30],
+            '4' => [2, 6, 10, 18, 31, 2, 2],
+            '5' => [31, 16, 16, 30, 1, 1, 30],
+            '6' => [14, 16, 16, 30, 17, 17, 14],
+            '7' => [31, 1, 2, 4, 8, 8, 8],
+            '8' => [14, 17, 17, 14, 17, 17, 14],
+            '9' => [14, 17, 17, 15, 1, 1, 14],
+            ':' => [0, 4, 4, 0, 4, 4, 0],
+            '/' => [1, 1, 2, 4, 8, 16, 16],
+            '-' => [0, 0, 0, 31, 0, 0, 0],
             _ => [0; 7],
         };
         let character_x = start_x + character_index as i32 * 6 * scale;
@@ -1397,159 +1426,129 @@ fn draw_selection_label(
 fn select_ship(
     window: &mut Window,
     framebuffer: &mut Framebuffer,
-    arwing: &Model,
-    kirby: &Model,
-    astra: &Model,
-    cowboyb: &Model,
+    choices: &[(&Model, &ShipSpec)],
+    buzz_variants: &[Model; 3],
 ) -> Result<Option<usize>, minifb::Error> {
-    let choices = [
-        ("Arwing", arwing, &ARWING_SPEC),
-        ("Kirby UFO", kirby, &KIRBY_SPEC),
-        ("ASTRA", astra, &ASTRA_SPEC),
-        ("Cowboy B", cowboyb, &COWBOYB_SPEC),
-    ];
-    let centers = choices.map(|(_, model, _)| model_center(model));
-    let mut selected = 1_usize;
+    crate::input::clear();
+    window.update();
+    let mut selected = 0_usize;
+    let mut variant = 0;
     let start = Instant::now();
-
-    while window.is_open() && !window.is_key_down(Key::Escape) {
-        if window.is_key_pressed(Key::Left, KeyRepeat::No)
-            || window.is_key_pressed(Key::A, KeyRepeat::No)
-        {
-            if selected % 2 == 1 {
-                selected -= 1;
-            }
+    while window.is_open() {
+        if crate::input::pressed(Key::Escape) {
+            return Ok(None);
         }
-        if window.is_key_pressed(Key::Right, KeyRepeat::No)
-            || window.is_key_pressed(Key::D, KeyRepeat::No)
-        {
-            if selected % 2 == 0 {
-                selected += 1;
-            }
+        if crate::input::pressed(Key::Left) || crate::input::pressed(Key::A) {
+            selected = (selected + choices.len() - 1) % choices.len();
         }
-        if window.is_key_pressed(Key::Up, KeyRepeat::No)
-            || window.is_key_pressed(Key::W, KeyRepeat::No)
-        {
-            selected = selected.saturating_sub(2);
+        if crate::input::pressed(Key::Right) || crate::input::pressed(Key::D) {
+            selected = (selected + 1) % choices.len();
         }
-        if window.is_key_pressed(Key::Down, KeyRepeat::No)
-            || window.is_key_pressed(Key::S, KeyRepeat::No)
-        {
-            selected = (selected + 2).min(choices.len() - 1);
+        if crate::input::pressed(Key::V) {
+            variant = (variant + 1) % 3;
         }
-        if window.is_key_pressed(Key::Enter, KeyRepeat::No) {
+        if crate::input::pressed(Key::Enter) {
             return Ok(Some(selected));
         }
-
-        window.set_title(&format!(
-            "Selecciona nave: {} | Flechas o WASD | Enter: confirmar",
-            choices[selected].0
-        ));
+        window.set_title("Hangar | A/D: nave | V: formas de Buzz | Enter: jugar | Esc: menu");
         framebuffer.clear(0);
         draw_skybox(framebuffer, 0.0);
-        draw_selection_panel(
-            framebuffer,
-            45,
-            52,
-            WIDTH / 2 - 15,
-            HEIGHT / 2 - 12,
-            selected == 0,
-        );
-        draw_selection_panel(
-            framebuffer,
-            WIDTH / 2 + 15,
-            52,
-            WIDTH - 45,
-            HEIGHT / 2 - 12,
-            selected == 1,
-        );
-        draw_selection_panel(
-            framebuffer,
-            45,
-            HEIGHT / 2 + 12,
-            WIDTH / 2 - 15,
-            HEIGHT - 48,
-            selected == 2,
-        );
-        draw_selection_panel(
-            framebuffer,
-            WIDTH / 2 + 15,
-            HEIGHT / 2 + 12,
-            WIDTH - 45,
-            HEIGHT - 48,
-            selected == 3,
-        );
-
-        let camera_position = Vec3::new(0.0, 2.0, -15.0);
-        let camera_forward = Vec3::new(0.0, -0.08, 1.0).normalize();
-        let camera_right = camera_forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
-        let camera = Camera {
-            position: camera_position,
-            forward: camera_forward,
-            right: camera_right,
-            up: camera_right.cross(camera_forward).normalize(),
-        };
-        let angle = start.elapsed().as_secs_f32() * 0.65;
-
-        for (index, (_, model, spec)) in choices.iter().enumerate() {
-            let target_radius = if index == selected { 2.8 } else { 2.55 };
-            let display_scale =
-                target_radius / (spec.model_scale * model_radius(model, centers[index]).max(0.001));
-            let position = Vec3::new(
-                if index % 2 == 0 { 6.5 } else { -6.5 },
-                if index < 2 { 4.65 } else { -3.2 },
-                0.0,
-            );
-            let forward = Vec3::new(angle.sin(), 0.0, -angle.cos());
-            let right = Vec3::new(angle.cos(), 0.0, angle.sin());
-            let up = Vec3::new(0.0, 1.0, 0.0);
-            render_model(
-                model,
-                framebuffer,
-                &camera,
-                |vertex| {
-                    let local = vertex
-                        .sub(centers[index])
-                        .mul(spec.model_scale * display_scale);
-                    position.add(spec.model_to_world(local, forward, right, up))
-                },
-                None,
-                None,
-            );
-        }
-
-        for (index, (name, _, _)) in choices.iter().enumerate() {
-            let center_x = if index % 2 == 0 {
-                (WIDTH / 4) as i32
-            } else {
-                (WIDTH * 3 / 4) as i32
-            };
-            let top_y = if index < 2 {
-                HEIGHT as i32 / 2 - 40
-            } else {
-                HEIGHT as i32 - 78
-            };
-            let color = if index == selected {
-                0xffd447
-            } else {
-                0xa9bbd2
-            };
+        draw_selection_label(framebuffer, "ELIGE TU NAVE", 600, 35, 4, 0x99e226);
+        for (i, (_, spec)) in choices.iter().enumerate() {
+            let y = 120 + i * 94;
+            draw_selection_panel(framebuffer, 40, y, 420, y + 76, i == selected);
             draw_selection_label(
                 framebuffer,
-                &name.to_ascii_uppercase(),
-                center_x,
-                top_y,
+                &spec.name.to_ascii_uppercase(),
+                230,
+                y as i32 + 27,
                 3,
-                color,
+                if i == selected { 0x99e226 } else { 0xa9bbd2 },
             );
         }
-
+        draw_selection_panel(framebuffer, 450, 120, 1160, 650, true);
+        let (base_model, spec) = choices[selected];
+        let model = if selected == 4 {
+            &buzz_variants[variant]
+        } else {
+            base_model
+        };
+        let center = model_center(model);
+        let forward = Vec3::new(0.0, -0.13, 1.0).normalize();
+        let right = forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
+        let camera = Camera {
+            position: Vec3::new(0.0, 2.0, -15.0),
+            forward,
+            right,
+            up: right.cross(forward).normalize(),
+        };
+        let angle = start.elapsed().as_secs_f32() * 0.50;
+        let heading = Vec3::new(angle.sin(), 0.0, -angle.cos());
+        let side = Vec3::new(angle.cos(), 0.0, angle.sin());
+        let scale = 3.4 / model_radius(model, center).max(0.001);
+        render_model(
+            model,
+            framebuffer,
+            &camera,
+            |v| {
+                Vec3::new(-3.8, 0.0, 0.0).add(spec.model_to_world(
+                    v.sub(center).mul(scale),
+                    heading,
+                    side,
+                    Vec3::new(0.0, 1.0, 0.0),
+                ))
+            },
+            None,
+            None,
+        );
+        draw_selection_label(
+            framebuffer,
+            &spec.name.to_ascii_uppercase(),
+            805,
+            155,
+            3,
+            0xf0f3fa,
+        );
+        if selected == 4 {
+            let names = ["NAVE", "CARRO", "SUBMARINO"];
+            draw_selection_label(framebuffer, names[variant], 805, 560, 3, 0x99e226);
+            draw_selection_label(
+                framebuffer,
+                "V: VER OTRA TRANSFORMACION",
+                805,
+                610,
+                2,
+                0xb7a1df,
+            );
+        }
+        draw_selection_label(
+            framebuffer,
+            "A / D: ELEGIR    ENTER: JUGAR    ESC: MENU",
+            600,
+            695,
+            2,
+            0xd5deec,
+        );
+        draw_selection_label(
+            framebuffer,
+            "BUZZ: T CAMBIA NAVE / CARRO - SUBMARINO AUTOMATICO",
+            600,
+            745,
+            2,
+            0xb7a1df,
+        );
+        crate::input::clear();
         window.update_with_buffer(&framebuffer.pixels, WIDTH, HEIGHT)?;
     }
     Ok(None)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    while run_game()? {}
+    Ok(())
+}
+
+fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let arwing_path = "assets/vehicles/nave.obj";
     let kirby_path = "assets/vehicles/kirby.obj";
     let astra_path = "assets/vehicles/nave_astra.obj";
@@ -1578,22 +1577,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut fullscreen = false;
     let mut window = create_window(fullscreen)?;
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
-    let Some(selected_ship) = select_ship(
-        &mut window,
-        &mut framebuffer,
-        &arwing_model,
-        &kirby_model,
-        &astra_model,
-        &cowboyb_model,
-    )?
-    else {
-        return Ok(());
-    };
-    let (ship_model, ship_spec) = match selected_ship {
-        0 => (&arwing_model, &ARWING_SPEC),
-        1 => (&kirby_model, &KIRBY_SPEC),
-        2 => (&astra_model, &ASTRA_SPEC),
-        _ => (&cowboyb_model, &COWBOYB_SPEC),
+    let buzz_variants = [
+        load_obj("assets/vehicles/buzz_nave.obj")?,
+        load_obj("assets/vehicles/buzz_carro.obj")?,
+        load_obj("assets/vehicles/buzz_submarino.obj")?,
+    ];
+    let choices = [
+        (&arwing_model, &ARWING_SPEC),
+        (&kirby_model, &KIRBY_SPEC),
+        (&astra_model, &ASTRA_SPEC),
+        (&cowboyb_model, &COWBOYB_SPEC),
+        (&buzz_variants[0], &BUZZ_SPEC),
+    ];
+    let selected_ship = loop {
+        if menu::show(&mut window, &mut framebuffer, false)? == menu::Action::Quit {
+            return Ok(false);
+        }
+        if let Some(index) = select_ship(&mut window, &mut framebuffer, &choices, &buzz_variants)? {
+            break index;
+        }
+        if !window.is_open() {
+            return Ok(false);
+        }
     };
     let ship_center = model_center(ship_model);
     let (level_ship_model, level_ship_spec) = match selected_ship {
@@ -1640,19 +1645,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut bubble_emitter = BubbleEmitter::new();
     let start = Instant::now();
     let mut previous = Instant::now();
+    let mut world_time = 0.0_f32;
     let mut distance = 0.0_f32;
 
-    while window.is_open() && !window.is_key_down(Key::Escape) {
+    while window.is_open() {
+        if crate::input::pressed(Key::Escape) {
+            match menu::show(&mut window, &mut framebuffer, true)? {
+                menu::Action::Quit => return Ok(false),
+                menu::Action::Hangar => return Ok(true),
+                menu::Action::Play => {}
+            }
+            previous = Instant::now();
+            continue;
+        }
+        if crate::input::pressed(Key::F1) {
+            menu::instructions(&mut window, &mut framebuffer)?;
+            previous = Instant::now();
+            continue;
+        }
+        if selected_ship == 4 && game_mode == GameMode::FreeWorld && crate::input::pressed(Key::T) {
+            car_mode = !car_mode;
+        }
         let now = Instant::now();
         let delta_time = now.duration_since(previous).as_secs_f32().min(0.05);
         previous = now;
-        let world_time = start.elapsed().as_secs_f32();
+        world_time += delta_time;
 
-        if window.is_key_pressed(Key::F11, KeyRepeat::No) {
+        if crate::input::pressed(Key::F11) {
             fullscreen = !fullscreen;
             window = create_window(fullscreen)?;
         }
-        if window.is_key_pressed(Key::R, KeyRepeat::No) {
+        if crate::input::pressed(Key::R) {
             ship_controller.reset();
             if game_mode == GameMode::WaterLevel {
                 water_level_state = WaterLevelState::new();
@@ -1660,7 +1683,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             distance = 0.0;
         }
-        if game_mode == GameMode::FreeWorld && window.is_key_pressed(Key::Key1, KeyRepeat::No) {
+        if game_mode == GameMode::FreeWorld && crate::input::pressed(Key::Key1) {
             place_ship_near_water_planet(&mut ship_controller, world_time);
             println!("Warp completado: planeta acuatico");
         }
@@ -1677,7 +1700,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut entered_level = false;
         if game_mode == GameMode::FreeWorld
             && ship_controller.ship.planet_locked
-            && window.is_key_pressed(Key::Enter, KeyRepeat::No)
+            && crate::input::pressed(Key::Enter)
         {
             ship_controller = ShipController::new(level_ship_spec);
             water_level_state = WaterLevelState::new();
@@ -1686,9 +1709,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             entered_level = true;
             window.set_title("Nivel submarino | Backspace: volver al sistema solar");
             println!("Nivel submarino iniciado");
-        } else if game_mode == GameMode::WaterLevel
-            && window.is_key_pressed(Key::Backspace, KeyRepeat::No)
-        {
+        } else if game_mode == GameMode::WaterLevel && crate::input::pressed(Key::Backspace) {
             game_mode = GameMode::FreeWorld;
             bubble_emitter.clear();
             ship_controller = ShipController::new(ship_spec);
@@ -1706,6 +1727,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             firing: window.is_key_down(Key::Enter) && !entered_level,
         };
 
+        let active_model = if selected_ship == 4 {
+            &buzz_variants[if game_mode == GameMode::WaterLevel {
+                2
+            } else {
+                usize::from(car_mode)
+            }]
+        } else {
+            ship_model
+        };
+        let ship_center = if selected_ship == 4 {
+            buzz_centers[if game_mode == GameMode::WaterLevel {
+                2
+            } else {
+                usize::from(car_mode)
+            }]
+        } else {
+            base_center
+        };
         match game_mode {
             GameMode::FreeWorld => {
                 ship_controller.update(&input, delta_time);
@@ -1720,7 +1759,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let movement = active_speed * delta_time;
                 let ship = &mut ship_controller.ship;
 
-                if window.is_key_pressed(Key::Backspace, KeyRepeat::No) && ship.planet_locked {
+                if crate::input::pressed(Key::Backspace) && ship.planet_locked {
                     ship.planet_locked = false;
                     ship.orbit_release_active = true;
                     ship.orbit_axis = None;
@@ -1753,7 +1792,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
                 }
                 render_scene(
-                    ship_model,
+                    active_model,
                     ship_center,
                     &turbo_plume,
                     &laser_bolt,
@@ -1808,11 +1847,86 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        if window.is_key_pressed(Key::P, KeyRepeat::No) {
+        let form = if selected_ship == 4 {
+            if game_mode == GameMode::WaterLevel {
+                "BUZZ - SUBMARINO"
+            } else if car_mode {
+                "BUZZ - CARRO"
+            } else {
+                "BUZZ - NAVE"
+            }
+        } else {
+            ship_spec.name
+        };
+        draw_selection_label(
+            &mut framebuffer,
+            &form.to_ascii_uppercase(),
+            600,
+            22,
+            2,
+            0x99e226,
+        );
+        draw_selection_label(
+            &mut framebuffer,
+            "ESC: PAUSA   F1: CONTROLES",
+            600,
+            766,
+            2,
+            0xffffff,
+        );
+        if crate::input::pressed(Key::P) {
             framebuffer.save_png("captura.png")?;
             println!("Captura guardada: captura.png");
         }
+        crate::input::clear();
         window.update_with_buffer(&framebuffer.pixels, WIDTH, HEIGHT)?;
     }
-    Ok(())
+    Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn buzz_assets_load_with_valid_geometry_and_recognized_materials() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut sizes = Vec::new();
+        for form in ["nave", "carro", "submarino"] {
+            let model = load_obj(root.join(format!("assets/vehicles/buzz_{form}.obj"))).unwrap();
+            assert!(
+                model
+                    .vertices
+                    .iter()
+                    .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
+            );
+            assert!(
+                model
+                    .faces
+                    .iter()
+                    .all(|face| face.indices.iter().all(|&i| i < model.vertices.len()))
+            );
+            for material in [
+                "buzz_white",
+                "buzz_green",
+                "buzz_purple",
+                "buzz_red",
+                "buzz_glass",
+            ] {
+                assert!(
+                    model.faces.iter().any(|f| f.material == material),
+                    "{form}: {material}"
+                );
+            }
+            let radius = model_radius(&model, model_center(&model)) * BUZZ_SPEC.model_scale;
+            assert!(
+                (1.0..3.0).contains(&radius),
+                "{form}: unexpected size {radius}"
+            );
+            sizes.push((model.vertices.len(), model.faces.len()));
+        }
+        assert_ne!(sizes[0], sizes[1]);
+        assert_ne!(sizes[0], sizes[2]);
+        assert_ne!(sizes[1], sizes[2]);
+    }
 }
