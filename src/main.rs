@@ -7,17 +7,19 @@ mod triangle;
 
 use std::collections::HashMap;
 use std::f32::consts::{PI, TAU};
+use std::sync::OnceLock;
+use std::thread;
 use std::time::Instant;
 
 use framebuffer::Framebuffer;
 use minifb::{Key, ScaleMode, Window, WindowOptions};
-use obj_loader::{load_obj, Face, Model, Vec3};
+use obj_loader::{Face, Model, Vec3, load_obj};
 use ship::{
-    Projectile, Ship, ShipController, ShipInput, ShipSpec, ARWING_SPEC, ARWING_SUBMARINE_SPEC,
-    ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC,
-    KIRBY_SUBMARINE_SPEC,
+    ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC, COWBOYB_SPEC,
+    COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC, Projectile, Ship, ShipController,
+    ShipInput, ShipSpec,
 };
-use triangle::{draw_triangle, draw_triangle_shaded, ScreenVertex};
+use triangle::{ScreenVertex, draw_triangle, draw_triangle_shaded};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
@@ -41,6 +43,11 @@ const WATER_LEVEL_VERTICAL_OFFSET: f32 = 5.2;
 const WATER_LEVEL_SOURCE_START: f32 = 90.0;
 const WATER_LEVEL_SPEED_FACTOR: f32 = 0.55;
 const WATER_ENEMY_SCALE: f32 = 1.05;
+
+fn render_worker_count() -> usize {
+    static WORKER_COUNT: OnceLock<usize> = OnceLock::new();
+    *WORKER_COUNT.get_or_init(|| thread::available_parallelism().map_or(1, usize::from))
+}
 
 struct Camera {
     position: Vec3,
@@ -1202,22 +1209,42 @@ fn render_model<F>(
     water_time: Option<f32>,
     effect_spec: Option<&ShipSpec>,
 ) where
-    F: Fn(Vec3) -> Vec3,
+    F: Fn(Vec3) -> Vec3 + Sync,
 {
-    let camera_vertices: Vec<Vec3> = model
-        .vertices
-        .iter()
-        .map(|vertex| {
-            let relative = transform(*vertex).sub(camera.position);
-            Vec3::new(
-                relative.dot(camera.right),
-                relative.dot(camera.up),
-                relative.dot(camera.forward),
-            )
+    let transform_vertex = |vertex: &Vec3| {
+        let relative = transform(*vertex).sub(camera.position);
+        Vec3::new(
+            relative.dot(camera.right),
+            relative.dot(camera.up),
+            relative.dot(camera.forward),
+        )
+    };
+    let worker_count = render_worker_count();
+    let camera_vertices: Vec<Vec3> = if model.vertices.len() >= 4_096 && worker_count > 1 {
+        let chunk_size = model.vertices.len().div_ceil(worker_count);
+        thread::scope(|scope| {
+            let handles: Vec<_> = model
+                .vertices
+                .chunks(chunk_size)
+                .map(|vertices| {
+                    let transform_vertex = &transform_vertex;
+                    scope.spawn(move || vertices.iter().map(transform_vertex).collect::<Vec<_>>())
+                })
+                .collect();
+            handles
+                .into_iter()
+                .flat_map(|handle| handle.join().expect("vertex worker panicked"))
+                .collect()
         })
-        .collect();
+    } else {
+        model.vertices.iter().map(transform_vertex).collect()
+    };
     let focal = HEIGHT as f32 / (60.0_f32.to_radians() * 0.5).tan() * 0.5;
     let light = Vec3::new(-0.3, 0.8, -0.5).normalize();
+    // OBJ files usually repeat a very small set of materials over thousands of
+    // faces. Classify/color each unique material once per draw call instead of
+    // allocating a lowercase String for every triangle.
+    let mut material_cache: HashMap<&str, (SurfaceShader, [u8; 3])> = HashMap::new();
 
     for face in &model.faces {
         let [i0, i1, i2] = face.indices;
@@ -1237,7 +1264,15 @@ fn render_model<F>(
         let a = project(v0);
         let b = project(v1);
         let c = project(v2);
-        let shader = surface_shader(&face.material);
+        let (shader, flat_color) =
+            *material_cache
+                .entry(face.material.as_str())
+                .or_insert_with(|| {
+                    (
+                        surface_shader(&face.material),
+                        color_for_material(&face.material, effect_spec),
+                    )
+                });
 
         if shader != SurfaceShader::Flat {
             let p0 = model.vertices[i0];
@@ -1253,13 +1288,7 @@ fn render_model<F>(
                 procedural_surface_color(shader, point, x, y, time, brightness, fresnel)
             });
         } else {
-            draw_triangle(
-                framebuffer,
-                a,
-                b,
-                c,
-                pack(color_for_material(&face.material, effect_spec), brightness),
-            );
+            draw_triangle(framebuffer, a, b, c, pack(flat_color, brightness));
         }
     }
 }
@@ -1518,43 +1547,68 @@ fn apply_underwater_lighting(framebuffer: &mut Framebuffer, time: f32) {
     let width = framebuffer.width as f32;
     let height = framebuffer.height as f32;
 
-    for y in 0..framebuffer.height {
-        let depth = y as f32 / height;
-        let surface_light = (1.0 - depth).powf(1.65);
-        let vertical_darkness = 0.50 + surface_light * 0.34;
-
-        for x in 0..framebuffer.width {
-            let normalized_x = x as f32 / width * 2.0 - 1.0;
-            let edge_darkness = (1.0 - normalized_x * normalized_x * 0.30).clamp(0.62, 1.0);
-
-            // Un haz ancho que nace en la superficie y se abre al descender.
-            let swaying_center = (time * 0.22).sin() * 0.16;
-            let cone_width = 0.12 + depth * 0.62;
-            let cone = (1.0 - (normalized_x - swaying_center).abs() / cone_width).clamp(0.0, 1.0)
-                * (1.0 - depth * 0.72);
-
-            // Causticas suaves: se notan arriba y desaparecen en la profundidad.
-            let caustic = (normalized_x * 18.0 + depth * 11.0 + time * 1.7)
-                .sin()
-                .max(0.0)
-                .powf(5.0)
-                * surface_light
-                * 0.13;
-            let light =
-                (vertical_darkness * edge_darkness + cone * 0.22 + caustic).clamp(0.30, 1.0);
-
-            let pixel = framebuffer.pixels[y * framebuffer.width + x];
-            let red = ((pixel >> 16) & 255) as f32;
-            let green = ((pixel >> 8) & 255) as f32;
-            let blue = (pixel & 255) as f32;
-
-            // El agua absorbe primero los rojos y conserva mas azul/cian.
-            let red = (red * light * 0.67).clamp(0.0, 255.0) as u32;
-            let green = (green * light * 0.91 + cone * 5.0).clamp(0.0, 255.0) as u32;
-            let blue = (blue * light + surface_light * 4.0 + cone * 8.0).clamp(0.0, 255.0) as u32;
-            framebuffer.pixels[y * framebuffer.width + x] = (red << 16) | (green << 8) | blue;
-        }
+    let swaying_center = (time * 0.22).sin() * 0.16;
+    let angle_step = 36.0 / width;
+    let (step_sin, step_cos) = angle_step.sin_cos();
+    let mut edge_darkness = Vec::with_capacity(framebuffer.width);
+    let mut normalized_x_values = Vec::with_capacity(framebuffer.width);
+    for x in 0..framebuffer.width {
+        let normalized_x = x as f32 / width * 2.0 - 1.0;
+        normalized_x_values.push(normalized_x);
+        edge_darkness.push((1.0 - normalized_x * normalized_x * 0.30).clamp(0.62, 1.0));
     }
+
+    let worker_count = render_worker_count();
+    let rows_per_worker = framebuffer.height.div_ceil(worker_count);
+    thread::scope(|scope| {
+        for (chunk_index, pixels) in framebuffer
+            .pixels
+            .chunks_mut(rows_per_worker * framebuffer.width)
+            .enumerate()
+        {
+            let normalized_x_values = &normalized_x_values;
+            let edge_darkness = &edge_darkness;
+            let start_y = chunk_index * rows_per_worker;
+            let framebuffer_width = framebuffer.width;
+            scope.spawn(move || {
+                for (local_y, row) in pixels.chunks_mut(framebuffer_width).enumerate() {
+                    let y = start_y + local_y;
+                    let depth = y as f32 / height;
+                    let surface_light = (1.0 - depth).powf(1.65);
+                    let vertical_darkness = 0.50 + surface_light * 0.34;
+                    let cone_width = 0.12 + depth * 0.62;
+                    let caustic_strength = surface_light * 0.13;
+                    let (mut caustic_sin, mut caustic_cos) =
+                        (-18.0 + depth * 11.0 + time * 1.7).sin_cos();
+
+                    for (x, pixel) in row.iter_mut().enumerate() {
+                        let normalized_x = normalized_x_values[x];
+                        let cone = (1.0 - (normalized_x - swaying_center).abs() / cone_width)
+                            .clamp(0.0, 1.0)
+                            * (1.0 - depth * 0.72);
+                        let positive_sine = caustic_sin.max(0.0);
+                        let square = positive_sine * positive_sine;
+                        let caustic = square * square * positive_sine * caustic_strength;
+                        let light = (vertical_darkness * edge_darkness[x] + cone * 0.22 + caustic)
+                            .clamp(0.30, 1.0);
+
+                        let red = ((*pixel >> 16) & 255) as f32;
+                        let green = ((*pixel >> 8) & 255) as f32;
+                        let blue = (*pixel & 255) as f32;
+                        let red = (red * light * 0.67).clamp(0.0, 255.0) as u32;
+                        let green = (green * light * 0.91 + cone * 5.0).clamp(0.0, 255.0) as u32;
+                        let blue = (blue * light + surface_light * 4.0 + cone * 8.0)
+                            .clamp(0.0, 255.0) as u32;
+                        *pixel = (red << 16) | (green << 8) | blue;
+
+                        let next_sin = caustic_sin * step_cos + caustic_cos * step_sin;
+                        caustic_cos = caustic_cos * step_cos - caustic_sin * step_sin;
+                        caustic_sin = next_sin;
+                    }
+                }
+            });
+        }
+    });
 }
 
 fn render_water_enemies(
@@ -2264,14 +2318,18 @@ mod tests {
         let mut sizes = Vec::new();
         for form in ["nave", "carro", "submarino"] {
             let model = load_obj(root.join(format!("assets/vehicles/buzz_{form}.obj"))).unwrap();
-            assert!(model
-                .vertices
-                .iter()
-                .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
-            assert!(model
-                .faces
-                .iter()
-                .all(|face| face.indices.iter().all(|&i| i < model.vertices.len())));
+            assert!(
+                model
+                    .vertices
+                    .iter()
+                    .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
+            );
+            assert!(
+                model
+                    .faces
+                    .iter()
+                    .all(|face| face.indices.iter().all(|&i| i < model.vertices.len()))
+            );
             for material in [
                 "buzz_white",
                 "buzz_green",
