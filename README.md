@@ -12,8 +12,8 @@ Se necesita Rust con soporte para edición 2024 y las herramientas nativas de co
 
 - Menú principal: **Jugar**, **Instrucciones**, **Salir**.
 - Flechas arriba/abajo o W/S y Enter para elegir una opción.
-- Hangar: A/D o flechas izquierda/derecha para elegir entre Arwing, Kirby, ASTRA, Cowboy B y Buzz Lightyear. Enter inicia la partida; Esc vuelve al menú.
-- Con Buzz seleccionado, V muestra sus versiones nave, carro y submarino en el hangar. La partida comienza en forma de nave.
+- Hangar: A/D o flechas izquierda/derecha para elegir entre Arwing, Kirby, ASTRA, Swordfish II y Buzz Lightyear. Enter inicia la partida; Esc vuelve al menú.
+- En el hangar, V alterna las formas disponibles: todas las naves tienen modo espacial y submarino; ASTRA, Swordfish II y Buzz también tienen modo carro.
 - Esc pausa y permite continuar, cambiar de nave, consultar las instrucciones o salir. Cambiar de nave comienza una partida nueva.
 - F1 muestra los controles durante la partida; Enter/Esc vuelve. La simulación se detiene en pausa y en la ayuda.
 

@@ -182,7 +182,7 @@ pub static ASTRA_SPEC: ShipSpec = ShipSpec {
 };
 
 pub static COWBOYB_SPEC: ShipSpec = ShipSpec {
-    name: "Cowboy B",
+    name: "Swordfish II",
     model_scale: 0.28,
     model_axes: ModelAxes::CowboyB,
     collision_radius: 2.0,
@@ -250,13 +250,19 @@ pub static ASTRA_SUBMARINE_SPEC: ShipSpec = ShipSpec {
 };
 
 pub static COWBOYB_SUBMARINE_SPEC: ShipSpec = ShipSpec {
-    name: "Cowboy B Submarino",
+    name: "Swordfish II Submarino",
     model_scale: 0.30,
     model_axes: ModelAxes::Astra,
     turbo_back: 1.38,
     turbo_side: 0.58,
     muzzle_forward: 1.95,
     muzzle_side: 0.88,
+    ..COWBOYB_SPEC
+};
+
+pub static COWBOYB_CAR_SPEC: ShipSpec = ShipSpec {
+    name: "Swordfish II",
+    model_axes: ModelAxes::Astra,
     ..COWBOYB_SPEC
 };
 

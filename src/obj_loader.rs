@@ -238,6 +238,18 @@ fn classify_color(name: &str) -> MaterialColor {
         return MaterialColor::Turbo;
     } else if name.contains("luz_cian") {
         [40, 205, 255]
+    } else if name.contains("rosa_cuerpo") {
+        [228, 58, 120]
+    } else if name.contains("fucsia") {
+        [235, 8, 116]
+    } else if name.contains("magenta_sombra") {
+        [108, 8, 59]
+    } else if name.contains("coral_claro") {
+        [242, 157, 137]
+    } else if name.contains("durazno") {
+        [255, 183, 156]
+    } else if name.contains("crema") {
+        [241, 221, 183]
     } else if name.contains("azul_profundo") {
         [18, 44, 98]
     } else if name.contains("azul_cobalto") {

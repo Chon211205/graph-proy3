@@ -5,7 +5,7 @@ mod obj_loader;
 mod ship;
 mod triangle;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::f32::consts::{PI, TAU};
 use std::sync::OnceLock;
 use std::thread;
@@ -16,8 +16,8 @@ use minifb::{Key, ScaleMode, Window, WindowOptions};
 use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use ship::{
     ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC, COWBOYB_SPEC,
-    COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC, Projectile, Ship, ShipController,
-    ShipInput, ShipSpec,
+    COWBOYB_CAR_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC, Projectile, Ship,
+    ShipController, ShipInput, ShipSpec,
 };
 use triangle::{ScreenVertex, draw_triangle_shaded_region};
 
@@ -30,6 +30,12 @@ const LIGHT_SPEED: f32 = 600.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
 const SUN_POSITION_X: f32 = -520.0;
 const PLANET_ORBIT_RADIUS: f32 = 280.0;
+const SPIKY_PLANET_ORBIT_SPEED: f32 = 0.012;
+const SPIKY_PLANET_ORBIT_RADIUS: f32 = 700.0;
+const SPIKY_PLANET_ORBIT_PHASE: f32 = PI * 0.5;
+const SPIKY_PLANET_ORBIT_INCLINATION: f32 = 0.30;
+const SPIKY_PLANET_RADIUS: f32 = 18.0;
+const SPIKY_PLANET_ROTATION_SPEED: f32 = 0.18;
 const WATER_PLANET_RADIUS: f32 = 24.0;
 const COLLISION_MARGIN: f32 = 4.0;
 const AVOIDANCE_DISTANCE: f32 = 52.0;
@@ -1109,6 +1115,32 @@ fn model_radius(model: &Model, center: Vec3) -> f32 {
         .fold(0.0, f32::max)
 }
 
+fn move_swordfish_wheels_outward(model: &mut Model) {
+    // The OBJ has no wheel groups, so identify side-mounted rubber and hubs by position.
+    let wheel_vertices: HashSet<usize> = model
+        .faces
+        .iter()
+        .filter(|face| face.material == "Titanio" || face.material == "Grafito")
+        .filter(|face| {
+            let center = face
+                .indices
+                .iter()
+                .map(|&index| model.vertices[index])
+                .fold(Vec3::default(), |sum, vertex| sum.add(vertex))
+                .mul(1.0 / face.indices.len() as f32);
+            center.x.abs() > 0.9 && center.z.abs() > 0.9 && center.y < 1.4
+        })
+        .flat_map(|face| face.indices)
+        .collect();
+    if wheel_vertices.is_empty() {
+        return;
+    }
+    for index in wheel_vertices {
+        let vertex = &mut model.vertices[index];
+        vertex.x += vertex.x.signum() * 0.45;
+    }
+}
+
 fn chase_camera(ship: &Ship) -> Camera {
     let (forward, ship_right, ship_up) = ship.camera_basis();
     let chase_position = ship
@@ -1158,6 +1190,18 @@ fn water_planet_position(world_time: f32) -> Vec3 {
         orbit.cos() * PLANET_ORBIT_RADIUS,
         -20.0,
         orbit.sin() * PLANET_ORBIT_RADIUS,
+    ))
+}
+
+fn spiky_planet_position(world_time: f32) -> Vec3 {
+    let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
+    let orbit = world_time * SPIKY_PLANET_ORBIT_SPEED + SPIKY_PLANET_ORBIT_PHASE;
+    let (sin, cos) = orbit.sin_cos();
+    let (sin_inclination, cos_inclination) = SPIKY_PLANET_ORBIT_INCLINATION.sin_cos();
+    sun_position.add(Vec3::new(
+        cos * SPIKY_PLANET_ORBIT_RADIUS,
+        sin * SPIKY_PLANET_ORBIT_RADIUS * sin_inclination - 20.0,
+        sin * SPIKY_PLANET_ORBIT_RADIUS * cos_inclination,
     ))
 }
 
@@ -1698,6 +1742,9 @@ fn render_scene(
     planet: &Model,
     planet_center: Vec3,
     planet_scale: f32,
+    spiky_planet: &Model,
+    spiky_planet_center: Vec3,
+    spiky_planet_scale: f32,
     sun: &Model,
     framebuffer: &mut Framebuffer,
     batch: &mut TriangleBatch,
@@ -1738,6 +1785,25 @@ fn render_scene(
             .add(planet_position)
         },
         Some(world_time),
+        None,
+    );
+    let spiky_rotation = world_time * SPIKY_PLANET_ROTATION_SPEED;
+    let spiky_position = spiky_planet_position(world_time);
+    render_model(
+        spiky_planet,
+        framebuffer,
+        &camera,
+        |vertex| {
+            let vertex = vertex.sub(spiky_planet_center).mul(spiky_planet_scale);
+            let (sin, cos) = spiky_rotation.sin_cos();
+            Vec3::new(
+                vertex.x * cos - vertex.z * sin,
+                vertex.y,
+                vertex.x * sin + vertex.z * cos,
+            )
+            .add(spiky_position)
+        },
+        None,
         None,
     );
 
@@ -2223,17 +2289,136 @@ fn draw_selection_label(
     }
 }
 
+fn hangar_thumbnail(
+    model: &Model,
+    spec: &ShipSpec,
+    framebuffer: &mut Framebuffer,
+    camera: &Camera,
+    screen_x: usize,
+    screen_y: usize,
+    angle: f32,
+) -> Vec<u32> {
+    const CARD_WIDTH: usize = 180;
+    const CARD_HEIGHT: usize = 220;
+    const TRANSPARENT: u32 = 0x0100_0000;
+    framebuffer.clear(TRANSPARENT);
+    let center = model_center(model);
+    let depth = 25.0;
+    let focal = HEIGHT as f32 / (60.0_f32.to_radians() * 0.5).tan() * 0.5;
+    let target = camera
+        .position
+        .add(camera.forward.mul(depth))
+        .add(
+            camera
+                .right
+                .mul((screen_x as f32 - WIDTH as f32 * 0.5) * depth / focal),
+        )
+        .add(
+            camera
+                .up
+                .mul((HEIGHT as f32 * 0.5 - screen_y as f32) * depth / focal),
+        );
+    let heading = Vec3::new(angle.sin(), 0.0, -angle.cos());
+    let side = Vec3::new(angle.cos(), 0.0, angle.sin());
+    let scale = 2.1 / model_radius(model, center).max(0.001);
+    render_model(
+        model,
+        framebuffer,
+        camera,
+        |vertex| {
+            target.add(spec.model_to_world(
+                vertex.sub(center).mul(scale),
+                heading,
+                side,
+                Vec3::new(0.0, 1.0, 0.0),
+            ))
+        },
+        None,
+        None,
+    );
+    let left = screen_x - CARD_WIDTH / 2;
+    let top = screen_y - CARD_HEIGHT / 2;
+    let mut thumbnail = vec![TRANSPARENT; CARD_WIDTH * CARD_HEIGHT];
+    for y in 0..CARD_HEIGHT {
+        let source = (top + y) * WIDTH + left;
+        let target = y * CARD_WIDTH;
+        thumbnail[target..target + CARD_WIDTH]
+            .copy_from_slice(&framebuffer.pixels[source..source + CARD_WIDTH]);
+    }
+    thumbnail
+}
+
+fn draw_hangar_card(
+    framebuffer: &mut Framebuffer,
+    left: usize,
+    top: usize,
+    width: usize,
+    height: usize,
+    selected: bool,
+) {
+    let tint = if selected { 0x071a25 } else { 0x06111c };
+    let alpha = if selected { 120 } else { 145 };
+    for y in top..top + height {
+        for x in left..left + width {
+            let index = y * WIDTH + x;
+            let pixel = framebuffer.pixels[index];
+            let blend = |shift: u32| {
+                let foreground = (tint >> shift) & 0xff;
+                let background = (pixel >> shift) & 0xff;
+                (foreground * alpha + background * (255 - alpha)) / 255
+            };
+            framebuffer.pixels[index] = (blend(16) << 16) | (blend(8) << 8) | blend(0);
+        }
+    }
+    let border = if selected { 0x42dff0 } else { 0x35658c };
+    let thickness = if selected { 3 } else { 2 };
+    for inset in 0..thickness {
+        for x in left + inset..left + width - inset {
+            framebuffer.pixels[(top + inset) * WIDTH + x] = border;
+            framebuffer.pixels[(top + height - 1 - inset) * WIDTH + x] = border;
+        }
+        for y in top + inset..top + height - inset {
+            framebuffer.pixels[y * WIDTH + left + inset] = border;
+            framebuffer.pixels[y * WIDTH + left + width - 1 - inset] = border;
+        }
+    }
+}
+
 fn select_ship(
     window: &mut Window,
     framebuffer: &mut Framebuffer,
     choices: &[(&Model, &ShipSpec)],
-    buzz_variants: &[Model; 3],
+    ship_forms: &[Vec<(&Model, &ShipSpec, &str)>],
+    initial_selection: usize,
 ) -> Result<Option<usize>, minifb::Error> {
     crate::input::clear();
     window.update();
-    let mut selected = 0_usize;
-    let mut variant = 0;
+    let mut selected = initial_selection % choices.len();
+    let mut variants = vec![0; choices.len()];
     let start = Instant::now();
+    let forward = Vec3::new(0.0, -0.13, 1.0).normalize();
+    let right = forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
+    let camera = Camera {
+        position: Vec3::new(0.0, 2.0, -15.0),
+        forward,
+        right,
+        up: right.cross(forward).normalize(),
+    };
+    let card_positions = [(48, 145), (238, 145), (428, 145), (48, 385), (238, 385)];
+    let mut thumbnails = Vec::with_capacity(choices.len());
+    for (index, forms) in ship_forms.iter().enumerate() {
+        let (model, spec, _) = forms[0];
+        let (left, top) = card_positions[index];
+        thumbnails.push(hangar_thumbnail(
+            model,
+            spec,
+            framebuffer,
+            &camera,
+            left + 90,
+            top + 105,
+            0.36,
+        ));
+    }
     while window.is_open() {
         if crate::input::pressed(Key::Escape) {
             return Ok(None);
@@ -2245,53 +2430,85 @@ fn select_ship(
             selected = (selected + 1) % choices.len();
         }
         if crate::input::pressed(Key::V) {
-            variant = (variant + 1) % 3;
+            variants[selected] = (variants[selected] + 1) % ship_forms[selected].len();
+            let (model, spec, _) = ship_forms[selected][variants[selected]];
+            let (left, top) = card_positions[selected];
+            thumbnails[selected] = hangar_thumbnail(
+                model,
+                spec,
+                framebuffer,
+                &camera,
+                left + 90,
+                top + 105,
+                0.36,
+            );
         }
         if crate::input::pressed(Key::Enter) {
             return Ok(Some(selected));
         }
-        window.set_title("Hangar | A/D: nave | V: formas de Buzz | Enter: jugar | Esc: menu");
-        framebuffer.clear(0);
-        draw_skybox(framebuffer, 0.0);
-        draw_selection_label(framebuffer, "ELIGE TU NAVE", 600, 35, 4, 0x99e226);
-        for (i, (_, spec)) in choices.iter().enumerate() {
-            let y = 120 + i * 94;
-            draw_selection_panel(framebuffer, 40, y, 420, y + 76, i == selected);
+        window.set_title("Hangar | A/D: nave | V: cambiar forma | Enter: jugar | Esc: menu");
+        menu::draw_backdrop(framebuffer);
+        draw_selection_label(framebuffer, "SELECCIONA", 194, 34, 4, 0xe9f2ff);
+        draw_selection_label(framebuffer, "TU NAVE", 438, 34, 4, 0x42dff0);
+        for x in 48..626 {
+            framebuffer.pixels[92 * WIDTH + x] = if x < 610 { 0x1389bd } else { 0x42dff0 };
+        }
+        draw_selection_label(
+            framebuffer,
+            "CINCO NAVES DISPONIBLES",
+            235,
+            108,
+            2,
+            0x91a9bd,
+        );
+        for (index, ((_, spec), (left, top))) in choices.iter().zip(card_positions).enumerate() {
+            draw_hangar_card(framebuffer, left, top, 180, 220, index == selected);
+            let thumbnail = &thumbnails[index];
+            for y in 0..220 {
+                for x in 0..180 {
+                    let pixel = thumbnail[y * 180 + x];
+                    if pixel != 0x0100_0000 {
+                        framebuffer.pixels[(top + y) * WIDTH + left + x] = pixel;
+                    }
+                }
+            }
             draw_selection_label(
                 framebuffer,
                 &spec.name.to_ascii_uppercase(),
-                230,
-                y as i32 + 27,
-                3,
-                if i == selected { 0x99e226 } else { 0xa9bbd2 },
+                left as i32 + 90,
+                top as i32 + 185,
+                2,
+                if index == selected {
+                    0xf0f3fa
+                } else {
+                    0xa9bbd2
+                },
             );
         }
-        draw_selection_panel(framebuffer, 450, 120, 1160, 650, true);
-        let (base_model, spec) = choices[selected];
-        let model = if selected == 4 {
-            &buzz_variants[variant]
-        } else {
-            base_model
-        };
+        draw_hangar_card(framebuffer, 638, 135, 540, 520, true);
+        let (model, spec, form_label) = ship_forms[selected][variants[selected]];
         let center = model_center(model);
-        let forward = Vec3::new(0.0, -0.13, 1.0).normalize();
-        let right = forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
-        let camera = Camera {
-            position: Vec3::new(0.0, 2.0, -15.0),
-            forward,
-            right,
-            up: right.cross(forward).normalize(),
-        };
         let angle = start.elapsed().as_secs_f32() * 0.50;
         let heading = Vec3::new(angle.sin(), 0.0, -angle.cos());
         let side = Vec3::new(angle.cos(), 0.0, angle.sin());
-        let scale = 3.4 / model_radius(model, center).max(0.001);
+        let depth = 18.0;
+        let focal = HEIGHT as f32 / (60.0_f32.to_radians() * 0.5).tan() * 0.5;
+        let target = camera
+            .position
+            .add(camera.forward.mul(depth))
+            .add(
+                camera
+                    .right
+                    .mul((900.0 - WIDTH as f32 * 0.5) * depth / focal),
+            )
+            .add(camera.up.mul((HEIGHT as f32 * 0.5 - 360.0) * depth / focal));
+        let scale = 4.2 / model_radius(model, center).max(0.001);
         render_model(
             model,
             framebuffer,
             &camera,
             |v| {
-                Vec3::new(-3.8, 0.0, 0.0).add(spec.model_to_world(
+                target.add(spec.model_to_world(
                     v.sub(center).mul(scale),
                     heading,
                     side,
@@ -2304,39 +2521,17 @@ fn select_ship(
         draw_selection_label(
             framebuffer,
             &spec.name.to_ascii_uppercase(),
-            805,
-            155,
-            3,
-            0xf0f3fa,
+            908,
+            570,
+            4,
+            0xffd329,
         );
-        if selected == 4 {
-            let names = ["NAVE", "CARRO", "SUBMARINO"];
-            draw_selection_label(framebuffer, names[variant], 805, 560, 3, 0x99e226);
-            draw_selection_label(
-                framebuffer,
-                "V: VER OTRA TRANSFORMACION",
-                805,
-                610,
-                2,
-                0xb7a1df,
-            );
-        }
-        draw_selection_label(
-            framebuffer,
-            "A / D: ELEGIR    ENTER: JUGAR    ESC: MENU",
-            600,
-            695,
-            2,
-            0xd5deec,
-        );
-        draw_selection_label(
-            framebuffer,
-            "BUZZ: T CAMBIA NAVE / CARRO - SUBMARINO AUTOMATICO",
-            600,
-            745,
-            2,
-            0xb7a1df,
-        );
+        draw_selection_label(framebuffer, form_label, 908, 622, 2, 0x42dff0);
+        draw_selection_panel(framebuffer, 0, 690, WIDTH, 800, false);
+        draw_selection_label(framebuffer, "A / D: SELECCIONAR", 150, 724, 2, 0xc9d9ea);
+        draw_selection_label(framebuffer, "V: CAMBIAR FORMA", 430, 724, 2, 0xc9d9ea);
+        draw_selection_label(framebuffer, "ENTER: CONFIRMAR", 740, 724, 2, 0xc9d9ea);
+        draw_selection_label(framebuffer, "ESC: VOLVER", 1050, 724, 2, 0xc9d9ea);
         crate::input::clear();
         window.update_with_buffer(&framebuffer.pixels, WIDTH, HEIGHT)?;
     }
@@ -2352,7 +2547,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let arwing_path = "assets/vehicles/arwing.obj";
     let kirby_path = "assets/vehicles/kirby.obj";
     let astra_path = "assets/vehicles/nave_astra.obj";
+    let astra_car_path = "assets/vehicles/astra_carro.obj";
     let cowboyb_path = "assets/vehicles/nave_cowboyb.obj";
+    let cowboyb_car_path = "assets/vehicles/cb_carro.obj";
     let astra_submarine_path = "assets/vehicles/astra_submarino.obj";
     let cowboyb_submarine_path = "assets/vehicles/cb_submarino.obj";
     let arwing_submarine_path = "assets/vehicles/arwingsub.obj";
@@ -2363,8 +2560,13 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         load_obj(kirby_path).map_err(|error| format!("Error al cargar {kirby_path}: {error}"))?;
     let astra_model =
         load_obj(astra_path).map_err(|error| format!("Error al cargar {astra_path}: {error}"))?;
+    let astra_car_model = load_obj(astra_car_path)
+        .map_err(|error| format!("Error al cargar {astra_car_path}: {error}"))?;
     let cowboyb_model = load_obj(cowboyb_path)
         .map_err(|error| format!("Error al cargar {cowboyb_path}: {error}"))?;
+    let mut cowboyb_car_model = load_obj(cowboyb_car_path)
+        .map_err(|error| format!("Error al cargar {cowboyb_car_path}: {error}"))?;
+    move_swordfish_wheels_outward(&mut cowboyb_car_model);
     let astra_submarine_model = load_obj(astra_submarine_path)
         .map_err(|error| format!("Error al cargar {astra_submarine_path}: {error}"))?;
     let cowboyb_submarine_model = load_obj(cowboyb_submarine_path)
@@ -2389,26 +2591,51 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         (&cowboyb_model, &COWBOYB_SPEC),
         (&buzz_variants[0], &BUZZ_SPEC),
     ];
-    let selected_ship = loop {
+    let ship_forms = [
+        vec![
+            (&arwing_model, &ARWING_SPEC, "MODO ESPACIAL"),
+            (&arwing_submarine_model, &ARWING_SUBMARINE_SPEC, "SUBMARINO"),
+        ],
+        vec![
+            (&kirby_model, &KIRBY_SPEC, "MODO ESPACIAL"),
+            (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC, "SUBMARINO"),
+        ],
+        vec![
+            (&astra_model, &ASTRA_SPEC, "MODO ESPACIAL"),
+            (&astra_car_model, &ASTRA_SPEC, "MODO CARRO"),
+            (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC, "SUBMARINO"),
+        ],
+        vec![
+            (&cowboyb_model, &COWBOYB_SPEC, "MODO ESPACIAL"),
+            (&cowboyb_car_model, &COWBOYB_CAR_SPEC, "MODO CARRO"),
+            (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC, "SUBMARINO"),
+        ],
+        vec![
+            (&buzz_variants[0], &BUZZ_SPEC, "MODO ESPACIAL"),
+            (&buzz_variants[1], &BUZZ_SPEC, "MODO CARRO"),
+            (&buzz_variants[2], &BUZZ_SPEC, "SUBMARINO"),
+        ],
+    ];
+    let mut selected_ship = loop {
         if menu::show(&mut window, &mut framebuffer, false)? == menu::Action::Quit {
             return Ok(false);
         }
-        if let Some(index) = select_ship(&mut window, &mut framebuffer, &choices, &buzz_variants)? {
+        if let Some(index) = select_ship(&mut window, &mut framebuffer, &choices, &ship_forms, 0)? {
             break index;
         }
         if !window.is_open() {
             return Ok(false);
         }
     };
-    let (ship_model, ship_spec) = choices[selected_ship];
-    let base_center = model_center(ship_model);
+    let (mut ship_model, mut ship_spec) = choices[selected_ship];
+    let mut base_center = model_center(ship_model);
     let buzz_centers = [
         model_center(&buzz_variants[0]),
         model_center(&buzz_variants[1]),
         model_center(&buzz_variants[2]),
     ];
     let mut car_mode = false;
-    let (level_ship_model, level_ship_spec) = match selected_ship {
+    let (mut level_ship_model, mut level_ship_spec) = match selected_ship {
         0 => (&arwing_submarine_model, &ARWING_SUBMARINE_SPEC),
         1 => (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC),
         2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
@@ -2416,12 +2643,15 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         4 => (&buzz_variants[2], &BUZZ_SPEC),
         _ => unreachable!(),
     };
-    let level_ship_center = model_center(level_ship_model);
+    let mut level_ship_center = model_center(level_ship_model);
     window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
 
     let planet_path = "assets/planets/water_planet.obj";
     let planet =
         load_obj(planet_path).map_err(|error| format!("Error al cargar {planet_path}: {error}"))?;
+    let spiky_planet_path = "assets/planets/planeta_espinas.obj";
+    let spiky_planet = load_obj(spiky_planet_path)
+        .map_err(|error| format!("Error al cargar {spiky_planet_path}: {error}"))?;
     let water_level_path = "assets/levels/waterlevel.obj";
     let mut water_level = load_obj(water_level_path)
         .map_err(|error| format!("Error al cargar {water_level_path}: {error}"))?;
@@ -2452,6 +2682,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     drop(water_level);
     let planet_center = model_center(&planet);
     let planet_scale = WATER_PLANET_RADIUS / model_radius(&planet, planet_center).max(0.001);
+    let spiky_planet_center = model_center(&spiky_planet);
+    let spiky_planet_scale =
+        SPIKY_PLANET_RADIUS / model_radius(&spiky_planet, spiky_planet_center).max(0.001);
     let planet_surface_radius = material_radius(&planet, planet_center, "Oceano") * planet_scale;
     let object_colliders = build_object_colliders(&planet, planet_center, planet_scale);
     let sun = make_sphere(55.0, 18, 28, true);
@@ -2486,7 +2719,34 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         if crate::input::pressed(Key::Escape) {
             match menu::show(&mut window, &mut framebuffer, true)? {
                 menu::Action::Quit => return Ok(false),
-                menu::Action::Hangar => return Ok(true),
+                menu::Action::Hangar => {
+                    if let Some(new_selection) = select_ship(
+                        &mut window,
+                        &mut framebuffer,
+                        &choices,
+                        &ship_forms,
+                        selected_ship,
+                    )? {
+                        selected_ship = new_selection;
+                        (ship_model, ship_spec) = choices[selected_ship];
+                        base_center = model_center(ship_model);
+                        (level_ship_model, level_ship_spec) = match selected_ship {
+                            0 => (&arwing_submarine_model, &ARWING_SUBMARINE_SPEC),
+                            1 => (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC),
+                            2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
+                            3 => (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC),
+                            4 => (&buzz_variants[2], &BUZZ_SPEC),
+                            _ => unreachable!(),
+                        };
+                        level_ship_center = model_center(level_ship_model);
+                        ship_controller = ShipController::new(ship_spec);
+                        game_mode = GameMode::FreeWorld;
+                        water_level_state = WaterLevelState::new();
+                        bubble_emitter.clear();
+                        car_mode = false;
+                        distance = 0.0;
+                    }
+                }
                 menu::Action::Play => {}
             }
             previous = Instant::now();
@@ -2647,6 +2907,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &planet,
                     planet_center,
                     planet_scale,
+                    &spiky_planet,
+                    spiky_planet_center,
+                    spiky_planet_scale,
                     &sun,
                     &mut scene_framebuffer,
                     &mut triangle_batch,
