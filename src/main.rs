@@ -17,7 +17,8 @@ use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use ship::{
     ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC,
     COWBOYB_CAR_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC,
-    MCQUEEN_CAR_SPEC, MCQUEEN_SPEC, Projectile, Ship, ShipController, ShipInput, ShipSpec,
+    MCQUEEN_CAR_SPEC, MCQUEEN_SPEC, MCQUEEN_SUBMARINE_SPEC, Projectile, Ship, ShipController,
+    ShipInput, ShipSpec,
 };
 use triangle::{ScreenVertex, draw_triangle_shaded_region};
 
@@ -2586,6 +2587,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     ];
     let mcqueen_model = load_obj("assets/vehicles/mcqueen_nave.obj")?;
     let mcqueen_car_model = load_obj("assets/vehicles/mcqueen_carro.obj")?;
+    let mcqueen_submarine_model = load_obj("assets/vehicles/mcqueen_submarino.obj")?;
     let mcqueen_car_center = model_center(&mcqueen_car_model);
     let choices = [
         (&arwing_model, &ARWING_SPEC),
@@ -2622,6 +2624,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         vec![
             (&mcqueen_model, &MCQUEEN_SPEC, "MODO ESPACIAL"),
             (&mcqueen_car_model, &MCQUEEN_CAR_SPEC, "MODO CARRO"),
+            (
+                &mcqueen_submarine_model,
+                &MCQUEEN_SUBMARINE_SPEC,
+                "SUBMARINO",
+            ),
         ],
     ];
     let (mut selected_ship, initial_form) = loop {
@@ -2652,7 +2659,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
         3 => (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC),
         4 => (&buzz_variants[2], &BUZZ_SPEC),
-        5 => (&mcqueen_model, &MCQUEEN_SPEC),
+        5 => (&mcqueen_submarine_model, &MCQUEEN_SUBMARINE_SPEC),
         _ => unreachable!(),
     };
     let mut level_ship_center = model_center(level_ship_model);
@@ -2719,8 +2726,20 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         water_level_spatial.render_chunks.len()
     );
 
-    let mut ship_controller = ShipController::new(ship_spec);
-    let mut game_mode = GameMode::FreeWorld;
+    let start_underwater = selected_ship == 5 && initial_form == 2;
+    let mut ship_controller = ShipController::new(if start_underwater {
+        level_ship_spec
+    } else {
+        ship_spec
+    });
+    let mut game_mode = if start_underwater {
+        GameMode::WaterLevel
+    } else {
+        GameMode::FreeWorld
+    };
+    if start_underwater {
+        window.set_title("Nivel submarino | Backspace: volver al sistema solar");
+    }
     let mut water_level_state = WaterLevelState::new();
     let mut bubble_emitter = BubbleEmitter::new();
     let mut previous = Instant::now();
@@ -2751,12 +2770,25 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
                             3 => (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC),
                             4 => (&buzz_variants[2], &BUZZ_SPEC),
-                            5 => (&mcqueen_model, &MCQUEEN_SPEC),
+                            5 => (&mcqueen_submarine_model, &MCQUEEN_SUBMARINE_SPEC),
                             _ => unreachable!(),
                         };
                         level_ship_center = model_center(level_ship_model);
-                        ship_controller = ShipController::new(ship_spec);
-                        game_mode = GameMode::FreeWorld;
+                        let start_underwater = selected_ship == 5 && new_form == 2;
+                        ship_controller = ShipController::new(if start_underwater {
+                            level_ship_spec
+                        } else {
+                            ship_spec
+                        });
+                        game_mode = if start_underwater {
+                            GameMode::WaterLevel
+                        } else {
+                            GameMode::FreeWorld
+                        };
+                        if start_underwater {
+                            window
+                                .set_title("Nivel submarino | Backspace: volver al sistema solar");
+                        }
                         water_level_state = WaterLevelState::new();
                         bubble_emitter.clear();
                         car_mode = selected_ship == 5 && new_form == 1;
@@ -2834,7 +2866,6 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         let mut entered_level = false;
         if game_mode == GameMode::FreeWorld
             && ship_controller.ship.planet_locked
-            && selected_ship != 5
             && crate::input::pressed(Key::Enter)
         {
             ship_controller = ShipController::new(level_ship_spec);
@@ -2926,11 +2957,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 distance += movement;
 
                 if ship.planet_locked {
-                    window.set_title(if selected_ship == 5 {
-                        "Rayo McQueen | T: nave/carro | Backspace: salir de orbita"
-                    } else {
-                        "Planeta acuatico | Enter: iniciar nivel | Backspace: salir"
-                    });
+                    window.set_title("Planeta acuatico | Enter: iniciar nivel | Backspace: salir");
                 } else {
                     window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
                 }
@@ -3015,7 +3042,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 "BUZZ - NAVE"
             }
         } else if selected_ship == 5 {
-            if car_mode {
+            if game_mode == GameMode::WaterLevel {
+                "RAYO MCQUEEN - SUBMARINO"
+            } else if car_mode {
                 "RAYO MCQUEEN - CARRO"
             } else {
                 "RAYO MCQUEEN - NAVE"
@@ -3066,6 +3095,99 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mcqueen_submarine_has_aquatic_parts_and_renders_from_multiple_angles() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let model = load_obj(root.join("assets/vehicles/mcqueen_submarino.obj")).unwrap();
+        assert!(
+            model
+                .vertices
+                .iter()
+                .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
+        );
+        assert!(model.faces.iter().all(|face| {
+            face.indices
+                .iter()
+                .all(|&index| index < model.vertices.len())
+        }));
+        for group in [
+            "Periscopio",
+            "Palas_helice",
+            "Aro_helice",
+            "Faro_submarino",
+            "Aleta_dorsal",
+            "Flotador",
+            "Numero_95",
+            "Rayo_lateral",
+        ] {
+            assert!(
+                model.faces.iter().any(|face| face.group == group),
+                "missing {group}"
+            );
+        }
+        assert!(!model.faces.iter().any(|face| face.group == "Neumatico"));
+        for side in [-1.0_f32, 1.0] {
+            assert!(
+                model
+                    .faces
+                    .iter()
+                    .filter(|face| face.group == "Aro_helice")
+                    .any(|face| face
+                        .indices
+                        .iter()
+                        .all(|&i| model.vertices[i].x * side > 1.0))
+            );
+        }
+        for (material, rgb) in [
+            ("mcqueen_red", [225, 26, 35]),
+            ("mcqueen_yellow", [255, 211, 36]),
+            ("mcqueen_blue", [32, 105, 220]),
+            ("mcqueen_white", [247, 249, 252]),
+        ] {
+            assert!(
+                model.faces.iter().any(
+                    |face| face.material == material && face.color == MaterialColor::Fixed(rgb)
+                )
+            );
+        }
+        let center = model_center(&model);
+        assert!(
+            (1.4..2.5)
+                .contains(&(model_radius(&model, center) * MCQUEEN_SUBMARINE_SPEC.model_scale))
+        );
+        let mut frame = Framebuffer::new(WIDTH, HEIGHT);
+        frame.clear(0x080e1d);
+        for (index, angle) in [0.35_f32, 1.57, 3.5].into_iter().enumerate() {
+            let forward = Vec3::new(angle.sin(), 0.0, -angle.cos());
+            let side = Vec3::new(angle.cos(), 0.0, angle.sin());
+            let before = frame.pixels.iter().filter(|&&p| p != 0x080e1d).count();
+            render_model(
+                &model,
+                &mut frame,
+                &test_camera(),
+                |v| {
+                    let local = MCQUEEN_SUBMARINE_SPEC.model_to_world(
+                        v.sub(center).mul(0.80),
+                        forward,
+                        side,
+                        Vec3::new(0.0, 1.0, 0.0),
+                    );
+                    Vec3::new(
+                        local.x + (index as f32 - 1.0) * 7.0,
+                        local.y * 0.90 + local.z * 0.43,
+                        14.0 + local.z * 0.90 - local.y * 0.43,
+                    )
+                },
+                None,
+                None,
+            );
+            assert!(frame.pixels.iter().filter(|&&p| p != 0x080e1d).count() > before + 1000);
+        }
+        if let Ok(path) = std::env::var("MCQUEEN_SUB_PREVIEW") {
+            frame.save_png(&path).unwrap();
+        }
+    }
 
     #[test]
     fn mcqueen_car_has_four_exposed_wheels_and_renders_from_multiple_angles() {

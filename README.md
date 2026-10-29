@@ -39,9 +39,11 @@ Completa el recorrido submarino esquivando obstáculos. Buzz cambia automáticam
 
 ## Rayo McQueen
 
-En el hangar, selecciona Rayo McQueen y pulsa **V** para alternar nave/carro. **Enter** inicia con la forma de Rayo que estés viendo. Durante la partida, **T** alterna las dos formas conservando posición y velocidad. El carro usa los controles de vuelo existentes, sin física terrestre. Su submarino queda pendiente y no puede entrar al nivel acuático todavía.
+En el hangar, selecciona Rayo McQueen y pulsa **V** para alternar nave/carro/submarino. **Enter** inicia con la forma de Rayo que estés viendo; si eliges submarino, empiezas directamente en el nivel acuático. Durante el vuelo libre, **T** alterna nave/carro conservando posición y velocidad. El carro usa los controles de vuelo existentes, sin física terrestre.
 
-El modelo `assets/vehicles/mcqueen_carro.obj` comparte la paleta `mcqueen_nave.mtl` con la nave: carrocería roja, rayos y número 95 amarillos, ojos azules y cuatro ruedas negras con llantas rojas.
+Desde el espacio, **1** te acerca al planeta acuático. Ya en órbita, **Enter** inicia el nivel y transforma a Rayo en submarino. **Backspace** vuelve al espacio y recupera la forma anterior; también se recupera al completar el recorrido. Si empezaste directamente en submarino, regresarás en forma de nave.
+
+El carro `assets/vehicles/mcqueen_carro.obj` tiene carrocería roja, rayos y número 95 amarillos, ojos azules y cuatro ruedas negras con llantas rojas. El submarino `assets/vehicles/mcqueen_submarino.obj` mantiene esa paleta e incorpora periscopio, aletas, flotadores, faros y dos hélices con aros protectores. El juego define los colores en su renderizador.
 
 ## Modelos de Buzz
 

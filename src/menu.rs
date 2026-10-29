@@ -129,7 +129,7 @@ pub fn instructions(window: &mut Window, frame: &mut Framebuffer) -> Result<(), 
         }
         text(
             frame,
-            "BUZZ SE TRANSFORMA EN SUBMARINO AL ENTRAR AL AGUA",
+            "BUZZ / RAYO: SUBMARINO AL ENTRAR AL AGUA",
             600,
             602,
             2,

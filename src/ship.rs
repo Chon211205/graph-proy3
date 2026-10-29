@@ -250,6 +250,17 @@ pub static MCQUEEN_CAR_SPEC: ShipSpec = ShipSpec {
     ..MCQUEEN_SPEC
 };
 
+pub static MCQUEEN_SUBMARINE_SPEC: ShipSpec = ShipSpec {
+    model_scale: 0.38,
+    turbo_back: 1.25,
+    turbo_side: 0.70,
+    turbo_down: 0.50,
+    muzzle_forward: 1.10,
+    muzzle_side: 0.36,
+    muzzle_down: 0.55,
+    ..MCQUEEN_SPEC
+};
+
 pub static BUZZ_SPEC: ShipSpec = ShipSpec {
     name: "Buzz Lightyear",
     model_scale: 0.27,
