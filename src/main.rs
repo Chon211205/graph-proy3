@@ -5,7 +5,7 @@ mod obj_loader;
 mod ship;
 mod triangle;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::f32::consts::{PI, TAU};
 use std::sync::OnceLock;
 use std::thread;
@@ -45,6 +45,9 @@ const WATER_LEVEL_VERTICAL_OFFSET: f32 = 5.2;
 const WATER_LEVEL_SOURCE_START: f32 = 90.0;
 const WATER_LEVEL_SPEED_FACTOR: f32 = 0.55;
 const WATER_ENEMY_SCALE: f32 = 1.05;
+const LEVEL_CHUNK_LENGTH: f32 = 32.0;
+const LEVEL_RENDER_BEHIND: f32 = 48.0;
+const LEVEL_RENDER_AHEAD: f32 = 112.0;
 
 fn render_worker_count() -> usize {
     static WORKER_COUNT: OnceLock<usize> = OnceLock::new();
@@ -63,9 +66,119 @@ struct ObjectCollider {
     radius: f32,
 }
 
+#[derive(Clone, Copy)]
 struct LevelCollider {
     min: Vec3,
     max: Vec3,
+}
+
+struct LevelChunk {
+    min_progress: f32,
+    max_progress: f32,
+    model: Model,
+}
+
+struct LevelSpatialIndex {
+    render_chunks: Vec<LevelChunk>,
+    collision_chunks: BTreeMap<i32, Vec<LevelCollider>>,
+}
+
+struct LevelChunkBuilder {
+    vertex_map: HashMap<usize, usize>,
+    vertices: Vec<Vec3>,
+    faces: Vec<Face>,
+}
+
+impl LevelChunkBuilder {
+    fn new() -> Self {
+        Self {
+            vertex_map: HashMap::new(),
+            vertices: Vec::new(),
+            faces: Vec::new(),
+        }
+    }
+
+    fn add_face(&mut self, source: &Model, face: &Face) {
+        let mut indices = [0; 3];
+        for (target, source_index) in indices.iter_mut().zip(face.indices) {
+            *target = *self.vertex_map.entry(source_index).or_insert_with(|| {
+                let index = self.vertices.len();
+                self.vertices.push(source.vertices[source_index]);
+                index
+            });
+        }
+        self.faces.push(Face::new(
+            indices,
+            face.material.clone(),
+            face.group.clone(),
+        ));
+    }
+}
+
+impl LevelSpatialIndex {
+    fn new(level: &Model, colliders: Vec<LevelCollider>) -> Self {
+        let mut builders: BTreeMap<i32, LevelChunkBuilder> = BTreeMap::new();
+        for face in &level.faces {
+            let average_source_x = face
+                .indices
+                .iter()
+                .map(|&index| level.vertices[index].x)
+                .sum::<f32>()
+                / 3.0;
+            let progress = average_source_x + WATER_LEVEL_SOURCE_START;
+            let chunk_index = (progress / LEVEL_CHUNK_LENGTH).floor() as i32;
+            builders
+                .entry(chunk_index)
+                .or_insert_with(LevelChunkBuilder::new)
+                .add_face(level, face);
+        }
+
+        let render_chunks = builders
+            .into_iter()
+            .map(|(index, builder)| LevelChunk {
+                min_progress: index as f32 * LEVEL_CHUNK_LENGTH,
+                max_progress: (index + 1) as f32 * LEVEL_CHUNK_LENGTH,
+                model: Model::new(builder.vertices, builder.faces),
+            })
+            .collect();
+
+        let mut collision_chunks: BTreeMap<i32, Vec<LevelCollider>> = BTreeMap::new();
+        for collider in colliders {
+            // Expand the longitudinal range by the ship radius so collisions at
+            // sector boundaries remain active without querying every sector.
+            let min_progress = -collider.max.x - 4.0;
+            let max_progress = -collider.min.x + 4.0;
+            let first = (min_progress / LEVEL_CHUNK_LENGTH).floor() as i32;
+            let last = (max_progress / LEVEL_CHUNK_LENGTH).floor() as i32;
+            for index in first..=last {
+                collision_chunks.entry(index).or_default().push(collider);
+            }
+        }
+
+        Self {
+            render_chunks,
+            collision_chunks,
+        }
+    }
+
+    fn visible_chunks(&self, progress: f32) -> impl Iterator<Item = &Model> {
+        let min_progress = progress - LEVEL_RENDER_BEHIND;
+        let max_progress = progress + LEVEL_RENDER_AHEAD;
+        self.render_chunks
+            .iter()
+            .filter(move |chunk| {
+                chunk.max_progress >= min_progress && chunk.min_progress <= max_progress
+            })
+            .map(|chunk| &chunk.model)
+    }
+
+    fn nearby_colliders(&self, progress: f32) -> &[LevelCollider] {
+        let index = (progress / LEVEL_CHUNK_LENGTH).floor() as i32;
+        self.collision_chunks
+            .get(&index)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -332,9 +445,9 @@ fn build_level_colliders(model: &Model) -> Vec<LevelCollider> {
 fn resolve_level_collisions(
     state: &mut WaterLevelState,
     ship: &mut Ship,
-    colliders: &[LevelCollider],
+    level: &LevelSpatialIndex,
 ) {
-    for collider in colliders {
+    for collider in level.nearby_colliders(state.progress) {
         let closest = Vec3::new(
             ship.position.x.clamp(collider.min.x, collider.max.x),
             ship.position.y.clamp(collider.min.y, collider.max.y),
@@ -1535,7 +1648,7 @@ fn render_water_enemies(
 }
 
 fn render_water_level(
-    level: &Model,
+    level: &LevelSpatialIndex,
     enemy_models: &[Model; 3],
     enemy_centers: &[Vec3; 3],
     enemies: &[WaterEnemy],
@@ -1557,14 +1670,16 @@ fn render_water_level(
     framebuffer.clear(0);
     draw_underwater_background(framebuffer, progress * 0.002);
     let camera = chase_camera(ship);
-    render_model(
-        level,
-        framebuffer,
-        &camera,
-        level_to_world,
-        Some(world_time),
-        None,
-    );
+    for chunk in level.visible_chunks(progress) {
+        render_model(
+            chunk,
+            framebuffer,
+            &camera,
+            level_to_world,
+            Some(world_time),
+            None,
+        );
+    }
     render_water_enemies(
         enemy_models,
         enemy_centers,
@@ -1912,6 +2027,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         model_center(&enemy_models[2]),
     ];
     let level_colliders = build_level_colliders(&water_level);
+    let water_level_spatial = LevelSpatialIndex::new(&water_level, level_colliders);
+    drop(water_level);
     let planet_center = model_center(&planet);
     let planet_scale = WATER_PLANET_RADIUS / model_radius(&planet, planet_center).max(0.001);
     let planet_surface_radius = material_radius(&planet, planet_center, "Oceano") * planet_scale;
@@ -1930,6 +2047,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "Colisionadores alrededor del planeta: {}",
         object_colliders.len()
+    );
+    println!(
+        "Nivel submarino dividido en {} sectores espaciales",
+        water_level_spatial.render_chunks.len()
     );
 
     let mut ship_controller = ShipController::new(ship_spec);
@@ -2107,7 +2228,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 resolve_level_collisions(
                     &mut water_level_state,
                     &mut ship_controller.ship,
-                    &level_colliders,
+                    &water_level_spatial,
                 );
                 resolve_water_enemy_collisions(
                     &mut water_level_state,
@@ -2117,7 +2238,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 bubble_emitter.update(&ship_controller.ship, delta_time);
                 let turbo_power = ship_controller.turbo_power(ship_controller.ship.speed);
                 render_water_level(
-                    &water_level,
+                    &water_level_spatial,
                     &enemy_models,
                     &enemy_centers,
                     &water_level_state.enemies,
@@ -2248,6 +2369,48 @@ mod tests {
             None,
         );
         assert!(framebuffer.pixels.iter().all(|&pixel| pixel == 0));
+    }
+
+    #[test]
+    fn spatial_level_preserves_faces_and_selects_nearby_chunks() {
+        let source_x = |progress: f32| progress - WATER_LEVEL_SOURCE_START;
+        let model = Model::new(
+            vec![
+                Vec3::new(source_x(5.0), 0.0, 0.0),
+                Vec3::new(source_x(5.0), 1.0, 0.0),
+                Vec3::new(source_x(5.0), 0.0, 1.0),
+                Vec3::new(source_x(300.0), 0.0, 0.0),
+                Vec3::new(source_x(300.0), 1.0, 0.0),
+                Vec3::new(source_x(300.0), 0.0, 1.0),
+            ],
+            vec![
+                Face::new([0, 1, 2], "metal", "near"),
+                Face::new([3, 4, 5], "metal", "far"),
+            ],
+        );
+        let spatial = LevelSpatialIndex::new(&model, Vec::new());
+        assert_eq!(
+            spatial
+                .render_chunks
+                .iter()
+                .map(|chunk| chunk.model.faces.len())
+                .sum::<usize>(),
+            model.faces.len()
+        );
+        assert_eq!(spatial.visible_chunks(5.0).count(), 1);
+        assert_eq!(spatial.visible_chunks(300.0).count(), 1);
+    }
+
+    #[test]
+    fn spatial_collision_index_covers_chunk_boundaries() {
+        let model = test_triangle(5.0);
+        let collider = LevelCollider {
+            min: Vec3::new(-33.0, 0.0, 0.0),
+            max: Vec3::new(-32.0, 1.0, 1.0),
+        };
+        let spatial = LevelSpatialIndex::new(&model, vec![collider]);
+        assert!(!spatial.nearby_colliders(31.5).is_empty());
+        assert!(!spatial.nearby_colliders(32.5).is_empty());
     }
 
     #[test]
