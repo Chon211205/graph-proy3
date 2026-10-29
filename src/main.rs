@@ -5,23 +5,27 @@ mod obj_loader;
 mod ship;
 mod triangle;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::f32::consts::{PI, TAU};
+use std::sync::OnceLock;
+use std::thread;
 use std::time::Instant;
 
 use framebuffer::Framebuffer;
 use minifb::{Key, ScaleMode, Window, WindowOptions};
-use obj_loader::{load_obj, Face, Model, Vec3};
+use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use ship::{
-    Projectile, Ship, ShipController, ShipInput, ShipSpec, ARWING_SPEC, ARWING_SUBMARINE_SPEC,
-    ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC,
-    KIRBY_SUBMARINE_SPEC,
+    ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC, COWBOYB_SPEC,
+    COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC, Projectile, Ship, ShipController,
+    ShipInput, ShipSpec,
 };
-use triangle::{draw_triangle, draw_triangle_shaded, ScreenVertex};
+use triangle::{ScreenVertex, draw_triangle_shaded_region};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
 const NEAR_PLANE: f32 = 0.2;
+const FAR_PLANE: f32 = 750.0;
+const VERTICAL_FOV: f32 = 60.0_f32.to_radians();
 const LIGHT_SPEED: f32 = 600.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
 const SUN_POSITION_X: f32 = -520.0;
@@ -41,6 +45,115 @@ const WATER_LEVEL_VERTICAL_OFFSET: f32 = 5.2;
 const WATER_LEVEL_SOURCE_START: f32 = 90.0;
 const WATER_LEVEL_SPEED_FACTOR: f32 = 0.55;
 const WATER_ENEMY_SCALE: f32 = 1.05;
+const LEVEL_CHUNK_LENGTH: f32 = 32.0;
+const LEVEL_RENDER_BEHIND: f32 = 48.0;
+const LEVEL_RENDER_AHEAD: f32 = 112.0;
+const COLLISION_GRID_CELL_SIZE: f32 = 12.0;
+const MAX_BUBBLE_PARTICLES: usize = 256;
+const RESOLUTION_SCALES: [f32; 4] = [1.0, 0.9, 0.75, 0.6];
+
+fn render_worker_count() -> usize {
+    static WORKER_COUNT: OnceLock<usize> = OnceLock::new();
+    *WORKER_COUNT.get_or_init(|| thread::available_parallelism().map_or(1, usize::from))
+}
+
+struct DynamicResolution {
+    enabled: bool,
+    scale_index: usize,
+    fps_average: f32,
+    low_time: f32,
+    high_time: f32,
+    cooldown: f32,
+}
+
+impl DynamicResolution {
+    fn new() -> Self {
+        Self {
+            enabled: true,
+            scale_index: 0,
+            fps_average: 60.0,
+            low_time: 0.0,
+            high_time: 0.0,
+            cooldown: 0.0,
+        }
+    }
+
+    fn dimensions(&self) -> (usize, usize) {
+        let scale = RESOLUTION_SCALES[self.scale_index];
+        (
+            ((WIDTH as f32 * scale).round() as usize).max(1),
+            ((HEIGHT as f32 * scale).round() as usize).max(1),
+        )
+    }
+
+    fn toggle(&mut self) -> bool {
+        self.enabled = !self.enabled;
+        self.low_time = 0.0;
+        self.high_time = 0.0;
+        if !self.enabled && self.scale_index != 0 {
+            self.scale_index = 0;
+            return true;
+        }
+        false
+    }
+
+    fn update(&mut self, frame_time: f32) -> bool {
+        let frame_time = frame_time.max(0.000_1);
+        let fps = 1.0 / frame_time;
+        let smoothing = 1.0 - (-frame_time * 3.0).exp();
+        self.fps_average += (fps - self.fps_average) * smoothing;
+        self.cooldown = (self.cooldown - frame_time).max(0.0);
+        if !self.enabled || self.cooldown > 0.0 {
+            return false;
+        }
+
+        if self.fps_average < 50.0 {
+            self.low_time += frame_time;
+            self.high_time = 0.0;
+        } else if self.fps_average > 58.0 {
+            self.high_time += frame_time;
+            self.low_time = 0.0;
+        } else {
+            self.low_time = 0.0;
+            self.high_time = 0.0;
+        }
+
+        if self.low_time >= 1.0 && self.scale_index + 1 < RESOLUTION_SCALES.len() {
+            self.scale_index += 1;
+            self.low_time = 0.0;
+            self.cooldown = 2.0;
+            true
+        } else if self.high_time >= 3.0 && self.scale_index > 0 {
+            self.scale_index -= 1;
+            self.high_time = 0.0;
+            self.cooldown = 3.0;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn percentage(&self) -> u32 {
+        (RESOLUTION_SCALES[self.scale_index] * 100.0).round() as u32
+    }
+}
+
+fn upscale_scene(source: &Framebuffer, target: &mut Framebuffer) {
+    debug_assert_eq!((target.width, target.height), (WIDTH, HEIGHT));
+    if source.width == target.width && source.height == target.height {
+        target.pixels.copy_from_slice(&source.pixels);
+        return;
+    }
+    for y in 0..target.height {
+        let source_y = y * source.height / target.height;
+        let target_row = y * target.width;
+        let source_row = source_y * source.width;
+        for x in 0..target.width {
+            let source_x = x * source.width / target.width;
+            target.pixels[target_row + x] = source.pixels[source_row + source_x];
+        }
+    }
+}
 
 struct Camera {
     position: Vec3,
@@ -54,9 +167,163 @@ struct ObjectCollider {
     radius: f32,
 }
 
+struct SpatialCollisionGrid {
+    cell_size: f32,
+    cells: HashMap<(i32, i32, i32), Vec<usize>>,
+}
+
+impl SpatialCollisionGrid {
+    fn new(cell_size: f32) -> Self {
+        debug_assert!(cell_size > 0.0);
+        Self {
+            cell_size,
+            cells: HashMap::new(),
+        }
+    }
+
+    fn coordinate(&self, value: f32) -> i32 {
+        (value / self.cell_size).floor() as i32
+    }
+
+    fn insert_sphere(&mut self, index: usize, center: Vec3, radius: f32) {
+        let min_x = self.coordinate(center.x - radius);
+        let max_x = self.coordinate(center.x + radius);
+        let min_y = self.coordinate(center.y - radius);
+        let max_y = self.coordinate(center.y + radius);
+        let min_z = self.coordinate(center.z - radius);
+        let max_z = self.coordinate(center.z + radius);
+        for x in min_x..=max_x {
+            for y in min_y..=max_y {
+                for z in min_z..=max_z {
+                    self.cells.entry((x, y, z)).or_default().push(index);
+                }
+            }
+        }
+    }
+
+    fn candidates(&self, point: Vec3) -> &[usize] {
+        let key = (
+            self.coordinate(point.x),
+            self.coordinate(point.y),
+            self.coordinate(point.z),
+        );
+        self.cells.get(&key).map(Vec::as_slice).unwrap_or(&[])
+    }
+}
+
+#[derive(Clone, Copy)]
 struct LevelCollider {
     min: Vec3,
     max: Vec3,
+}
+
+struct LevelChunk {
+    min_progress: f32,
+    max_progress: f32,
+    model: Model,
+}
+
+struct LevelSpatialIndex {
+    render_chunks: Vec<LevelChunk>,
+    collision_chunks: BTreeMap<i32, Vec<LevelCollider>>,
+}
+
+struct LevelChunkBuilder {
+    vertex_map: HashMap<usize, usize>,
+    vertices: Vec<Vec3>,
+    faces: Vec<Face>,
+}
+
+impl LevelChunkBuilder {
+    fn new() -> Self {
+        Self {
+            vertex_map: HashMap::new(),
+            vertices: Vec::new(),
+            faces: Vec::new(),
+        }
+    }
+
+    fn add_face(&mut self, source: &Model, face: &Face) {
+        let mut indices = [0; 3];
+        for (target, source_index) in indices.iter_mut().zip(face.indices) {
+            *target = *self.vertex_map.entry(source_index).or_insert_with(|| {
+                let index = self.vertices.len();
+                self.vertices.push(source.vertices[source_index]);
+                index
+            });
+        }
+        self.faces.push(Face::new(
+            indices,
+            face.material.clone(),
+            face.group.clone(),
+        ));
+    }
+}
+
+impl LevelSpatialIndex {
+    fn new(level: &Model, colliders: Vec<LevelCollider>) -> Self {
+        let mut builders: BTreeMap<i32, LevelChunkBuilder> = BTreeMap::new();
+        for face in &level.faces {
+            let average_source_x = face
+                .indices
+                .iter()
+                .map(|&index| level.vertices[index].x)
+                .sum::<f32>()
+                / 3.0;
+            let progress = average_source_x + WATER_LEVEL_SOURCE_START;
+            let chunk_index = (progress / LEVEL_CHUNK_LENGTH).floor() as i32;
+            builders
+                .entry(chunk_index)
+                .or_insert_with(LevelChunkBuilder::new)
+                .add_face(level, face);
+        }
+
+        let render_chunks = builders
+            .into_iter()
+            .map(|(index, builder)| LevelChunk {
+                min_progress: index as f32 * LEVEL_CHUNK_LENGTH,
+                max_progress: (index + 1) as f32 * LEVEL_CHUNK_LENGTH,
+                model: Model::new(builder.vertices, builder.faces),
+            })
+            .collect();
+
+        let mut collision_chunks: BTreeMap<i32, Vec<LevelCollider>> = BTreeMap::new();
+        for collider in colliders {
+            // Expand the longitudinal range by the ship radius so collisions at
+            // sector boundaries remain active without querying every sector.
+            let min_progress = -collider.max.x - 4.0;
+            let max_progress = -collider.min.x + 4.0;
+            let first = (min_progress / LEVEL_CHUNK_LENGTH).floor() as i32;
+            let last = (max_progress / LEVEL_CHUNK_LENGTH).floor() as i32;
+            for index in first..=last {
+                collision_chunks.entry(index).or_default().push(collider);
+            }
+        }
+
+        Self {
+            render_chunks,
+            collision_chunks,
+        }
+    }
+
+    fn visible_chunks(&self, progress: f32) -> impl Iterator<Item = &Model> {
+        let min_progress = progress - LEVEL_RENDER_BEHIND;
+        let max_progress = progress + LEVEL_RENDER_AHEAD;
+        self.render_chunks
+            .iter()
+            .filter(move |chunk| {
+                chunk.max_progress >= min_progress && chunk.min_progress <= max_progress
+            })
+            .map(|chunk| &chunk.model)
+    }
+
+    fn nearby_colliders(&self, progress: f32) -> &[LevelCollider] {
+        let index = (progress / LEVEL_CHUNK_LENGTH).floor() as i32;
+        self.collision_chunks
+            .get(&index)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -106,8 +373,24 @@ impl BubbleEmitter {
     }
 
     fn clear(&mut self) {
-        self.particles.clear();
+        for particle in &mut self.particles {
+            particle.lifetime = 0.0;
+        }
         self.timer = 0.0;
+    }
+
+    fn spawn(&mut self, particle: BubbleParticle) {
+        if let Some(slot) = self.particles.iter_mut().find(|slot| slot.lifetime <= 0.0) {
+            *slot = particle;
+        } else if self.particles.len() < MAX_BUBBLE_PARTICLES {
+            self.particles.push(particle);
+        } else if let Some(slot) = self
+            .particles
+            .iter_mut()
+            .min_by(|a, b| a.lifetime.total_cmp(&b.lifetime))
+        {
+            *slot = particle;
+        }
     }
 
     fn update(&mut self, ship: &Ship, delta_time: f32) {
@@ -117,7 +400,7 @@ impl BubbleEmitter {
             for side in ship.spec.turbo_sides {
                 let random = hash(self.serial.wrapping_mul(977).wrapping_add(17));
                 let jitter = random as f32 / u32::MAX as f32 - 0.5;
-                self.particles.push(BubbleParticle {
+                self.spawn(BubbleParticle {
                     position: ship
                         .position
                         .sub(forward.mul(ship.spec.turbo_back + 0.25))
@@ -135,13 +418,16 @@ impl BubbleEmitter {
             self.timer += 0.075;
         }
 
-        for bubble in &mut self.particles {
+        for bubble in self
+            .particles
+            .iter_mut()
+            .filter(|bubble| bubble.lifetime > 0.0)
+        {
             bubble.position = bubble.position.add(bubble.velocity.mul(delta_time));
             bubble.velocity = bubble.velocity.add(Vec3::new(0.0, 0.45 * delta_time, 0.0));
             bubble.lifetime -= delta_time;
             bubble.scale += delta_time * 0.035;
         }
-        self.particles.retain(|bubble| bubble.lifetime > 0.0);
     }
 }
 
@@ -255,17 +541,17 @@ fn extract_model_group(model: &Model, group_name: &str) -> Result<Model, String>
                 index
             });
         }
-        faces.push(Face {
+        faces.push(Face::new(
             indices,
-            material: face.material.clone(),
-            group: face.group.clone(),
-        });
+            face.material.clone(),
+            face.group.clone(),
+        ));
     }
 
     if faces.is_empty() {
         return Err(format!("No se encontro el grupo {group_name}"));
     }
-    Ok(Model { vertices, faces })
+    Ok(Model::new(vertices, faces))
 }
 
 fn stretch_model_group_height(model: &mut Model, group_name: &str, base: f32, factor: f32) {
@@ -280,6 +566,7 @@ fn stretch_model_group_height(model: &mut Model, group_name: &str, base: f32, fa
             vertex.z = base + (vertex.z - base) * factor;
         }
     }
+    model.recalculate_bounds();
 }
 
 fn build_level_colliders(model: &Model) -> Vec<LevelCollider> {
@@ -322,9 +609,9 @@ fn build_level_colliders(model: &Model) -> Vec<LevelCollider> {
 fn resolve_level_collisions(
     state: &mut WaterLevelState,
     ship: &mut Ship,
-    colliders: &[LevelCollider],
+    level: &LevelSpatialIndex,
 ) {
-    for collider in colliders {
+    for collider in level.nearby_colliders(state.progress) {
         let closest = Vec3::new(
             ship.position.x.clamp(collider.min.x, collider.max.x),
             ship.position.y.clamp(collider.min.y, collider.max.y),
@@ -354,11 +641,31 @@ fn resolve_level_collisions(
 fn resolve_water_enemy_collisions(
     state: &mut WaterLevelState,
     ship: &mut Ship,
-    projectiles: &mut Vec<Projectile>,
+    projectiles: &mut [Projectile],
 ) {
+    let enemy_positions: Vec<Vec3> = state
+        .enemies
+        .iter()
+        .map(|enemy| enemy.position(state.elapsed))
+        .collect();
+    let mut collision_grid = SpatialCollisionGrid::new(COLLISION_GRID_CELL_SIZE);
+    for (index, enemy) in state.enemies.iter().enumerate() {
+        if enemy.alive {
+            collision_grid.insert_sphere(
+                index,
+                enemy_positions[index],
+                enemy.collision_radius() + ship.spec.collision_radius.max(2.0),
+            );
+        }
+    }
+
     for projectile in projectiles.iter_mut().filter(|shot| shot.lifetime > 0.0) {
-        for enemy in state.enemies.iter_mut().filter(|enemy| enemy.alive) {
-            let offset = projectile.position.sub(enemy.position(state.elapsed));
+        for &enemy_index in collision_grid.candidates(projectile.position) {
+            let enemy = &mut state.enemies[enemy_index];
+            if !enemy.alive {
+                continue;
+            }
+            let offset = projectile.position.sub(enemy_positions[enemy_index]);
             let hit_radius = enemy.collision_radius() + projectile.scale * 0.35;
             if offset.dot(offset) <= hit_radius * hit_radius {
                 enemy.alive = false;
@@ -369,8 +676,12 @@ fn resolve_water_enemy_collisions(
         }
     }
 
-    for enemy in state.enemies.iter().filter(|enemy| enemy.alive) {
-        let enemy_position = enemy.position(state.elapsed);
+    for &enemy_index in collision_grid.candidates(ship.position) {
+        let enemy = &state.enemies[enemy_index];
+        if !enemy.alive {
+            continue;
+        }
+        let enemy_position = enemy_positions[enemy_index];
         let offset = ship.position.sub(enemy_position);
         let separation = ship.spec.collision_radius + enemy.collision_radius();
         let distance_squared = offset.dot(offset);
@@ -393,7 +704,6 @@ fn resolve_water_enemy_collisions(
             (state.lateral + correction.z).clamp(-WATER_LEVEL_HALF_WIDTH, WATER_LEVEL_HALF_WIDTH);
         ship.position = ship.position.add(correction);
     }
-    projectiles.retain(|projectile| projectile.lifetime > 0.0);
 }
 
 fn build_object_colliders(model: &Model, model_center: Vec3, scale: f32) -> Vec<ObjectCollider> {
@@ -451,54 +761,6 @@ fn material_radius(model: &Model, center: Vec3, material_name: &str) -> f32 {
     radius
 }
 
-#[derive(Clone, Copy, PartialEq)]
-enum SurfaceShader {
-    Ocean,
-    Waterfall,
-    Earth,
-    Grass,
-    Rock,
-    DarkRock,
-    Sand,
-    Wood,
-    Leaves,
-    YellowBlock,
-    WhiteMark,
-    Flat,
-}
-
-fn surface_shader(material: &str) -> SurfaceShader {
-    let name = material.to_ascii_lowercase();
-    if name.contains("oceano") {
-        SurfaceShader::Ocean
-    } else if name.contains("cascada") {
-        SurfaceShader::Waterfall
-    } else if name.contains("roca_oscura") || name.contains("deep_cave_rock") {
-        SurfaceShader::DarkRock
-    } else if name.contains("roca")
-        || name.contains("underwater_rock")
-        || name.contains("blue_stone")
-    {
-        SurfaceShader::Rock
-    } else if name.contains("tierra") {
-        SurfaceShader::Earth
-    } else if name.contains("cesped") || name.contains("seaweed") {
-        SurfaceShader::Grass
-    } else if name.contains("arena") || name.contains("underwater_sand") {
-        SurfaceShader::Sand
-    } else if name.contains("tronco") {
-        SurfaceShader::Wood
-    } else if name.contains("hojas") {
-        SurfaceShader::Leaves
-    } else if name.contains("bloque_amarillo") {
-        SurfaceShader::YellowBlock
-    } else if name.contains("interrogacion_blanca") {
-        SurfaceShader::WhiteMark
-    } else {
-        SurfaceShader::Flat
-    }
-}
-
 fn screen_size() -> (usize, usize) {
     #[cfg(target_os = "windows")]
     {
@@ -539,111 +801,17 @@ fn create_window(fullscreen: bool) -> Result<Window, minifb::Error> {
     Ok(window)
 }
 
-fn color_for_material(name: &str, effect_spec: Option<&ShipSpec>) -> [u8; 3] {
-    let name = name.to_ascii_lowercase();
-    if name.starts_with("buzz_") {
-        return match name.as_str() {
-            "buzz_white" => [238, 242, 248],
-            "buzz_green" => [153, 226, 38],
-            "buzz_purple" => [116, 61, 177],
-            "buzz_red" => [235, 46, 60],
-            "buzz_glass" => [80, 177, 200],
-            "buzz_dark" => [29, 36, 54],
-            "buzz_blue" => [45, 132, 240],
-            "buzz_gold" => [245, 190, 42],
-            _ => [238, 242, 248],
-        };
-    }
-    if name.contains("cyan_coral") || name.contains("crystal_cyan") {
-        [38, 220, 226]
-    } else if name.contains("orange_coral") {
-        [244, 105, 42]
-    } else if name.contains("pink_coral") {
-        [242, 89, 164]
-    } else if name.contains("purple_coral") {
-        [144, 73, 205]
-    } else if name.contains("bright_seaweed") {
-        [50, 184, 103]
-    } else if name.contains("seaweed_green") {
-        [20, 108, 72]
-    } else if name.contains("spike_orange") {
-        [239, 113, 38]
-    } else if name.contains("spike_yellow") || name.contains("yellow_glow") {
-        [250, 214, 54]
-    } else if name.contains("shark_blue") {
-        [42, 104, 150]
-    } else if name.contains("shark_light") {
-        [138, 191, 203]
-    } else if name.contains("jelly_purple") {
-        [125, 58, 188]
-    } else if name.contains("jelly_pink") {
-        [241, 91, 178]
-    } else if name.contains("cyan_glow") {
-        [40, 225, 242]
-    } else if name.contains("red_glow") {
-        [255, 42, 46]
-    } else if name.contains("laser_core") {
-        effect_spec.map_or([255, 245, 190], |spec| spec.laser_core_color)
-    } else if name.contains("bubble_submarine") {
-        [155, 232, 255]
-    } else if name.contains("laser") {
-        effect_spec.map_or([255, 48, 38], |spec| spec.laser_color)
-    } else if name.contains("turbo_core") {
-        effect_spec.map_or([220, 252, 255], |spec| spec.turbo_core_color)
-    } else if name.contains("turbo") {
-        effect_spec.map_or([36, 142, 255], |spec| spec.turbo_color)
-    } else if name.contains("luz_cian") {
-        [40, 205, 255]
-    } else if name.contains("azul_profundo") {
-        [18, 44, 98]
-    } else if name.contains("azul_cobalto") {
-        [34, 106, 190]
-    } else if name.contains("soft_pink") {
-        [255, 158, 198]
-    } else if name.contains("light_pink") || name.contains("rosy_cheeks") {
-        [255, 105, 158]
-    } else if name.contains("burgundy") {
-        [92, 22, 48]
-    } else if name.contains("golden") || name.contains("gold") {
-        [236, 176, 42]
-    } else if name.contains("coral_rojo") {
-        [238, 42, 58]
-    } else if name.contains("coral_morado") {
-        [151, 46, 205]
-    } else if name.contains("coral_amarillo") {
-        [245, 174, 42]
-    } else if name.contains("planta_marina") {
-        [18, 116, 76]
-    } else if name.contains("ruina") {
-        [84, 112, 108]
-    } else if name.contains("energy_submarina") {
-        [30, 220, 240]
-    } else if name.contains("sun") {
-        [255, 174, 48]
-    } else if name.contains("tierra") {
-        [112, 72, 42]
-    } else if name.contains("arena") {
-        [218, 188, 112]
-    } else if name.contains("cesped") {
-        [55, 142, 72]
-    } else if name.contains("planet_land") {
-        [62, 153, 91]
-    } else if name.contains("planet_ice") {
-        [180, 225, 238]
-    } else if name.contains("planet") || name.contains("blue") {
-        [47, 87, 210]
-    } else if name.contains("glass") || name.contains("vidrio_oscuro") {
-        [24, 60, 78]
-    } else if name.contains("dark") || name.contains("gris_oscuro") {
-        [43, 51, 64]
-    } else if name.contains("yellow") || name.contains("amarillo") {
-        [242, 197, 57]
-    } else if name.contains("red") || name.contains("rojo") {
-        [199, 49, 57]
-    } else if name.contains("metal") {
-        [103, 121, 143]
-    } else {
-        [220, 230, 238]
+fn color_for_material(color: MaterialColor, effect_spec: Option<&ShipSpec>) -> [u8; 3] {
+    match color {
+        MaterialColor::Fixed(color) => color,
+        MaterialColor::LaserCore => {
+            effect_spec.map_or([255, 245, 190], |spec| spec.laser_core_color)
+        }
+        MaterialColor::Laser => effect_spec.map_or([255, 48, 38], |spec| spec.laser_color),
+        MaterialColor::TurboCore => {
+            effect_spec.map_or([220, 252, 255], |spec| spec.turbo_core_color)
+        }
+        MaterialColor::Turbo => effect_spec.map_or([36, 142, 255], |spec| spec.turbo_color),
     }
 }
 
@@ -838,19 +1006,12 @@ fn make_sphere(radius: f32, stacks: usize, slices: usize, sun: bool) -> Model {
             } else {
                 "planet_ocean"
             };
-            faces.push(Face {
-                indices: [first, second, first + 1],
-                material: material.to_string(),
-                group: if sun { "sun" } else { "planet" }.to_string(),
-            });
-            faces.push(Face {
-                indices: [first + 1, second, second + 1],
-                material: material.to_string(),
-                group: if sun { "sun" } else { "planet" }.to_string(),
-            });
+            let group = if sun { "sun" } else { "planet" };
+            faces.push(Face::new([first, second, first + 1], material, group));
+            faces.push(Face::new([first + 1, second, second + 1], material, group));
         }
     }
-    Model { vertices, faces }
+    Model::new(vertices, faces)
 }
 
 fn make_turbo_plume(segments: usize) -> Model {
@@ -863,18 +1024,17 @@ fn make_turbo_plume(segments: usize) -> Model {
     let mut faces = Vec::new();
     for segment in 0..segments {
         let next = (segment + 1) % segments;
-        faces.push(Face {
-            indices: [0, segment + 1, next + 1],
-            material: if segment % 2 == 0 {
+        faces.push(Face::new(
+            [0, segment + 1, next + 1],
+            if segment % 2 == 0 {
                 "turbo_core"
             } else {
                 "turbo_glow"
-            }
-            .to_string(),
-            group: "turbo".to_string(),
-        });
+            },
+            "turbo",
+        ));
     }
-    Model { vertices, faces }
+    Model::new(vertices, faces)
 }
 
 fn make_laser_bolt() -> Model {
@@ -895,18 +1055,10 @@ fn make_laser_bolt() -> Model {
         } else {
             "laser_glow"
         };
-        faces.push(Face {
-            indices: [0, current, next],
-            material: material.to_string(),
-            group: "laser".to_string(),
-        });
-        faces.push(Face {
-            indices: [1, next, current],
-            material: material.to_string(),
-            group: "laser".to_string(),
-        });
+        faces.push(Face::new([0, current, next], material, "laser"));
+        faces.push(Face::new([1, next, current], material, "laser"));
     }
-    Model { vertices, faces }
+    Model::new(vertices, faces)
 }
 
 fn make_bubble_model() -> Model {
@@ -930,13 +1082,9 @@ fn make_bubble_model() -> Model {
     ];
     let faces = triangles
         .into_iter()
-        .map(|indices| Face {
-            indices,
-            material: "bubble_submarine".to_string(),
-            group: "bubble_submarine".to_string(),
-        })
+        .map(|indices| Face::new(indices, "bubble_submarine", "bubble_submarine"))
         .collect();
-    Model { vertices, faces }
+    Model::new(vertices, faces)
 }
 
 fn model_center(model: &Model) -> Vec3 {
@@ -1049,6 +1197,28 @@ fn move_around_planet(
         ship.orbit_center = Some(planet_center);
     }
 
+    let (sin_rotation, cos_rotation) = planet_rotation.sin_cos();
+    let rotated_collider_centers: Vec<Vec3> = object_colliders
+        .iter()
+        .map(|collider| {
+            let local = collider.center;
+            Vec3::new(
+                local.x * cos_rotation - local.z * sin_rotation,
+                local.y,
+                local.x * sin_rotation + local.z * cos_rotation,
+            )
+            .add(planet_center)
+        })
+        .collect();
+    let mut object_grid = SpatialCollisionGrid::new(COLLISION_GRID_CELL_SIZE);
+    for (index, collider) in object_colliders.iter().enumerate() {
+        object_grid.insert_sphere(
+            index,
+            rotated_collider_centers[index],
+            collider.radius + ship.spec.collision_radius + 0.8,
+        );
+    }
+
     for _ in 0..steps {
         let offset = ship.position.sub(planet_center);
         let distance = offset.dot(offset).sqrt();
@@ -1158,15 +1328,9 @@ fn move_around_planet(
             proposed
         };
 
-        let (sin_rotation, cos_rotation) = planet_rotation.sin_cos();
-        for collider in object_colliders {
-            let local = collider.center;
-            let collider_center = Vec3::new(
-                local.x * cos_rotation - local.z * sin_rotation,
-                local.y,
-                local.x * sin_rotation + local.z * cos_rotation,
-            )
-            .add(planet_center);
+        for &collider_index in object_grid.candidates(ship.position) {
+            let collider = &object_colliders[collider_index];
+            let collider_center = rotated_collider_centers[collider_index];
             let separation = collider.radius + ship.spec.collision_radius + 0.8;
             let collider_offset = ship.position.sub(collider_center);
             let collider_distance = collider_offset.dot(collider_offset).sqrt();
@@ -1194,6 +1358,120 @@ fn move_around_planet(
     }
 }
 
+enum TriangleStyle {
+    Flat(u32),
+    Procedural {
+        shader: SurfaceShader,
+        points: [Vec3; 3],
+        time: f32,
+        brightness: f32,
+        fresnel: f32,
+    },
+}
+
+struct TriangleCommand {
+    vertices: [ScreenVertex; 3],
+    style: TriangleStyle,
+}
+
+struct TriangleBatch {
+    commands: Vec<TriangleCommand>,
+    viewport_width: usize,
+    viewport_height: usize,
+}
+
+impl TriangleBatch {
+    fn new(viewport_width: usize, viewport_height: usize) -> Self {
+        Self {
+            commands: Vec::new(),
+            viewport_width,
+            viewport_height,
+        }
+    }
+
+    fn resize(&mut self, width: usize, height: usize) {
+        debug_assert!(self.commands.is_empty());
+        self.viewport_width = width;
+        self.viewport_height = height;
+    }
+
+    fn flush(&mut self, framebuffer: &mut Framebuffer) {
+        self.flush_with_workers(framebuffer, render_worker_count());
+    }
+
+    fn flush_with_workers(&mut self, framebuffer: &mut Framebuffer, worker_count: usize) {
+        if self.commands.is_empty() {
+            return;
+        }
+        let width = framebuffer.width;
+        let height = framebuffer.height;
+        debug_assert_eq!((width, height), (self.viewport_width, self.viewport_height));
+        let worker_count = worker_count.clamp(1, height.max(1));
+        let tile_height = height.div_ceil(worker_count).div_ceil(32) * 32;
+        let commands = &self.commands;
+        let (pixels, depth) = framebuffer.buffers_mut();
+        thread::scope(|scope| {
+            for (tile_index, (tile_pixels, tile_depth)) in pixels
+                .chunks_mut(tile_height * width)
+                .zip(depth.chunks_mut(tile_height * width))
+                .enumerate()
+            {
+                let region_y = tile_index * tile_height;
+                scope.spawn(move || {
+                    for command in commands {
+                        let [a, b, c] = command.vertices;
+                        match &command.style {
+                            TriangleStyle::Flat(color) => draw_triangle_shaded_region(
+                                tile_pixels,
+                                tile_depth,
+                                width,
+                                height,
+                                region_y,
+                                a,
+                                b,
+                                c,
+                                |_, _, _, _, _| *color,
+                            ),
+                            TriangleStyle::Procedural {
+                                shader,
+                                points,
+                                time,
+                                brightness,
+                                fresnel,
+                            } => draw_triangle_shaded_region(
+                                tile_pixels,
+                                tile_depth,
+                                width,
+                                height,
+                                region_y,
+                                a,
+                                b,
+                                c,
+                                |w0, w1, w2, x, y| {
+                                    let point = points[0]
+                                        .mul(w0)
+                                        .add(points[1].mul(w1))
+                                        .add(points[2].mul(w2));
+                                    procedural_surface_color(
+                                        *shader,
+                                        point,
+                                        x,
+                                        y,
+                                        *time,
+                                        *brightness,
+                                        *fresnel,
+                                    )
+                                },
+                            ),
+                        }
+                    }
+                });
+            }
+        });
+        self.commands.clear();
+    }
+}
+
 fn render_model<F>(
     model: &Model,
     framebuffer: &mut Framebuffer,
@@ -1202,23 +1480,125 @@ fn render_model<F>(
     water_time: Option<f32>,
     effect_spec: Option<&ShipSpec>,
 ) where
-    F: Fn(Vec3) -> Vec3,
+    F: Fn(Vec3) -> Vec3 + Sync,
 {
-    let camera_vertices: Vec<Vec3> = model
-        .vertices
-        .iter()
-        .map(|vertex| {
-            let relative = transform(*vertex).sub(camera.position);
-            Vec3::new(
-                relative.dot(camera.right),
-                relative.dot(camera.up),
-                relative.dot(camera.forward),
-            )
-        })
-        .collect();
-    let focal = HEIGHT as f32 / (60.0_f32.to_radians() * 0.5).tan() * 0.5;
-    let light = Vec3::new(-0.3, 0.8, -0.5).normalize();
+    let mut batch = TriangleBatch::new(framebuffer.width, framebuffer.height);
+    queue_model(
+        model,
+        &mut batch,
+        camera,
+        transform,
+        water_time,
+        effect_spec,
+    );
+    batch.flush(framebuffer);
+}
 
+fn queue_model<F>(
+    model: &Model,
+    batch: &mut TriangleBatch,
+    camera: &Camera,
+    transform: F,
+    water_time: Option<f32>,
+    effect_spec: Option<&ShipSpec>,
+) where
+    F: Fn(Vec3) -> Vec3 + Sync,
+{
+    let mut camera_vertices = Vec::new();
+    queue_model_with_scratch(
+        model,
+        batch,
+        camera,
+        transform,
+        water_time,
+        effect_spec,
+        &mut camera_vertices,
+    );
+}
+
+fn queue_model_with_scratch<F>(
+    model: &Model,
+    batch: &mut TriangleBatch,
+    camera: &Camera,
+    transform: F,
+    water_time: Option<f32>,
+    effect_spec: Option<&ShipSpec>,
+    camera_vertices: &mut Vec<Vec3>,
+) where
+    F: Fn(Vec3) -> Vec3 + Sync,
+{
+    let tan_half_vertical = (VERTICAL_FOV * 0.5).tan();
+    let tan_half_horizontal =
+        tan_half_vertical * batch.viewport_width as f32 / batch.viewport_height as f32;
+    let (local_center, local_radius) = model.bounds();
+    let world_center = transform(local_center);
+    let transformed_radius = if local_radius > 0.0 {
+        [
+            Vec3::new(local_radius, 0.0, 0.0),
+            Vec3::new(0.0, local_radius, 0.0),
+            Vec3::new(0.0, 0.0, local_radius),
+        ]
+        .into_iter()
+        .map(|axis| transform(local_center.add(axis)).sub(world_center))
+        .map(|axis| axis.dot(axis).sqrt())
+        .fold(0.0, f32::max)
+    } else {
+        0.0
+    };
+    let relative_center = world_center.sub(camera.position);
+    let camera_center = Vec3::new(
+        relative_center.dot(camera.right),
+        relative_center.dot(camera.up),
+        relative_center.dot(camera.forward),
+    );
+    let horizontal_plane_length = (1.0 + tan_half_horizontal * tan_half_horizontal).sqrt();
+    let vertical_plane_length = (1.0 + tan_half_vertical * tan_half_vertical).sqrt();
+    if camera_center.z + transformed_radius < NEAR_PLANE
+        || camera_center.z - transformed_radius > FAR_PLANE
+        || camera_center.z * tan_half_horizontal + camera_center.x
+            < -transformed_radius * horizontal_plane_length
+        || camera_center.z * tan_half_horizontal - camera_center.x
+            < -transformed_radius * horizontal_plane_length
+        || camera_center.z * tan_half_vertical + camera_center.y
+            < -transformed_radius * vertical_plane_length
+        || camera_center.z * tan_half_vertical - camera_center.y
+            < -transformed_radius * vertical_plane_length
+    {
+        return;
+    }
+
+    let transform_vertex = |vertex: &Vec3| {
+        let relative = transform(*vertex).sub(camera.position);
+        Vec3::new(
+            relative.dot(camera.right),
+            relative.dot(camera.up),
+            relative.dot(camera.forward),
+        )
+    };
+    let worker_count = render_worker_count();
+    if model.vertices.len() >= 4_096 && worker_count > 1 {
+        let chunk_size = model.vertices.len().div_ceil(worker_count);
+        *camera_vertices = thread::scope(|scope| {
+            let handles: Vec<_> = model
+                .vertices
+                .chunks(chunk_size)
+                .map(|vertices| {
+                    let transform_vertex = &transform_vertex;
+                    scope.spawn(move || vertices.iter().map(transform_vertex).collect::<Vec<_>>())
+                })
+                .collect();
+            handles
+                .into_iter()
+                .flat_map(|handle| handle.join().expect("vertex worker panicked"))
+                .collect()
+        });
+    } else {
+        camera_vertices.clear();
+        camera_vertices.reserve(model.vertices.len());
+        camera_vertices.extend(model.vertices.iter().map(transform_vertex));
+    }
+    let focal = batch.viewport_height as f32 / tan_half_vertical * 0.5;
+    let light = Vec3::new(-0.3, 0.8, -0.5).normalize();
     for face in &model.faces {
         let [i0, i1, i2] = face.indices;
         let v0 = camera_vertices[i0];
@@ -1227,9 +1607,25 @@ fn render_model<F>(
         if v0.z <= NEAR_PLANE || v1.z <= NEAR_PLANE || v2.z <= NEAR_PLANE {
             continue;
         }
+        if (v0.z > FAR_PLANE && v1.z > FAR_PLANE && v2.z > FAR_PLANE)
+            || (v0.x < -v0.z * tan_half_horizontal
+                && v1.x < -v1.z * tan_half_horizontal
+                && v2.x < -v2.z * tan_half_horizontal)
+            || (v0.x > v0.z * tan_half_horizontal
+                && v1.x > v1.z * tan_half_horizontal
+                && v2.x > v2.z * tan_half_horizontal)
+            || (v0.y < -v0.z * tan_half_vertical
+                && v1.y < -v1.z * tan_half_vertical
+                && v2.y < -v2.z * tan_half_vertical)
+            || (v0.y > v0.z * tan_half_vertical
+                && v1.y > v1.z * tan_half_vertical
+                && v2.y > v2.z * tan_half_vertical)
+        {
+            continue;
+        }
         let project = |vertex: Vec3| ScreenVertex {
-            x: WIDTH as f32 * 0.5 + vertex.x * focal / vertex.z,
-            y: HEIGHT as f32 * 0.5 - vertex.y * focal / vertex.z,
+            x: batch.viewport_width as f32 * 0.5 + vertex.x * focal / vertex.z,
+            y: batch.viewport_height as f32 * 0.5 - vertex.y * focal / vertex.z,
             z: 1.0 / vertex.z,
         };
         let normal = v1.sub(v0).cross(v2.sub(v0)).normalize();
@@ -1237,7 +1633,8 @@ fn render_model<F>(
         let a = project(v0);
         let b = project(v1);
         let c = project(v2);
-        let shader = surface_shader(&face.material);
+        let shader = face.shader;
+        let flat_color = color_for_material(face.color, effect_spec);
 
         if shader != SurfaceShader::Flat {
             let p0 = model.vertices[i0];
@@ -1248,20 +1645,48 @@ fn render_model<F>(
             let fresnel = (1.0 - normal.dot(view_direction).abs()).powf(3.0);
             let time = water_time.unwrap_or_default();
 
-            draw_triangle_shaded(framebuffer, a, b, c, |w0, w1, w2, x, y| {
-                let point = p0.mul(w0).add(p1.mul(w1)).add(p2.mul(w2));
-                procedural_surface_color(shader, point, x, y, time, brightness, fresnel)
+            batch.commands.push(TriangleCommand {
+                vertices: [a, b, c],
+                style: TriangleStyle::Procedural {
+                    shader,
+                    points: [p0, p1, p2],
+                    time,
+                    brightness,
+                    fresnel,
+                },
             });
         } else {
-            draw_triangle(
-                framebuffer,
-                a,
-                b,
-                c,
-                pack(color_for_material(&face.material, effect_spec), brightness),
-            );
+            batch.commands.push(TriangleCommand {
+                vertices: [a, b, c],
+                style: TriangleStyle::Flat(pack(flat_color, brightness)),
+            });
         }
     }
+}
+
+#[cfg(test)]
+fn render_model_with_scratch<F>(
+    model: &Model,
+    framebuffer: &mut Framebuffer,
+    camera: &Camera,
+    transform: F,
+    water_time: Option<f32>,
+    effect_spec: Option<&ShipSpec>,
+    camera_vertices: &mut Vec<Vec3>,
+) where
+    F: Fn(Vec3) -> Vec3 + Sync,
+{
+    let mut batch = TriangleBatch::new(framebuffer.width, framebuffer.height);
+    queue_model_with_scratch(
+        model,
+        &mut batch,
+        camera,
+        transform,
+        water_time,
+        effect_spec,
+        camera_vertices,
+    );
+    batch.flush(framebuffer);
 }
 
 fn render_scene(
@@ -1275,6 +1700,7 @@ fn render_scene(
     planet_scale: f32,
     sun: &Model,
     framebuffer: &mut Framebuffer,
+    batch: &mut TriangleBatch,
     ship: &Ship,
     world_time: f32,
     travel: f32,
@@ -1284,21 +1710,22 @@ fn render_scene(
     framebuffer.clear(0);
     draw_skybox(framebuffer, travel);
     let camera = chase_camera(ship);
+    debug_assert!(batch.commands.is_empty());
     let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let planet_position = water_planet_position(world_time);
     let planet_rotation = world_time * 0.25;
 
-    render_model(
+    queue_model(
         sun,
-        framebuffer,
+        batch,
         &camera,
         |vertex| vertex.add(sun_position),
         None,
         None,
     );
-    render_model(
+    queue_model(
         planet,
-        framebuffer,
+        batch,
         &camera,
         |vertex| {
             let vertex = vertex.sub(planet_center).mul(planet_scale);
@@ -1320,7 +1747,7 @@ fn render_scene(
         turbo_plume,
         laser_bolt,
         projectiles,
-        framebuffer,
+        batch,
         &camera,
         ship,
         world_time,
@@ -1328,6 +1755,7 @@ fn render_scene(
         fire_charge,
         true,
     );
+    batch.flush(framebuffer);
 }
 
 fn render_ship_components(
@@ -1336,7 +1764,7 @@ fn render_ship_components(
     turbo_plume: &Model,
     laser_bolt: &Model,
     projectiles: &[Projectile],
-    framebuffer: &mut Framebuffer,
+    batch: &mut TriangleBatch,
     camera: &Camera,
     ship: &Ship,
     world_time: f32,
@@ -1355,9 +1783,9 @@ fn render_ship_components(
                 .sub(forward.mul(ship.spec.turbo_back))
                 .add(right.mul(*side * ship.spec.turbo_side))
                 .sub(up.mul(ship.spec.turbo_down));
-            render_model(
+            queue_model(
                 turbo_plume,
-                framebuffer,
+                batch,
                 &camera,
                 |vertex| {
                     emitter
@@ -1370,7 +1798,10 @@ fn render_ship_components(
             );
         }
     }
-    for projectile in projectiles {
+    for projectile in projectiles
+        .iter()
+        .filter(|projectile| projectile.lifetime > 0.0)
+    {
         let mut laser_right = projectile
             .direction
             .cross(Vec3::new(0.0, 1.0, 0.0))
@@ -1379,9 +1810,9 @@ fn render_ship_components(
             laser_right = Vec3::new(1.0, 0.0, 0.0);
         }
         let laser_up = laser_right.cross(projectile.direction).normalize();
-        render_model(
+        queue_model(
             laser_bolt,
-            framebuffer,
+            batch,
             &camera,
             |vertex| {
                 projectile
@@ -1397,9 +1828,9 @@ fn render_ship_components(
     if fire_charge > 0.0 {
         let charge_scale = 0.35 + fire_charge * 1.15;
         let charge_position = ship.position.add(forward.mul(1.9));
-        render_model(
+        queue_model(
             laser_bolt,
-            framebuffer,
+            batch,
             &camera,
             |vertex| {
                 charge_position
@@ -1411,9 +1842,9 @@ fn render_ship_components(
             Some(ship.spec),
         );
     }
-    render_model(
+    queue_model(
         ship_model,
-        framebuffer,
+        batch,
         camera,
         |vertex| {
             let local = vertex.sub(ship_center).mul(ship.spec.model_scale);
@@ -1518,43 +1949,68 @@ fn apply_underwater_lighting(framebuffer: &mut Framebuffer, time: f32) {
     let width = framebuffer.width as f32;
     let height = framebuffer.height as f32;
 
-    for y in 0..framebuffer.height {
-        let depth = y as f32 / height;
-        let surface_light = (1.0 - depth).powf(1.65);
-        let vertical_darkness = 0.50 + surface_light * 0.34;
-
-        for x in 0..framebuffer.width {
-            let normalized_x = x as f32 / width * 2.0 - 1.0;
-            let edge_darkness = (1.0 - normalized_x * normalized_x * 0.30).clamp(0.62, 1.0);
-
-            // Un haz ancho que nace en la superficie y se abre al descender.
-            let swaying_center = (time * 0.22).sin() * 0.16;
-            let cone_width = 0.12 + depth * 0.62;
-            let cone = (1.0 - (normalized_x - swaying_center).abs() / cone_width).clamp(0.0, 1.0)
-                * (1.0 - depth * 0.72);
-
-            // Causticas suaves: se notan arriba y desaparecen en la profundidad.
-            let caustic = (normalized_x * 18.0 + depth * 11.0 + time * 1.7)
-                .sin()
-                .max(0.0)
-                .powf(5.0)
-                * surface_light
-                * 0.13;
-            let light =
-                (vertical_darkness * edge_darkness + cone * 0.22 + caustic).clamp(0.30, 1.0);
-
-            let pixel = framebuffer.pixels[y * framebuffer.width + x];
-            let red = ((pixel >> 16) & 255) as f32;
-            let green = ((pixel >> 8) & 255) as f32;
-            let blue = (pixel & 255) as f32;
-
-            // El agua absorbe primero los rojos y conserva mas azul/cian.
-            let red = (red * light * 0.67).clamp(0.0, 255.0) as u32;
-            let green = (green * light * 0.91 + cone * 5.0).clamp(0.0, 255.0) as u32;
-            let blue = (blue * light + surface_light * 4.0 + cone * 8.0).clamp(0.0, 255.0) as u32;
-            framebuffer.pixels[y * framebuffer.width + x] = (red << 16) | (green << 8) | blue;
-        }
+    let swaying_center = (time * 0.22).sin() * 0.16;
+    let angle_step = 36.0 / width;
+    let (step_sin, step_cos) = angle_step.sin_cos();
+    let mut edge_darkness = Vec::with_capacity(framebuffer.width);
+    let mut normalized_x_values = Vec::with_capacity(framebuffer.width);
+    for x in 0..framebuffer.width {
+        let normalized_x = x as f32 / width * 2.0 - 1.0;
+        normalized_x_values.push(normalized_x);
+        edge_darkness.push((1.0 - normalized_x * normalized_x * 0.30).clamp(0.62, 1.0));
     }
+
+    let worker_count = render_worker_count();
+    let rows_per_worker = framebuffer.height.div_ceil(worker_count);
+    thread::scope(|scope| {
+        for (chunk_index, pixels) in framebuffer
+            .pixels
+            .chunks_mut(rows_per_worker * framebuffer.width)
+            .enumerate()
+        {
+            let normalized_x_values = &normalized_x_values;
+            let edge_darkness = &edge_darkness;
+            let start_y = chunk_index * rows_per_worker;
+            let framebuffer_width = framebuffer.width;
+            scope.spawn(move || {
+                for (local_y, row) in pixels.chunks_mut(framebuffer_width).enumerate() {
+                    let y = start_y + local_y;
+                    let depth = y as f32 / height;
+                    let surface_light = (1.0 - depth).powf(1.65);
+                    let vertical_darkness = 0.50 + surface_light * 0.34;
+                    let cone_width = 0.12 + depth * 0.62;
+                    let caustic_strength = surface_light * 0.13;
+                    let (mut caustic_sin, mut caustic_cos) =
+                        (-18.0 + depth * 11.0 + time * 1.7).sin_cos();
+
+                    for (x, pixel) in row.iter_mut().enumerate() {
+                        let normalized_x = normalized_x_values[x];
+                        let cone = (1.0 - (normalized_x - swaying_center).abs() / cone_width)
+                            .clamp(0.0, 1.0)
+                            * (1.0 - depth * 0.72);
+                        let positive_sine = caustic_sin.max(0.0);
+                        let square = positive_sine * positive_sine;
+                        let caustic = square * square * positive_sine * caustic_strength;
+                        let light = (vertical_darkness * edge_darkness[x] + cone * 0.22 + caustic)
+                            .clamp(0.30, 1.0);
+
+                        let red = ((*pixel >> 16) & 255) as f32;
+                        let green = ((*pixel >> 8) & 255) as f32;
+                        let blue = (*pixel & 255) as f32;
+                        let red = (red * light * 0.67).clamp(0.0, 255.0) as u32;
+                        let green = (green * light * 0.91 + cone * 5.0).clamp(0.0, 255.0) as u32;
+                        let blue = (blue * light + surface_light * 4.0 + cone * 8.0)
+                            .clamp(0.0, 255.0) as u32;
+                        *pixel = (red << 16) | (green << 8) | blue;
+
+                        let next_sin = caustic_sin * step_cos + caustic_cos * step_sin;
+                        caustic_cos = caustic_cos * step_cos - caustic_sin * step_sin;
+                        caustic_sin = next_sin;
+                    }
+                }
+            });
+        }
+    });
 }
 
 fn render_water_enemies(
@@ -1563,45 +2019,52 @@ fn render_water_enemies(
     enemies: &[WaterEnemy],
     elapsed: f32,
     current_progress: f32,
-    framebuffer: &mut Framebuffer,
+    batch: &mut TriangleBatch,
     camera: &Camera,
+    instance_buffers: &mut [Vec<Vec3>; 3],
 ) {
-    for enemy in enemies
-        .iter()
-        .filter(|enemy| enemy.alive && (enemy.progress - current_progress).abs() < 150.0)
-    {
-        let position = enemy.position(elapsed);
-        let angle = match enemy.kind {
-            0 => elapsed * 0.55 + enemy.phase,
-            1 => (elapsed * 1.15 + enemy.phase).cos() * 0.18,
-            _ => (elapsed * 0.45 + enemy.phase).sin() * 0.12,
-        };
-        let forward = Vec3::new(angle.cos(), 0.0, angle.sin());
-        let right = Vec3::new(-angle.sin(), 0.0, angle.cos());
-        let up = Vec3::new(0.0, 1.0, 0.0);
-        render_model(
-            &enemy_models[enemy.kind],
-            framebuffer,
-            camera,
-            |vertex| {
-                let local = vertex.sub(enemy_centers[enemy.kind]).mul(WATER_ENEMY_SCALE);
-                position
-                    .add(forward.mul(local.x))
-                    .add(right.mul(local.y))
-                    .add(up.mul(local.z))
-            },
-            None,
-            None,
-        );
+    let up = Vec3::new(0.0, 1.0, 0.0);
+    for kind in 0..enemy_models.len() {
+        let model = &enemy_models[kind];
+        let center = enemy_centers[kind];
+        let camera_vertices = &mut instance_buffers[kind];
+        for enemy in enemies.iter().filter(|enemy| {
+            enemy.alive && enemy.kind == kind && (enemy.progress - current_progress).abs() < 150.0
+        }) {
+            let position = enemy.position(elapsed);
+            let angle = match kind {
+                0 => elapsed * 0.55 + enemy.phase,
+                1 => (elapsed * 1.15 + enemy.phase).cos() * 0.18,
+                _ => (elapsed * 0.45 + enemy.phase).sin() * 0.12,
+            };
+            let forward = Vec3::new(angle.cos(), 0.0, angle.sin());
+            let right = Vec3::new(-angle.sin(), 0.0, angle.cos());
+            queue_model_with_scratch(
+                model,
+                batch,
+                camera,
+                |vertex| {
+                    let local = vertex.sub(center).mul(WATER_ENEMY_SCALE);
+                    position
+                        .add(forward.mul(local.x))
+                        .add(right.mul(local.y))
+                        .add(up.mul(local.z))
+                },
+                None,
+                None,
+                camera_vertices,
+            );
+        }
     }
 }
 
 fn render_water_level(
-    level: &Model,
+    level: &LevelSpatialIndex,
     enemy_models: &[Model; 3],
     enemy_centers: &[Vec3; 3],
     enemies: &[WaterEnemy],
     enemy_elapsed: f32,
+    enemy_instance_buffers: &mut [Vec<Vec3>; 3],
     bubble_model: &Model,
     bubbles: &[BubbleParticle],
     ship_model: &Model,
@@ -1610,6 +2073,7 @@ fn render_water_level(
     laser_bolt: &Model,
     projectiles: &[Projectile],
     framebuffer: &mut Framebuffer,
+    batch: &mut TriangleBatch,
     ship: &Ship,
     world_time: f32,
     progress: f32,
@@ -1619,27 +2083,31 @@ fn render_water_level(
     framebuffer.clear(0);
     draw_underwater_background(framebuffer, progress * 0.002);
     let camera = chase_camera(ship);
-    render_model(
-        level,
-        framebuffer,
-        &camera,
-        level_to_world,
-        Some(world_time),
-        None,
-    );
+    debug_assert!(batch.commands.is_empty());
+    for chunk in level.visible_chunks(progress) {
+        queue_model(
+            chunk,
+            batch,
+            &camera,
+            level_to_world,
+            Some(world_time),
+            None,
+        );
+    }
     render_water_enemies(
         enemy_models,
         enemy_centers,
         enemies,
         enemy_elapsed,
         progress,
-        framebuffer,
+        batch,
         &camera,
+        enemy_instance_buffers,
     );
-    for bubble in bubbles {
-        render_model(
+    for bubble in bubbles.iter().filter(|bubble| bubble.lifetime > 0.0) {
+        queue_model(
             bubble_model,
-            framebuffer,
+            batch,
             &camera,
             |vertex| bubble.position.add(vertex.mul(bubble.scale)),
             None,
@@ -1652,7 +2120,7 @@ fn render_water_level(
         turbo_plume,
         laser_bolt,
         projectiles,
-        framebuffer,
+        batch,
         &camera,
         ship,
         world_time,
@@ -1660,6 +2128,7 @@ fn render_water_level(
         fire_charge,
         false,
     );
+    batch.flush(framebuffer);
     apply_underwater_lighting(framebuffer, world_time);
 }
 
@@ -1880,7 +2349,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
-    let arwing_path = "assets/vehicles/nave.obj";
+    let arwing_path = "assets/vehicles/arwing.obj";
     let kirby_path = "assets/vehicles/kirby.obj";
     let astra_path = "assets/vehicles/nave_astra.obj";
     let cowboyb_path = "assets/vehicles/nave_cowboyb.obj";
@@ -1973,7 +2442,14 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         model_center(&enemy_models[1]),
         model_center(&enemy_models[2]),
     ];
+    let mut enemy_instance_buffers: [Vec<Vec3>; 3] =
+        std::array::from_fn(|index| Vec::with_capacity(enemy_models[index].vertices.len()));
+    let mut scene_framebuffer = Framebuffer::new(WIDTH, HEIGHT);
+    let mut triangle_batch = TriangleBatch::new(WIDTH, HEIGHT);
+    let mut dynamic_resolution = DynamicResolution::new();
     let level_colliders = build_level_colliders(&water_level);
+    let water_level_spatial = LevelSpatialIndex::new(&water_level, level_colliders);
+    drop(water_level);
     let planet_center = model_center(&planet);
     let planet_scale = WATER_PLANET_RADIUS / model_radius(&planet, planet_center).max(0.001);
     let planet_surface_radius = material_radius(&planet, planet_center, "Oceano") * planet_scale;
@@ -1992,6 +2468,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "Colisionadores alrededor del planeta: {}",
         object_colliders.len()
+    );
+    println!(
+        "Nivel submarino dividido en {} sectores espaciales",
+        water_level_spatial.render_chunks.len()
     );
 
     let mut ship_controller = ShipController::new(ship_spec);
@@ -2021,9 +2501,22 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             car_mode = !car_mode;
         }
         let now = Instant::now();
-        let delta_time = now.duration_since(previous).as_secs_f32().min(0.05);
+        let frame_time = now.duration_since(previous).as_secs_f32();
+        let delta_time = frame_time.min(0.05);
         previous = now;
         world_time += delta_time;
+
+        let resolution_changed = dynamic_resolution.update(frame_time);
+        let toggled_resolution = if crate::input::pressed(Key::F2) {
+            dynamic_resolution.toggle()
+        } else {
+            false
+        };
+        if resolution_changed || toggled_resolution {
+            let (render_width, render_height) = dynamic_resolution.dimensions();
+            scene_framebuffer = Framebuffer::new(render_width, render_height);
+            triangle_batch.resize(render_width, render_height);
+        }
 
         if crate::input::pressed(Key::F11) {
             fullscreen = !fullscreen;
@@ -2155,7 +2648,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     planet_center,
                     planet_scale,
                     &sun,
-                    &mut framebuffer,
+                    &mut scene_framebuffer,
+                    &mut triangle_batch,
                     &ship_controller.ship,
                     world_time,
                     (distance * 0.0025).rem_euclid(1.0),
@@ -2169,7 +2663,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 resolve_level_collisions(
                     &mut water_level_state,
                     &mut ship_controller.ship,
-                    &level_colliders,
+                    &water_level_spatial,
                 );
                 resolve_water_enemy_collisions(
                     &mut water_level_state,
@@ -2179,11 +2673,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 bubble_emitter.update(&ship_controller.ship, delta_time);
                 let turbo_power = ship_controller.turbo_power(ship_controller.ship.speed);
                 render_water_level(
-                    &water_level,
+                    &water_level_spatial,
                     &enemy_models,
                     &enemy_centers,
                     &water_level_state.enemies,
                     water_level_state.elapsed,
+                    &mut enemy_instance_buffers,
                     &bubble_model,
                     &bubble_emitter.particles,
                     level_ship_model,
@@ -2191,7 +2686,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &turbo_plume,
                     &laser_bolt,
                     &ship_controller.projectiles,
-                    &mut framebuffer,
+                    &mut scene_framebuffer,
+                    &mut triangle_batch,
                     &ship_controller.ship,
                     world_time,
                     water_level_state.progress,
@@ -2208,6 +2704,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 }
             }
         }
+
+        upscale_scene(&scene_framebuffer, &mut framebuffer);
 
         let form = if selected_ship == 4 {
             if game_mode == GameMode::WaterLevel {
@@ -2244,6 +2742,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             2,
             0xffffff,
         );
+        let resolution_label = if dynamic_resolution.enabled {
+            format!("F2: RES AUTO {}%", dynamic_resolution.percentage())
+        } else {
+            "F2: RES AUTO OFF".to_string()
+        };
+        draw_selection_label(&mut framebuffer, &resolution_label, 1040, 766, 2, 0x9fc5df);
         if crate::input::pressed(Key::P) {
             framebuffer.save_png("captura.png")?;
             println!("Captura guardada: captura.png");
@@ -2258,20 +2762,263 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 mod tests {
     use super::*;
 
+    fn test_camera() -> Camera {
+        Camera {
+            position: Vec3::default(),
+            forward: Vec3::new(0.0, 0.0, 1.0),
+            right: Vec3::new(1.0, 0.0, 0.0),
+            up: Vec3::new(0.0, 1.0, 0.0),
+        }
+    }
+
+    fn test_triangle(z: f32) -> Model {
+        Model::new(
+            vec![
+                Vec3::new(-1.0, -1.0, z),
+                Vec3::new(1.0, -1.0, z),
+                Vec3::new(0.0, 1.0, z),
+            ],
+            vec![Face::new([0, 1, 2], "metal", "test")],
+        )
+    }
+
+    #[test]
+    fn frustum_and_distance_culling_keep_visible_geometry_only() {
+        let camera = test_camera();
+        let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
+        render_model(
+            &test_triangle(5.0),
+            &mut framebuffer,
+            &camera,
+            |vertex| vertex,
+            None,
+            None,
+        );
+        assert!(framebuffer.pixels.iter().any(|&pixel| pixel != 0));
+
+        framebuffer.clear(0);
+        render_model(
+            &test_triangle(-5.0),
+            &mut framebuffer,
+            &camera,
+            |vertex| vertex,
+            None,
+            None,
+        );
+        render_model(
+            &test_triangle(FAR_PLANE + 10.0),
+            &mut framebuffer,
+            &camera,
+            |vertex| vertex,
+            None,
+            None,
+        );
+        assert!(framebuffer.pixels.iter().all(|&pixel| pixel == 0));
+    }
+
+    #[test]
+    fn instanced_rendering_reuses_the_vertex_buffer() {
+        let camera = test_camera();
+        let model = test_triangle(5.0);
+        let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
+        let mut camera_vertices = Vec::new();
+        render_model_with_scratch(
+            &model,
+            &mut framebuffer,
+            &camera,
+            |vertex| vertex,
+            None,
+            None,
+            &mut camera_vertices,
+        );
+        let allocation = camera_vertices.as_ptr();
+        render_model_with_scratch(
+            &model,
+            &mut framebuffer,
+            &camera,
+            |vertex| vertex.add(Vec3::new(0.25, 0.0, 0.0)),
+            None,
+            None,
+            &mut camera_vertices,
+        );
+        assert_eq!(camera_vertices.len(), model.vertices.len());
+        assert_eq!(camera_vertices.as_ptr(), allocation);
+    }
+
+    #[test]
+    fn tiled_rasterizer_preserves_depth_across_tile_boundaries() {
+        let mut framebuffer = Framebuffer::new(64, 64);
+        let vertices = |z| {
+            [
+                ScreenVertex { x: 4.0, y: 4.0, z },
+                ScreenVertex { x: 60.0, y: 4.0, z },
+                ScreenVertex {
+                    x: 32.0,
+                    y: 60.0,
+                    z,
+                },
+            ]
+        };
+        let mut batch = TriangleBatch::new(framebuffer.width, framebuffer.height);
+        batch.commands.push(TriangleCommand {
+            vertices: vertices(0.5),
+            style: TriangleStyle::Flat(0xff0000),
+        });
+        batch.commands.push(TriangleCommand {
+            vertices: vertices(1.0),
+            style: TriangleStyle::Flat(0x00ff00),
+        });
+        batch.flush_with_workers(&mut framebuffer, 2);
+
+        assert_eq!(framebuffer.pixels[31 * 64 + 32], 0x00ff00);
+        assert_eq!(framebuffer.pixels[32 * 64 + 32], 0x00ff00);
+        assert!(batch.commands.is_empty());
+    }
+
+    #[test]
+    fn dynamic_resolution_reacts_only_to_sustained_frame_rates() {
+        let mut resolution = DynamicResolution::new();
+        for _ in 0..80 {
+            resolution.update(1.0 / 40.0);
+        }
+        assert_eq!(resolution.scale_index, 1);
+        assert_eq!(resolution.dimensions(), (1080, 720));
+
+        for _ in 0..600 {
+            resolution.update(1.0 / 100.0);
+        }
+        assert_eq!(resolution.scale_index, 0);
+        assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
+    }
+
+    #[test]
+    fn disabling_dynamic_resolution_restores_full_size() {
+        let mut resolution = DynamicResolution::new();
+        resolution.scale_index = RESOLUTION_SCALES.len() - 1;
+        assert!(resolution.toggle());
+        assert!(!resolution.enabled);
+        assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
+    }
+
+    #[test]
+    fn scene_upscaling_covers_the_full_presentation_buffer() {
+        let mut source = Framebuffer::new(2, 2);
+        source.pixels = vec![1, 2, 3, 4];
+        let mut target = Framebuffer::new(WIDTH, HEIGHT);
+        upscale_scene(&source, &mut target);
+        assert_eq!(target.pixels[0], 1);
+        assert_eq!(target.pixels[WIDTH - 1], 2);
+        assert_eq!(target.pixels[(HEIGHT - 1) * WIDTH], 3);
+        assert_eq!(target.pixels[HEIGHT * WIDTH - 1], 4);
+    }
+
+    #[test]
+    fn spatial_level_preserves_faces_and_selects_nearby_chunks() {
+        let source_x = |progress: f32| progress - WATER_LEVEL_SOURCE_START;
+        let model = Model::new(
+            vec![
+                Vec3::new(source_x(5.0), 0.0, 0.0),
+                Vec3::new(source_x(5.0), 1.0, 0.0),
+                Vec3::new(source_x(5.0), 0.0, 1.0),
+                Vec3::new(source_x(300.0), 0.0, 0.0),
+                Vec3::new(source_x(300.0), 1.0, 0.0),
+                Vec3::new(source_x(300.0), 0.0, 1.0),
+            ],
+            vec![
+                Face::new([0, 1, 2], "metal", "near"),
+                Face::new([3, 4, 5], "metal", "far"),
+            ],
+        );
+        let spatial = LevelSpatialIndex::new(&model, Vec::new());
+        assert_eq!(
+            spatial
+                .render_chunks
+                .iter()
+                .map(|chunk| chunk.model.faces.len())
+                .sum::<usize>(),
+            model.faces.len()
+        );
+        assert_eq!(spatial.visible_chunks(5.0).count(), 1);
+        assert_eq!(spatial.visible_chunks(300.0).count(), 1);
+    }
+
+    #[test]
+    fn spatial_collision_index_covers_chunk_boundaries() {
+        let model = test_triangle(5.0);
+        let collider = LevelCollider {
+            min: Vec3::new(-33.0, 0.0, 0.0),
+            max: Vec3::new(-32.0, 1.0, 1.0),
+        };
+        let spatial = LevelSpatialIndex::new(&model, vec![collider]);
+        assert!(!spatial.nearby_colliders(31.5).is_empty());
+        assert!(!spatial.nearby_colliders(32.5).is_empty());
+    }
+
+    #[test]
+    fn collision_grid_handles_negative_cells_and_sphere_boundaries() {
+        let mut grid = SpatialCollisionGrid::new(10.0);
+        grid.insert_sphere(7, Vec3::new(-0.5, 0.0, 0.0), 1.0);
+        assert_eq!(grid.candidates(Vec3::new(-1.0, 0.0, 0.0)), &[7]);
+        assert_eq!(grid.candidates(Vec3::new(0.25, 0.0, 0.0)), &[7]);
+        assert!(grid.candidates(Vec3::new(25.0, 0.0, 0.0)).is_empty());
+    }
+
+    #[test]
+    fn collision_grid_returns_only_local_candidates() {
+        let mut grid = SpatialCollisionGrid::new(8.0);
+        grid.insert_sphere(0, Vec3::new(1.0, 1.0, 1.0), 2.0);
+        grid.insert_sphere(1, Vec3::new(100.0, 100.0, 100.0), 2.0);
+        assert!(grid.candidates(Vec3::new(1.0, 1.0, 1.0)).contains(&0));
+        assert!(!grid.candidates(Vec3::new(1.0, 1.0, 1.0)).contains(&1));
+    }
+
+    fn test_bubble(lifetime: f32) -> BubbleParticle {
+        BubbleParticle {
+            position: Vec3::default(),
+            velocity: Vec3::default(),
+            lifetime,
+            scale: 1.0,
+        }
+    }
+
+    #[test]
+    fn bubble_pool_reuses_slots_and_preserves_capacity_on_clear() {
+        let mut emitter = BubbleEmitter::new();
+        emitter.spawn(test_bubble(0.0));
+        emitter.spawn(test_bubble(2.0));
+        assert_eq!(emitter.particles.len(), 1);
+        emitter.clear();
+        assert_eq!(emitter.particles.len(), 1);
+        assert_eq!(emitter.particles[0].lifetime, 0.0);
+    }
+
+    #[test]
+    fn bubble_pool_never_exceeds_safety_limit() {
+        let mut emitter = BubbleEmitter::new();
+        for _ in 0..MAX_BUBBLE_PARTICLES + 20 {
+            emitter.spawn(test_bubble(2.0));
+        }
+        assert_eq!(emitter.particles.len(), MAX_BUBBLE_PARTICLES);
+    }
+
     #[test]
     fn buzz_assets_load_with_valid_geometry_and_recognized_materials() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let mut sizes = Vec::new();
         for form in ["nave", "carro", "submarino"] {
             let model = load_obj(root.join(format!("assets/vehicles/buzz_{form}.obj"))).unwrap();
-            assert!(model
-                .vertices
-                .iter()
-                .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
-            assert!(model
-                .faces
-                .iter()
-                .all(|face| face.indices.iter().all(|&i| i < model.vertices.len())));
+            assert!(
+                model
+                    .vertices
+                    .iter()
+                    .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
+            );
+            assert!(
+                model
+                    .faces
+                    .iter()
+                    .all(|face| face.indices.iter().all(|&i| i < model.vertices.len()))
+            );
             for material in [
                 "buzz_white",
                 "buzz_green",
@@ -2294,6 +3041,58 @@ mod tests {
         assert_ne!(sizes[0], sizes[1]);
         assert_ne!(sizes[0], sizes[2]);
         assert_ne!(sizes[1], sizes[2]);
+    }
+
+    #[test]
+    fn detailed_arwing_asset_has_expected_scale_and_axes() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let model = load_obj(root.join("assets/vehicles/arwing.obj")).unwrap();
+        assert!(model.vertices.len() > 3_000);
+        assert!(model.faces.len() > 6_000);
+        let radius = model_radius(&model, model_center(&model)) * ARWING_SPEC.model_scale;
+        assert!((1.5..3.5).contains(&radius), "unexpected radius {radius}");
+        assert!(model.faces.iter().any(|face| {
+            face.material.to_ascii_lowercase().contains("engine_cyan")
+                && face.color == MaterialColor::Fixed([40, 225, 242])
+        }));
+
+        let forward = Vec3::new(1.0, 0.0, 0.0);
+        let right = Vec3::new(0.0, 0.0, 1.0);
+        let up = Vec3::new(0.0, 1.0, 0.0);
+        let transformed = ARWING_SPEC.model_to_world(Vec3::new(1.0, 2.0, 3.0), forward, right, up);
+        assert_eq!(
+            (transformed.x, transformed.y, transformed.z),
+            (1.0, 3.0, 2.0)
+        );
+    }
+
+    #[test]
+    fn detailed_kirby_asset_has_expected_scale_axes_and_palette() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let model = load_obj(root.join("assets/vehicles/kirby.obj")).unwrap();
+        assert!(model.vertices.len() > 10_000);
+        assert!(model.faces.len() > 19_000);
+        let radius = model_radius(&model, model_center(&model)) * KIRBY_SPEC.model_scale;
+        assert!((1.5..2.0).contains(&radius), "unexpected radius {radius}");
+
+        let forward = Vec3::new(1.0, 0.0, 0.0);
+        let right = Vec3::new(0.0, 0.0, 1.0);
+        let up = Vec3::new(0.0, 1.0, 0.0);
+        let transformed = KIRBY_SPEC.model_to_world(Vec3::new(2.0, -1.0, 3.0), forward, right, up);
+        assert_eq!(
+            (transformed.x, transformed.y, transformed.z),
+            (1.0, 3.0, 2.0)
+        );
+        assert!(model.faces.iter().any(|face| {
+            face.material.to_ascii_lowercase().contains("cyan_engine")
+                && face.color == MaterialColor::Fixed([40, 225, 242])
+        }));
+        assert!(model.faces.iter().any(|face| {
+            face.material
+                .to_ascii_lowercase()
+                .contains("kirby_smooth_pink")
+                && face.color == MaterialColor::Fixed([255, 158, 198])
+        }));
     }
 
     #[test]

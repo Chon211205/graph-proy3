@@ -2,6 +2,8 @@ use std::f32::consts::{PI, TAU};
 
 use crate::obj_loader::Vec3;
 
+const MAX_PROJECTILES: usize = 256;
+
 #[derive(Clone, Copy)]
 pub enum ModelAxes {
     Arwing,
@@ -58,7 +60,7 @@ const CENTER_SIDE: &[f32] = &[0.0];
 
 pub static ARWING_SPEC: ShipSpec = ShipSpec {
     name: "Arwing",
-    model_scale: 0.055,
+    model_scale: 0.16,
     model_axes: ModelAxes::Arwing,
     collision_radius: 2.0,
     min_speed: 4.0,
@@ -79,7 +81,7 @@ pub static ARWING_SPEC: ShipSpec = ShipSpec {
     chase_distance: 12.0,
     chase_height: 4.0,
     chase_look_ahead: 8.0,
-    turbo_back: 1.12,
+    turbo_back: 1.45,
     turbo_side: 0.72,
     turbo_down: 0.05,
     turbo_sides: DUAL_SIDES,
@@ -99,7 +101,7 @@ pub static ARWING_SPEC: ShipSpec = ShipSpec {
 
 pub static KIRBY_SPEC: ShipSpec = ShipSpec {
     name: "Kirby UFO",
-    model_scale: 0.25,
+    model_scale: 0.18,
     model_axes: ModelAxes::Kirby,
     collision_radius: 2.0,
     min_speed: 4.0,
@@ -285,9 +287,9 @@ impl ShipSpec {
     pub fn model_to_world(&self, local: Vec3, forward: Vec3, right: Vec3, up: Vec3) -> Vec3 {
         match self.model_axes {
             ModelAxes::Arwing => forward
-                .mul(-local.x)
-                .add(up.mul(local.y))
-                .add(right.mul(local.z)),
+                .mul(local.x)
+                .add(right.mul(local.y))
+                .add(up.mul(local.z)),
             ModelAxes::ArwingSubmarine => forward
                 .mul(-local.x)
                 .add(up.mul(local.z))
@@ -459,7 +461,11 @@ impl ShipController {
     pub fn update(&mut self, input: &ShipInput, delta_time: f32) {
         self.ship.update_flight(input, delta_time);
         self.update_weapon(input.firing, delta_time);
-        for projectile in &mut self.projectiles {
+        for projectile in self
+            .projectiles
+            .iter_mut()
+            .filter(|projectile| projectile.lifetime > 0.0)
+        {
             projectile.position = projectile.position.add(
                 projectile
                     .direction
@@ -467,8 +473,25 @@ impl ShipController {
             );
             projectile.lifetime -= delta_time;
         }
-        self.projectiles
-            .retain(|projectile| projectile.lifetime > 0.0);
+    }
+
+    fn spawn_projectile(&mut self, projectile: Projectile) {
+        if let Some(slot) = self
+            .projectiles
+            .iter_mut()
+            .find(|slot| slot.lifetime <= 0.0)
+        {
+            *slot = projectile;
+        } else if self.projectiles.len() < MAX_PROJECTILES {
+            self.projectiles.push(projectile);
+        } else if let Some(slot) = self
+            .projectiles
+            .iter_mut()
+            .min_by(|a, b| a.lifetime.total_cmp(&b.lifetime))
+        {
+            // At the safety limit, recycle the shot closest to expiring.
+            *slot = projectile;
+        }
     }
 
     fn update_weapon(&mut self, firing: bool, delta_time: f32) {
@@ -478,7 +501,7 @@ impl ShipController {
             let (forward, right, up) = self.ship.basis();
             if self.fire_charge >= self.ship.spec.charged_shot_threshold {
                 let charge = self.charge_ratio();
-                self.projectiles.push(Projectile {
+                self.spawn_projectile(Projectile {
                     position: self
                         .ship
                         .position
@@ -489,7 +512,7 @@ impl ShipController {
                 });
             } else {
                 for side in self.ship.spec.muzzle_sides {
-                    self.projectiles.push(Projectile {
+                    self.spawn_projectile(Projectile {
                         position: self
                             .ship
                             .position
@@ -515,5 +538,37 @@ impl ShipController {
         ((active_speed - self.ship.spec.min_speed)
             / (self.ship.spec.max_speed - self.ship.spec.min_speed))
             .clamp(0.0, 1.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn projectile(lifetime: f32) -> Projectile {
+        Projectile {
+            position: Vec3::default(),
+            direction: Vec3::new(1.0, 0.0, 0.0),
+            lifetime,
+            scale: 1.0,
+        }
+    }
+
+    #[test]
+    fn projectile_pool_reuses_expired_slots() {
+        let mut controller = ShipController::new(&ARWING_SPEC);
+        controller.spawn_projectile(projectile(0.0));
+        controller.spawn_projectile(projectile(2.0));
+        assert_eq!(controller.projectiles.len(), 1);
+        assert_eq!(controller.projectiles[0].lifetime, 2.0);
+    }
+
+    #[test]
+    fn projectile_pool_never_exceeds_safety_limit() {
+        let mut controller = ShipController::new(&ARWING_SPEC);
+        for _ in 0..MAX_PROJECTILES + 20 {
+            controller.spawn_projectile(projectile(2.0));
+        }
+        assert_eq!(controller.projectiles.len(), MAX_PROJECTILES);
     }
 }

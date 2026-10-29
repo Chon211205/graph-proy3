@@ -1,4 +1,3 @@
-
 pub struct Framebuffer {
     pub width: usize,
     pub height: usize,
@@ -21,33 +20,11 @@ impl Framebuffer {
         self.depth.fill(f32::NEG_INFINITY);
     }
 
-    pub fn pixel(
-        &mut self,
-        x: i32,
-        y: i32,
-        z: f32,
-        color: u32,
-    ) {
-        if x < 0
-            || y < 0
-            || x >= self.width as i32
-            || y >= self.height as i32
-        {
-            return;
-        }
-
-        let index = y as usize * self.width + x as usize;
-
-        if z > self.depth[index] {
-            self.depth[index] = z;
-            self.pixels[index] = color;
-        }
+    pub fn buffers_mut(&mut self) -> (&mut [u32], &mut [f32]) {
+        (&mut self.pixels, &mut self.depth)
     }
 
-    pub fn save_png(
-        &self,
-        path: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save_png(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
         let mut bytes = Vec::with_capacity(self.pixels.len() * 3);
 
         for pixel in &self.pixels {
@@ -60,11 +37,7 @@ impl Framebuffer {
 
         let file = std::fs::File::create(path)?;
 
-        let mut encoder = png::Encoder::new(
-            file,
-            self.width as u32,
-            self.height as u32,
-        );
+        let mut encoder = png::Encoder::new(file, self.width as u32, self.height as u32);
 
         encoder.set_color(png::ColorType::Rgb);
         encoder.set_depth(png::BitDepth::Eight);
