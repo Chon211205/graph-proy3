@@ -13,8 +13,9 @@ use framebuffer::Framebuffer;
 use minifb::{Key, ScaleMode, Window, WindowOptions};
 use obj_loader::{Face, Model, Vec3, load_obj};
 use ship::{
-    ARWING_SPEC, ASTRA_SPEC, BUZZ_SPEC, COWBOYB_SPEC, KIRBY_SPEC, Projectile, Ship, ShipController,
-    ShipInput, ShipSpec,
+    Projectile, Ship, ShipController, ShipInput, ShipSpec, ARWING_SPEC, ARWING_SUBMARINE_SPEC,
+    ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC,
+    KIRBY_SUBMARINE_SPEC,
 };
 use triangle::{ScreenVertex, draw_triangle, draw_triangle_shaded};
 
@@ -31,9 +32,9 @@ const AVOIDANCE_DISTANCE: f32 = 52.0;
 const ORBIT_LIMIT_RADIUS: f32 = 60.0;
 const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
 const WATER_LEVEL_LENGTH: f32 = 880.0;
-const WATER_LEVEL_HALF_WIDTH: f32 = 13.0;
-const WATER_LEVEL_MIN_HEIGHT: f32 = 4.0;
-const WATER_LEVEL_MAX_HEIGHT: f32 = 28.0;
+const WATER_LEVEL_HALF_WIDTH: f32 = 64.0;
+const WATER_LEVEL_MIN_HEIGHT: f32 = 2.5;
+const WATER_LEVEL_MAX_HEIGHT: f32 = 42.0;
 
 struct Camera {
     position: Vec3,
@@ -62,6 +63,68 @@ struct WaterLevelState {
     progress: f32,
     lateral: f32,
     height: f32,
+}
+
+struct BubbleParticle {
+    position: Vec3,
+    velocity: Vec3,
+    lifetime: f32,
+    scale: f32,
+}
+
+struct BubbleEmitter {
+    particles: Vec<BubbleParticle>,
+    timer: f32,
+    serial: u32,
+}
+
+impl BubbleEmitter {
+    fn new() -> Self {
+        Self {
+            particles: Vec::new(),
+            timer: 0.0,
+            serial: 0,
+        }
+    }
+
+    fn clear(&mut self) {
+        self.particles.clear();
+        self.timer = 0.0;
+    }
+
+    fn update(&mut self, ship: &Ship, delta_time: f32) {
+        self.timer -= delta_time;
+        if self.timer <= 0.0 {
+            let (forward, right, up) = ship.basis();
+            for side in ship.spec.turbo_sides {
+                let random = hash(self.serial.wrapping_mul(977).wrapping_add(17));
+                let jitter = random as f32 / u32::MAX as f32 - 0.5;
+                self.particles.push(BubbleParticle {
+                    position: ship
+                        .position
+                        .sub(forward.mul(ship.spec.turbo_back + 0.25))
+                        .add(right.mul(*side * ship.spec.turbo_side + jitter * 0.35))
+                        .sub(up.mul(ship.spec.turbo_down)),
+                    velocity: forward
+                        .mul(-1.7 - jitter.abs())
+                        .add(up.mul(2.2 + jitter.abs() * 1.8))
+                        .add(right.mul(jitter * 0.7)),
+                    lifetime: 2.4 + jitter.abs(),
+                    scale: 0.12 + jitter.abs() * 0.22,
+                });
+                self.serial = self.serial.wrapping_add(1);
+            }
+            self.timer += 0.075;
+        }
+
+        for bubble in &mut self.particles {
+            bubble.position = bubble.position.add(bubble.velocity.mul(delta_time));
+            bubble.velocity = bubble.velocity.add(Vec3::new(0.0, 0.45 * delta_time, 0.0));
+            bubble.lifetime -= delta_time;
+            bubble.scale += delta_time * 0.035;
+        }
+        self.particles.retain(|bubble| bubble.lifetime > 0.0);
+    }
 }
 
 impl WaterLevelState {
@@ -319,6 +382,8 @@ fn color_for_material(name: &str, effect_spec: Option<&ShipSpec>) -> [u8; 3] {
     }
     if name.contains("laser_core") {
         effect_spec.map_or([255, 245, 190], |spec| spec.laser_core_color)
+    } else if name.contains("bubble_submarine") {
+        [155, 232, 255]
     } else if name.contains("laser") {
         effect_spec.map_or([255, 48, 38], |spec| spec.laser_color)
     } else if name.contains("turbo_core") {
@@ -666,6 +731,36 @@ fn make_laser_bolt() -> Model {
             group: "laser".to_string(),
         });
     }
+    Model { vertices, faces }
+}
+
+fn make_bubble_model() -> Model {
+    let vertices = vec![
+        Vec3::new(0.0, 1.0, 0.0),
+        Vec3::new(0.0, -1.0, 0.0),
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec3::new(-1.0, 0.0, 0.0),
+        Vec3::new(0.0, 0.0, 1.0),
+        Vec3::new(0.0, 0.0, -1.0),
+    ];
+    let triangles = [
+        [0, 2, 4],
+        [0, 4, 3],
+        [0, 3, 5],
+        [0, 5, 2],
+        [1, 4, 2],
+        [1, 3, 4],
+        [1, 5, 3],
+        [1, 2, 5],
+    ];
+    let faces = triangles
+        .into_iter()
+        .map(|indices| Face {
+            indices,
+            material: "bubble_submarine".to_string(),
+            group: "bubble_submarine".to_string(),
+        })
+        .collect();
     Model { vertices, faces }
 }
 
@@ -1056,6 +1151,7 @@ fn render_scene(
         world_time,
         turbo_power,
         fire_charge,
+        true,
     );
 }
 
@@ -1071,30 +1167,33 @@ fn render_ship_components(
     world_time: f32,
     turbo_power: f32,
     fire_charge: f32,
+    show_turbo: bool,
 ) {
     let (forward, right, up) = ship.basis();
     let pulse = 0.9 + (world_time * 28.0).sin() * 0.1;
     let plume_length = (1.3 + turbo_power * 5.5) * pulse;
     let plume_radius = 0.16 + turbo_power * 0.16;
-    for side in ship.spec.turbo_sides {
-        let emitter = ship
-            .position
-            .sub(forward.mul(ship.spec.turbo_back))
-            .add(right.mul(*side * ship.spec.turbo_side))
-            .sub(up.mul(ship.spec.turbo_down));
-        render_model(
-            turbo_plume,
-            framebuffer,
-            &camera,
-            |vertex| {
-                emitter
-                    .add(forward.mul(vertex.x * plume_length))
-                    .add(right.mul(vertex.y * plume_radius))
-                    .add(up.mul(vertex.z * plume_radius))
-            },
-            None,
-            Some(ship.spec),
-        );
+    if show_turbo {
+        for side in ship.spec.turbo_sides {
+            let emitter = ship
+                .position
+                .sub(forward.mul(ship.spec.turbo_back))
+                .add(right.mul(*side * ship.spec.turbo_side))
+                .sub(up.mul(ship.spec.turbo_down));
+            render_model(
+                turbo_plume,
+                framebuffer,
+                &camera,
+                |vertex| {
+                    emitter
+                        .add(forward.mul(vertex.x * plume_length))
+                        .add(right.mul(vertex.y * plume_radius))
+                        .add(up.mul(vertex.z * plume_radius))
+                },
+                None,
+                Some(ship.spec),
+            );
+        }
     }
     for projectile in projectiles {
         let mut laser_right = projectile
@@ -1174,6 +1273,8 @@ fn draw_underwater_background(framebuffer: &mut Framebuffer, travel: f32) {
 fn render_water_level(
     level: &Model,
     level_floor: &Model,
+    bubble_model: &Model,
+    bubbles: &[BubbleParticle],
     ship_model: &Model,
     ship_center: Vec3,
     turbo_plume: &Model,
@@ -1205,6 +1306,16 @@ fn render_water_level(
         Some(world_time),
         None,
     );
+    for bubble in bubbles {
+        render_model(
+            bubble_model,
+            framebuffer,
+            &camera,
+            |vertex| bubble.position.add(vertex.mul(bubble.scale)),
+            None,
+            None,
+        );
+    }
     render_ship_components(
         ship_model,
         ship_center,
@@ -1217,6 +1328,7 @@ fn render_water_level(
         world_time,
         turbo_power,
         fire_charge,
+        false,
     );
 }
 
@@ -1441,6 +1553,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let kirby_path = "assets/vehicles/kirby.obj";
     let astra_path = "assets/vehicles/nave_astra.obj";
     let cowboyb_path = "assets/vehicles/nave_cowboyb.obj";
+    let astra_submarine_path = "assets/vehicles/astra_submarino.obj";
+    let cowboyb_submarine_path = "assets/vehicles/cb_submarino.obj";
+    let arwing_submarine_path = "assets/vehicles/arwingsub.obj";
+    let kirby_submarine_path = "assets/vehicles/kirbysub.obj";
     let arwing_model =
         load_obj(arwing_path).map_err(|error| format!("Error al cargar {arwing_path}: {error}"))?;
     let kirby_model =
@@ -1449,6 +1565,14 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         load_obj(astra_path).map_err(|error| format!("Error al cargar {astra_path}: {error}"))?;
     let cowboyb_model = load_obj(cowboyb_path)
         .map_err(|error| format!("Error al cargar {cowboyb_path}: {error}"))?;
+    let astra_submarine_model = load_obj(astra_submarine_path)
+        .map_err(|error| format!("Error al cargar {astra_submarine_path}: {error}"))?;
+    let cowboyb_submarine_model = load_obj(cowboyb_submarine_path)
+        .map_err(|error| format!("Error al cargar {cowboyb_submarine_path}: {error}"))?;
+    let arwing_submarine_model = load_obj(arwing_submarine_path)
+        .map_err(|error| format!("Error al cargar {arwing_submarine_path}: {error}"))?;
+    let kirby_submarine_model = load_obj(kirby_submarine_path)
+        .map_err(|error| format!("Error al cargar {kirby_submarine_path}: {error}"))?;
 
     let mut fullscreen = false;
     let mut window = create_window(fullscreen)?;
@@ -1476,10 +1600,15 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             return Ok(false);
         }
     };
-    let (ship_model, ship_spec) = choices[selected_ship];
-    let base_center = model_center(ship_model);
-    let buzz_centers = buzz_variants.each_ref().map(model_center);
-    let mut car_mode = false;
+    let ship_center = model_center(ship_model);
+    let (level_ship_model, level_ship_spec) = match selected_ship {
+        0 => (&arwing_submarine_model, &ARWING_SUBMARINE_SPEC),
+        1 => (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC),
+        2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
+        3 => (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC),
+        _ => unreachable!(),
+    };
+    let level_ship_center = model_center(level_ship_model);
     window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
 
     let planet_path = "assets/planets/water_planet.obj";
@@ -1497,6 +1626,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let sun = make_sphere(55.0, 18, 28, true);
     let turbo_plume = make_turbo_plume(12);
     let laser_bolt = make_laser_bolt();
+    let bubble_model = make_bubble_model();
 
     println!("Vuelo libre 3D iniciado: {}", ship_spec.name);
     println!("W/S o flechas: subir/bajar | Espacio: acelerar | Ctrl: frenar");
@@ -1512,6 +1642,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut ship_controller = ShipController::new(ship_spec);
     let mut game_mode = GameMode::FreeWorld;
     let mut water_level_state = WaterLevelState::new();
+    let mut bubble_emitter = BubbleEmitter::new();
+    let start = Instant::now();
     let mut previous = Instant::now();
     let mut world_time = 0.0_f32;
     let mut distance = 0.0_f32;
@@ -1547,6 +1679,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             ship_controller.reset();
             if game_mode == GameMode::WaterLevel {
                 water_level_state = WaterLevelState::new();
+                bubble_emitter.clear();
             }
             distance = 0.0;
         }
@@ -1559,19 +1692,27 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             - (window.is_key_down(Key::S) || window.is_key_down(Key::Down)) as i8;
         let yaw_input = window.is_key_down(Key::D) as i8 - window.is_key_down(Key::A) as i8;
         let roll_input = window.is_key_down(Key::E) as i8 - window.is_key_down(Key::Q) as i8;
+        let active_yaw_input = if game_mode == GameMode::WaterLevel {
+            -yaw_input
+        } else {
+            yaw_input
+        };
         let mut entered_level = false;
         if game_mode == GameMode::FreeWorld
             && ship_controller.ship.planet_locked
             && crate::input::pressed(Key::Enter)
         {
-            ship_controller.reset();
+            ship_controller = ShipController::new(level_ship_spec);
             water_level_state = WaterLevelState::new();
+            bubble_emitter.clear();
             game_mode = GameMode::WaterLevel;
             entered_level = true;
             window.set_title("Nivel submarino | Backspace: volver al sistema solar");
             println!("Nivel submarino iniciado");
         } else if game_mode == GameMode::WaterLevel && crate::input::pressed(Key::Backspace) {
             game_mode = GameMode::FreeWorld;
+            bubble_emitter.clear();
+            ship_controller = ShipController::new(ship_spec);
             place_ship_near_water_planet(&mut ship_controller, world_time);
             window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
             println!("Regreso al sistema solar");
@@ -1579,7 +1720,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 
         let input = ShipInput {
             pitch: pitch_input,
-            yaw: yaw_input,
+            yaw: active_yaw_input,
             roll: roll_input,
             accelerating: window.is_key_down(Key::Space),
             braking: window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl),
@@ -1676,12 +1817,15 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &mut ship_controller.ship,
                     &level_colliders,
                 );
+                bubble_emitter.update(&ship_controller.ship, delta_time);
                 let turbo_power = ship_controller.turbo_power(ship_controller.ship.speed);
                 render_water_level(
                     &water_level,
                     &water_level_floor,
-                    active_model,
-                    ship_center,
+                    &bubble_model,
+                    &bubble_emitter.particles,
+                    level_ship_model,
+                    level_ship_center,
                     &turbo_plume,
                     &laser_bolt,
                     &ship_controller.projectiles,
@@ -1694,6 +1838,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 );
                 if water_level_state.progress >= WATER_LEVEL_LENGTH {
                     game_mode = GameMode::FreeWorld;
+                    bubble_emitter.clear();
+                    ship_controller = ShipController::new(ship_spec);
                     place_ship_near_water_planet(&mut ship_controller, world_time);
                     window.set_title("Sistema solar | Nivel completado");
                     println!("Nivel submarino completado");

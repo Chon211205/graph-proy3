@@ -5,6 +5,7 @@ use crate::obj_loader::Vec3;
 #[derive(Clone, Copy)]
 pub enum ModelAxes {
     Arwing,
+    ArwingSubmarine,
     Kirby,
     Astra,
     CowboyB,
@@ -219,15 +220,49 @@ pub static COWBOYB_SPEC: ShipSpec = ShipSpec {
     laser_core_color: [255, 225, 170],
 };
 
-pub static BUZZ_SPEC: ShipSpec = ShipSpec {
-    name: "Buzz Lightyear",
+pub static ASTRA_SUBMARINE_SPEC: ShipSpec = ShipSpec {
+    name: "ASTRA Submarino",
+    model_scale: 0.34,
+    model_axes: ModelAxes::Astra,
+    turbo_back: 1.35,
+    turbo_side: 0.52,
+    muzzle_forward: 1.85,
+    muzzle_side: 0.78,
+    ..ASTRA_SPEC
+};
+
+pub static COWBOYB_SUBMARINE_SPEC: ShipSpec = ShipSpec {
+    name: "Cowboy B Submarino",
     model_scale: 0.30,
     model_axes: ModelAxes::Astra,
-    turbo_color: [144, 240, 40],
-    turbo_core_color: [230, 255, 200],
-    laser_color: [255, 45, 55],
-    laser_core_color: [255, 220, 230],
-    ..ASTRA_SPEC
+    turbo_back: 1.38,
+    turbo_side: 0.58,
+    muzzle_forward: 1.95,
+    muzzle_side: 0.88,
+    ..COWBOYB_SPEC
+};
+
+pub static ARWING_SUBMARINE_SPEC: ShipSpec = ShipSpec {
+    name: "Arwing Submarino",
+    model_scale: 0.07,
+    model_axes: ModelAxes::ArwingSubmarine,
+    turbo_back: 1.55,
+    turbo_side: 0.62,
+    muzzle_forward: 1.9,
+    muzzle_side: 0.9,
+    ..ARWING_SPEC
+};
+
+pub static KIRBY_SUBMARINE_SPEC: ShipSpec = ShipSpec {
+    name: "Kirby Submarino",
+    model_scale: 0.22,
+    model_axes: ModelAxes::Kirby,
+    turbo_back: 1.45,
+    turbo_side: 0.0,
+    turbo_sides: CENTER_SIDE,
+    muzzle_forward: 1.8,
+    muzzle_side: 0.75,
+    ..KIRBY_SPEC
 };
 
 impl ShipSpec {
@@ -237,6 +272,10 @@ impl ShipSpec {
                 .mul(-local.x)
                 .add(up.mul(local.y))
                 .add(right.mul(local.z)),
+            ModelAxes::ArwingSubmarine => forward
+                .mul(-local.x)
+                .add(up.mul(local.z))
+                .add(right.mul(local.y)),
             ModelAxes::Kirby => forward
                 .mul(-local.y)
                 .add(up.mul(local.z))
