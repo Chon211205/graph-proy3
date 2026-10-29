@@ -39,6 +39,7 @@ const WATER_LEVEL_MIN_HEIGHT: f32 = 2.4;
 const WATER_LEVEL_MAX_HEIGHT: f32 = 11.5;
 const WATER_LEVEL_VERTICAL_OFFSET: f32 = 5.2;
 const WATER_LEVEL_SOURCE_START: f32 = 90.0;
+const WATER_LEVEL_SPEED_FACTOR: f32 = 0.55;
 const WATER_ENEMY_SCALE: f32 = 1.05;
 
 struct Camera {
@@ -168,7 +169,7 @@ impl WaterLevelState {
 
     fn update(&mut self, ship: &mut Ship, input: &ShipInput, delta_time: f32) {
         self.elapsed += delta_time;
-        self.progress += ship.speed * delta_time;
+        self.progress += ship.speed * WATER_LEVEL_SPEED_FACTOR * delta_time;
         self.lateral += input.yaw as f32 * 17.0 * delta_time;
 
         let border_distance = self.lateral.abs();
