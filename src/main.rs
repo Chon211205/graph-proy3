@@ -26,6 +26,12 @@ const LIGHT_SPEED: f32 = 600.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
 const SUN_POSITION_X: f32 = -520.0;
 const PLANET_ORBIT_RADIUS: f32 = 280.0;
+const SPIKY_PLANET_ORBIT_SPEED: f32 = 0.012;
+const SPIKY_PLANET_ORBIT_RADIUS: f32 = 700.0;
+const SPIKY_PLANET_ORBIT_PHASE: f32 = PI * 0.5;
+const SPIKY_PLANET_ORBIT_INCLINATION: f32 = 0.30;
+const SPIKY_PLANET_RADIUS: f32 = 18.0;
+const SPIKY_PLANET_ROTATION_SPEED: f32 = 0.18;
 const WATER_PLANET_RADIUS: f32 = 24.0;
 const COLLISION_MARGIN: f32 = 4.0;
 const AVOIDANCE_DISTANCE: f32 = 52.0;
@@ -594,6 +600,18 @@ fn color_for_material(name: &str, effect_spec: Option<&ShipSpec>) -> [u8; 3] {
         effect_spec.map_or([36, 142, 255], |spec| spec.turbo_color)
     } else if name.contains("luz_cian") {
         [40, 205, 255]
+    } else if name.contains("rosa_cuerpo") {
+        [228, 58, 120]
+    } else if name.contains("fucsia") {
+        [235, 8, 116]
+    } else if name.contains("magenta_sombra") {
+        [108, 8, 59]
+    } else if name.contains("coral_claro") {
+        [242, 157, 137]
+    } else if name.contains("durazno") {
+        [255, 183, 156]
+    } else if name.contains("crema") {
+        [241, 221, 183]
     } else if name.contains("azul_profundo") {
         [18, 44, 98]
     } else if name.contains("azul_cobalto") {
@@ -1039,6 +1057,18 @@ fn water_planet_position(world_time: f32) -> Vec3 {
     ))
 }
 
+fn spiky_planet_position(world_time: f32) -> Vec3 {
+    let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
+    let orbit = world_time * SPIKY_PLANET_ORBIT_SPEED + SPIKY_PLANET_ORBIT_PHASE;
+    let (sin, cos) = orbit.sin_cos();
+    let (sin_inclination, cos_inclination) = SPIKY_PLANET_ORBIT_INCLINATION.sin_cos();
+    sun_position.add(Vec3::new(
+        cos * SPIKY_PLANET_ORBIT_RADIUS,
+        sin * SPIKY_PLANET_ORBIT_RADIUS * sin_inclination - 20.0,
+        sin * SPIKY_PLANET_ORBIT_RADIUS * cos_inclination,
+    ))
+}
+
 fn place_ship_near_water_planet(controller: &mut ShipController, world_time: f32) {
     controller.reset();
     let ship = &mut controller.ship;
@@ -1299,6 +1329,9 @@ fn render_scene(
     planet: &Model,
     planet_center: Vec3,
     planet_scale: f32,
+    spiky_planet: &Model,
+    spiky_planet_center: Vec3,
+    spiky_planet_scale: f32,
     sun: &Model,
     framebuffer: &mut Framebuffer,
     ship: &Ship,
@@ -1337,6 +1370,25 @@ fn render_scene(
             .add(planet_position)
         },
         Some(world_time),
+        None,
+    );
+    let spiky_rotation = world_time * SPIKY_PLANET_ROTATION_SPEED;
+    let spiky_position = spiky_planet_position(world_time);
+    render_model(
+        spiky_planet,
+        framebuffer,
+        &camera,
+        |vertex| {
+            let vertex = vertex.sub(spiky_planet_center).mul(spiky_planet_scale);
+            let (sin, cos) = spiky_rotation.sin_cos();
+            Vec3::new(
+                vertex.x * cos - vertex.z * sin,
+                vertex.y,
+                vertex.x * sin + vertex.z * cos,
+            )
+            .add(spiky_position)
+        },
+        None,
         None,
     );
 
@@ -2140,6 +2192,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let planet_path = "assets/planets/water_planet.obj";
     let planet =
         load_obj(planet_path).map_err(|error| format!("Error al cargar {planet_path}: {error}"))?;
+    let spiky_planet_path = "assets/planets/planeta_espinas.obj";
+    let spiky_planet = load_obj(spiky_planet_path)
+        .map_err(|error| format!("Error al cargar {spiky_planet_path}: {error}"))?;
     let water_level_path = "assets/levels/waterlevel.obj";
     let mut water_level = load_obj(water_level_path)
         .map_err(|error| format!("Error al cargar {water_level_path}: {error}"))?;
@@ -2163,6 +2218,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let level_colliders = build_level_colliders(&water_level);
     let planet_center = model_center(&planet);
     let planet_scale = WATER_PLANET_RADIUS / model_radius(&planet, planet_center).max(0.001);
+    let spiky_planet_center = model_center(&spiky_planet);
+    let spiky_planet_scale =
+        SPIKY_PLANET_RADIUS / model_radius(&spiky_planet, spiky_planet_center).max(0.001);
     let planet_surface_radius = material_radius(&planet, planet_center, "Oceano") * planet_scale;
     let object_colliders = build_object_colliders(&planet, planet_center, planet_scale);
     let sun = make_sphere(55.0, 18, 28, true);
@@ -2368,6 +2426,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &planet,
                     planet_center,
                     planet_scale,
+                    &spiky_planet,
+                    spiky_planet_center,
+                    spiky_planet_scale,
                     &sun,
                     &mut framebuffer,
                     &ship_controller.ship,
