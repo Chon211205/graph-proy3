@@ -31,13 +31,15 @@ const COLLISION_MARGIN: f32 = 4.0;
 const AVOIDANCE_DISTANCE: f32 = 52.0;
 const ORBIT_LIMIT_RADIUS: f32 = 60.0;
 const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
-const WATER_LEVEL_LENGTH: f32 = 880.0;
-const WATER_LEVEL_HALF_WIDTH: f32 = 64.0;
-const WATER_LEVEL_SOFT_BORDER: f32 = 50.0;
+const WATER_LEVEL_LENGTH: f32 = 175.0;
+const WATER_LEVEL_HALF_WIDTH: f32 = 7.6;
+const WATER_LEVEL_SOFT_BORDER: f32 = 6.2;
 const WATER_LEVEL_BORDER_STRENGTH: f32 = 26.0;
-const WATER_LEVEL_MIN_HEIGHT: f32 = 2.5;
-const WATER_LEVEL_MAX_HEIGHT: f32 = 42.0;
-const WATER_ENEMY_SCALE: f32 = 0.85;
+const WATER_LEVEL_MIN_HEIGHT: f32 = 2.4;
+const WATER_LEVEL_MAX_HEIGHT: f32 = 11.5;
+const WATER_LEVEL_VERTICAL_OFFSET: f32 = 5.2;
+const WATER_LEVEL_SOURCE_START: f32 = 90.0;
+const WATER_ENEMY_SCALE: f32 = 1.05;
 
 struct Camera {
     position: Vec3,
@@ -144,20 +146,20 @@ impl BubbleEmitter {
 
 impl WaterLevelState {
     fn new() -> Self {
-        let enemies = (0..18)
+        let enemies = (0..12)
             .map(|index| WaterEnemy {
                 kind: index % 3,
-                progress: 72.0 + index as f32 * 43.0,
-                lateral: [-32.0, 24.0, -10.0, 35.0, 5.0, -27.0][index % 6],
-                height: [9.0, 18.0, 28.0, 13.0, 33.0, 22.0][index % 6],
+                progress: 18.0 + index as f32 * 13.0,
+                lateral: [-3.5, 2.6, -1.0, 3.4, 0.7, -2.9][index % 6],
+                height: [3.0, 5.5, 8.5, 4.0, 10.0, 7.0][index % 6],
                 phase: index as f32 * 1.37,
                 alive: true,
             })
             .collect();
         Self {
-            progress: 8.0,
+            progress: 3.0,
             lateral: 0.0,
-            height: 10.0,
+            height: 4.5,
             elapsed: 0.0,
             enemies,
             defeated_enemies: 0,
@@ -183,7 +185,7 @@ impl WaterLevelState {
         self.height = (self.height + input.pitch as f32 * 15.0 * delta_time)
             .clamp(WATER_LEVEL_MIN_HEIGHT, WATER_LEVEL_MAX_HEIGHT);
 
-        let route_curve = (self.progress * 0.012).sin() * 3.5;
+        let route_curve = (self.progress * 0.12).sin() * 3.0;
         let route_height = (self.progress * 0.018).sin() * 1.5;
         ship.position = Vec3::new(
             -self.progress,
@@ -202,20 +204,20 @@ impl WaterLevelState {
 
 impl WaterEnemy {
     fn position(&self, time: f32) -> Vec3 {
-        let route_curve = (self.progress * 0.012).sin() * 3.5;
+        let route_curve = (self.progress * 0.12).sin() * 3.0;
         let route_height = (self.progress * 0.018).sin() * 1.5;
         let (lateral_motion, vertical_motion) = match self.kind {
             0 => (
-                (time * 0.65 + self.phase).sin() * 2.0,
-                (time * 1.3 + self.phase).sin(),
+                (time * 0.65 + self.phase).sin() * 0.7,
+                (time * 1.3 + self.phase).sin() * 0.5,
             ),
             1 => (
-                (time * 1.15 + self.phase).sin() * 13.0,
-                (time * 1.8 + self.phase).sin() * 2.0,
+                (time * 1.15 + self.phase).sin() * 1.4,
+                (time * 1.8 + self.phase).sin(),
             ),
             _ => (
-                (time * 0.55 + self.phase).sin() * 5.0,
-                (time * 1.1 + self.phase).sin() * 4.0,
+                (time * 0.55 + self.phase).sin(),
+                (time * 1.1 + self.phase).sin() * 1.5,
             ),
         };
         Vec3::new(
@@ -226,12 +228,16 @@ impl WaterEnemy {
     }
 
     fn collision_radius(&self) -> f32 {
-        [2.0, 2.5, 2.1][self.kind]
+        [2.0, 2.5, 2.1][self.kind] * (WATER_ENEMY_SCALE / 0.85)
     }
 }
 
 fn level_to_world(vertex: Vec3) -> Vec3 {
-    Vec3::new(-vertex.y, vertex.z, vertex.x)
+    Vec3::new(
+        -(vertex.x + WATER_LEVEL_SOURCE_START),
+        vertex.z + WATER_LEVEL_VERTICAL_OFFSET,
+        vertex.y,
+    )
 }
 
 fn extract_model_group(model: &Model, group_name: &str) -> Result<Model, String> {
@@ -261,6 +267,20 @@ fn extract_model_group(model: &Model, group_name: &str) -> Result<Model, String>
     Ok(Model { vertices, faces })
 }
 
+fn stretch_model_group_height(model: &mut Model, group_name: &str, base: f32, factor: f32) {
+    let mut affected = vec![false; model.vertices.len()];
+    for face in model.faces.iter().filter(|face| face.group == group_name) {
+        for index in face.indices {
+            affected[index] = true;
+        }
+    }
+    for (vertex, should_stretch) in model.vertices.iter_mut().zip(affected) {
+        if should_stretch {
+            vertex.z = base + (vertex.z - base) * factor;
+        }
+    }
+}
+
 fn build_level_colliders(model: &Model) -> Vec<LevelCollider> {
     let mut bounds: HashMap<&str, (Vec3, Vec3)> = HashMap::new();
     for face in &model.faces {
@@ -284,8 +304,16 @@ fn build_level_colliders(model: &Model) -> Vec<LevelCollider> {
     bounds
         .into_values()
         .map(|(min, max)| LevelCollider {
-            min: Vec3::new(-max.y, min.z, min.x),
-            max: Vec3::new(-min.y, max.z, max.x),
+            min: Vec3::new(
+                -(max.x + WATER_LEVEL_SOURCE_START),
+                min.z + WATER_LEVEL_VERTICAL_OFFSET,
+                min.y,
+            ),
+            max: Vec3::new(
+                -(min.x + WATER_LEVEL_SOURCE_START),
+                max.z + WATER_LEVEL_VERTICAL_OFFSET,
+                max.y,
+            ),
         })
         .collect()
 }
@@ -444,15 +472,18 @@ fn surface_shader(material: &str) -> SurfaceShader {
         SurfaceShader::Ocean
     } else if name.contains("cascada") {
         SurfaceShader::Waterfall
-    } else if name.contains("roca_oscura") {
+    } else if name.contains("roca_oscura") || name.contains("deep_cave_rock") {
         SurfaceShader::DarkRock
-    } else if name.contains("roca") {
+    } else if name.contains("roca")
+        || name.contains("underwater_rock")
+        || name.contains("blue_stone")
+    {
         SurfaceShader::Rock
     } else if name.contains("tierra") {
         SurfaceShader::Earth
-    } else if name.contains("cesped") {
+    } else if name.contains("cesped") || name.contains("seaweed") {
         SurfaceShader::Grass
-    } else if name.contains("arena") {
+    } else if name.contains("arena") || name.contains("underwater_sand") {
         SurfaceShader::Sand
     } else if name.contains("tronco") {
         SurfaceShader::Wood
@@ -522,7 +553,19 @@ fn color_for_material(name: &str, effect_spec: Option<&ShipSpec>) -> [u8; 3] {
             _ => [238, 242, 248],
         };
     }
-    if name.contains("spike_orange") {
+    if name.contains("cyan_coral") || name.contains("crystal_cyan") {
+        [38, 220, 226]
+    } else if name.contains("orange_coral") {
+        [244, 105, 42]
+    } else if name.contains("pink_coral") {
+        [242, 89, 164]
+    } else if name.contains("purple_coral") {
+        [144, 73, 205]
+    } else if name.contains("bright_seaweed") {
+        [50, 184, 103]
+    } else if name.contains("seaweed_green") {
+        [20, 108, 72]
+    } else if name.contains("spike_orange") {
         [239, 113, 38]
     } else if name.contains("spike_yellow") || name.contains("yellow_glow") {
         [250, 214, 54]
@@ -804,97 +847,6 @@ fn make_sphere(radius: f32, stacks: usize, slices: usize, sun: bool) -> Model {
                 material: material.to_string(),
                 group: if sun { "sun" } else { "planet" }.to_string(),
             });
-        }
-    }
-    Model { vertices, faces }
-}
-
-fn make_level_floor(width: f32, length: f32, segment_length: f32) -> Model {
-    let segments = (length / segment_length).ceil() as usize;
-    let mut vertices = Vec::with_capacity((segments + 1) * 2);
-    for segment in 0..=segments {
-        let y = (segment as f32 * segment_length).min(length);
-        vertices.push(Vec3::new(-width * 0.5, y, 0.04));
-        vertices.push(Vec3::new(width * 0.5, y, 0.04));
-    }
-
-    let mut faces = Vec::with_capacity(segments * 2);
-    for segment in 0..segments {
-        let first = segment * 2;
-        let next = first + 2;
-        faces.push(Face {
-            indices: [first, next, first + 1],
-            material: "Arena_submarina".to_string(),
-            group: "ENV_Fondo_Marino_Segmentado".to_string(),
-        });
-        faces.push(Face {
-            indices: [first + 1, next, next + 1],
-            material: "Arena_submarina".to_string(),
-            group: "ENV_Fondo_Marino_Segmentado".to_string(),
-        });
-    }
-    Model { vertices, faces }
-}
-
-fn make_level_side_walls(length: f32, segment_length: f32) -> Model {
-    let segments = (length / segment_length).ceil() as usize;
-    let mut vertices = Vec::with_capacity((segments + 1) * 6);
-
-    for segment in 0..=segments {
-        let progress = (segment as f32 * segment_length).min(length);
-        let route_curve = (progress * 0.012).sin() * 3.5;
-        let rock_variation = (progress * 0.041).sin() * 2.4 + (progress * 0.017 + 1.7).sin() * 1.6;
-
-        for side in [-1.0_f32, 1.0] {
-            vertices.push(Vec3::new(
-                route_curve + side * WATER_LEVEL_HALF_WIDTH,
-                progress,
-                0.04,
-            ));
-            vertices.push(Vec3::new(
-                route_curve + side * (WATER_LEVEL_HALF_WIDTH + 7.0 + rock_variation * 0.25),
-                progress,
-                13.0 + rock_variation,
-            ));
-            vertices.push(Vec3::new(
-                route_curve + side * (WATER_LEVEL_HALF_WIDTH + 15.0 + rock_variation * 0.5),
-                progress,
-                52.0 + rock_variation * 1.8,
-            ));
-        }
-    }
-
-    let mut faces = Vec::with_capacity(segments * 8);
-    for segment in 0..segments {
-        let current = segment * 6;
-        let next = current + 6;
-        for side_offset in [0_usize, 3] {
-            for strip in 0..2 {
-                let a = current + side_offset + strip;
-                let b = a + 1;
-                let c = next + side_offset + strip;
-                let d = c + 1;
-                faces.push(Face {
-                    indices: [a, c, b],
-                    material: if strip == 0 {
-                        "Roca_submarina"
-                    } else {
-                        "Roca_oscura_submarina"
-                    }
-                    .to_string(),
-                    group: "ENV_Paredes_Canon_Submarino".to_string(),
-                });
-                faces.push(Face {
-                    indices: [b, c, d],
-                    material: if strip == 0 {
-                        "Roca_submarina"
-                    } else {
-                        "Roca_oscura_submarina"
-                    }
-                    .to_string(),
-                    group: "ENV_Paredes_Canon_Submarino".to_string(),
-                });
-            }
         }
     }
     Model { vertices, faces }
@@ -1645,8 +1597,6 @@ fn render_water_enemies(
 
 fn render_water_level(
     level: &Model,
-    level_floor: &Model,
-    level_side_walls: &Model,
     enemy_models: &[Model; 3],
     enemy_centers: &[Vec3; 3],
     enemies: &[WaterEnemy],
@@ -1668,22 +1618,6 @@ fn render_water_level(
     framebuffer.clear(0);
     draw_underwater_background(framebuffer, progress * 0.002);
     let camera = chase_camera(ship);
-    render_model(
-        level_floor,
-        framebuffer,
-        &camera,
-        level_to_world,
-        Some(world_time),
-        None,
-    );
-    render_model(
-        level_side_walls,
-        framebuffer,
-        &camera,
-        level_to_world,
-        Some(world_time),
-        None,
-    );
     render_model(
         level,
         framebuffer,
@@ -2019,8 +1953,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let planet =
         load_obj(planet_path).map_err(|error| format!("Error al cargar {planet_path}: {error}"))?;
     let water_level_path = "assets/levels/waterlevel.obj";
-    let water_level = load_obj(water_level_path)
+    let mut water_level = load_obj(water_level_path)
         .map_err(|error| format!("Error al cargar {water_level_path}: {error}"))?;
+    water_level
+        .faces
+        .retain(|face| face.group != "CAVES_AND_ARCHES");
+    stretch_model_group_height(&mut water_level, "TERRAIN_WALLS", -5.0, 2.4);
     let enemy_path = "assets/enemies/acuaticenemies.obj";
     let enemy_source =
         load_obj(enemy_path).map_err(|error| format!("Error al cargar {enemy_path}: {error}"))?;
@@ -2035,8 +1973,6 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         model_center(&enemy_models[2]),
     ];
     let level_colliders = build_level_colliders(&water_level);
-    let water_level_floor = make_level_floor(140.0, 920.0, 15.0);
-    let water_level_side_walls = make_level_side_walls(920.0, 12.0);
     let planet_center = model_center(&planet);
     let planet_scale = WATER_PLANET_RADIUS / model_radius(&planet, planet_center).max(0.001);
     let planet_surface_radius = material_radius(&planet, planet_center, "Oceano") * planet_scale;
@@ -2243,8 +2179,6 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 let turbo_power = ship_controller.turbo_power(ship_controller.ship.speed);
                 render_water_level(
                     &water_level,
-                    &water_level_floor,
-                    &water_level_side_walls,
                     &enemy_models,
                     &enemy_centers,
                     &water_level_state.enemies,
