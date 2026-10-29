@@ -1269,6 +1269,29 @@ fn render_model<F>(
 ) where
     F: Fn(Vec3) -> Vec3 + Sync,
 {
+    let mut camera_vertices = Vec::new();
+    render_model_with_scratch(
+        model,
+        framebuffer,
+        camera,
+        transform,
+        water_time,
+        effect_spec,
+        &mut camera_vertices,
+    );
+}
+
+fn render_model_with_scratch<F>(
+    model: &Model,
+    framebuffer: &mut Framebuffer,
+    camera: &Camera,
+    transform: F,
+    water_time: Option<f32>,
+    effect_spec: Option<&ShipSpec>,
+    camera_vertices: &mut Vec<Vec3>,
+) where
+    F: Fn(Vec3) -> Vec3 + Sync,
+{
     let tan_half_vertical = (VERTICAL_FOV * 0.5).tan();
     let tan_half_horizontal = tan_half_vertical * WIDTH as f32 / HEIGHT as f32;
     let (local_center, local_radius) = model.bounds();
@@ -1317,9 +1340,9 @@ fn render_model<F>(
         )
     };
     let worker_count = render_worker_count();
-    let camera_vertices: Vec<Vec3> = if model.vertices.len() >= 4_096 && worker_count > 1 {
+    if model.vertices.len() >= 4_096 && worker_count > 1 {
         let chunk_size = model.vertices.len().div_ceil(worker_count);
-        thread::scope(|scope| {
+        *camera_vertices = thread::scope(|scope| {
             let handles: Vec<_> = model
                 .vertices
                 .chunks(chunk_size)
@@ -1332,10 +1355,12 @@ fn render_model<F>(
                 .into_iter()
                 .flat_map(|handle| handle.join().expect("vertex worker panicked"))
                 .collect()
-        })
+        });
     } else {
-        model.vertices.iter().map(transform_vertex).collect()
-    };
+        camera_vertices.clear();
+        camera_vertices.reserve(model.vertices.len());
+        camera_vertices.extend(model.vertices.iter().map(transform_vertex));
+    }
     let focal = HEIGHT as f32 / tan_half_vertical * 0.5;
     let light = Vec3::new(-0.3, 0.8, -0.5).normalize();
     for face in &model.faces {
@@ -1723,34 +1748,40 @@ fn render_water_enemies(
     current_progress: f32,
     framebuffer: &mut Framebuffer,
     camera: &Camera,
+    instance_buffers: &mut [Vec<Vec3>; 3],
 ) {
-    for enemy in enemies
-        .iter()
-        .filter(|enemy| enemy.alive && (enemy.progress - current_progress).abs() < 150.0)
-    {
-        let position = enemy.position(elapsed);
-        let angle = match enemy.kind {
-            0 => elapsed * 0.55 + enemy.phase,
-            1 => (elapsed * 1.15 + enemy.phase).cos() * 0.18,
-            _ => (elapsed * 0.45 + enemy.phase).sin() * 0.12,
-        };
-        let forward = Vec3::new(angle.cos(), 0.0, angle.sin());
-        let right = Vec3::new(-angle.sin(), 0.0, angle.cos());
-        let up = Vec3::new(0.0, 1.0, 0.0);
-        render_model(
-            &enemy_models[enemy.kind],
-            framebuffer,
-            camera,
-            |vertex| {
-                let local = vertex.sub(enemy_centers[enemy.kind]).mul(WATER_ENEMY_SCALE);
-                position
-                    .add(forward.mul(local.x))
-                    .add(right.mul(local.y))
-                    .add(up.mul(local.z))
-            },
-            None,
-            None,
-        );
+    let up = Vec3::new(0.0, 1.0, 0.0);
+    for kind in 0..enemy_models.len() {
+        let model = &enemy_models[kind];
+        let center = enemy_centers[kind];
+        let camera_vertices = &mut instance_buffers[kind];
+        for enemy in enemies.iter().filter(|enemy| {
+            enemy.alive && enemy.kind == kind && (enemy.progress - current_progress).abs() < 150.0
+        }) {
+            let position = enemy.position(elapsed);
+            let angle = match kind {
+                0 => elapsed * 0.55 + enemy.phase,
+                1 => (elapsed * 1.15 + enemy.phase).cos() * 0.18,
+                _ => (elapsed * 0.45 + enemy.phase).sin() * 0.12,
+            };
+            let forward = Vec3::new(angle.cos(), 0.0, angle.sin());
+            let right = Vec3::new(-angle.sin(), 0.0, angle.cos());
+            render_model_with_scratch(
+                model,
+                framebuffer,
+                camera,
+                |vertex| {
+                    let local = vertex.sub(center).mul(WATER_ENEMY_SCALE);
+                    position
+                        .add(forward.mul(local.x))
+                        .add(right.mul(local.y))
+                        .add(up.mul(local.z))
+                },
+                None,
+                None,
+                camera_vertices,
+            );
+        }
     }
 }
 
@@ -1760,6 +1791,7 @@ fn render_water_level(
     enemy_centers: &[Vec3; 3],
     enemies: &[WaterEnemy],
     enemy_elapsed: f32,
+    enemy_instance_buffers: &mut [Vec<Vec3>; 3],
     bubble_model: &Model,
     bubbles: &[BubbleParticle],
     ship_model: &Model,
@@ -1795,6 +1827,7 @@ fn render_water_level(
         progress,
         framebuffer,
         &camera,
+        enemy_instance_buffers,
     );
     for bubble in bubbles.iter().filter(|bubble| bubble.lifetime > 0.0) {
         render_model(
@@ -2133,6 +2166,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         model_center(&enemy_models[1]),
         model_center(&enemy_models[2]),
     ];
+    let mut enemy_instance_buffers: [Vec<Vec3>; 3] =
+        std::array::from_fn(|index| Vec::with_capacity(enemy_models[index].vertices.len()));
     let level_colliders = build_level_colliders(&water_level);
     let water_level_spatial = LevelSpatialIndex::new(&water_level, level_colliders);
     drop(water_level);
@@ -2350,6 +2385,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &enemy_centers,
                     &water_level_state.enemies,
                     water_level_state.elapsed,
+                    &mut enemy_instance_buffers,
                     &bubble_model,
                     &bubble_emitter.particles,
                     level_ship_model,
@@ -2476,6 +2512,35 @@ mod tests {
             None,
         );
         assert!(framebuffer.pixels.iter().all(|&pixel| pixel == 0));
+    }
+
+    #[test]
+    fn instanced_rendering_reuses_the_vertex_buffer() {
+        let camera = test_camera();
+        let model = test_triangle(5.0);
+        let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
+        let mut camera_vertices = Vec::new();
+        render_model_with_scratch(
+            &model,
+            &mut framebuffer,
+            &camera,
+            |vertex| vertex,
+            None,
+            None,
+            &mut camera_vertices,
+        );
+        let allocation = camera_vertices.as_ptr();
+        render_model_with_scratch(
+            &model,
+            &mut framebuffer,
+            &camera,
+            |vertex| vertex.add(Vec3::new(0.25, 0.0, 0.0)),
+            None,
+            None,
+            &mut camera_vertices,
+        );
+        assert_eq!(camera_vertices.len(), model.vertices.len());
+        assert_eq!(camera_vertices.as_ptr(), allocation);
     }
 
     #[test]
