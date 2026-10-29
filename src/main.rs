@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use framebuffer::Framebuffer;
 use minifb::{Key, ScaleMode, Window, WindowOptions};
-use obj_loader::{Face, Model, Vec3, load_obj};
+use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use ship::{
     ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC, COWBOYB_SPEC,
     COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC, Projectile, Ship, ShipController,
@@ -262,11 +262,11 @@ fn extract_model_group(model: &Model, group_name: &str) -> Result<Model, String>
                 index
             });
         }
-        faces.push(Face {
+        faces.push(Face::new(
             indices,
-            material: face.material.clone(),
-            group: face.group.clone(),
-        });
+            face.material.clone(),
+            face.group.clone(),
+        ));
     }
 
     if faces.is_empty() {
@@ -458,54 +458,6 @@ fn material_radius(model: &Model, center: Vec3, material_name: &str) -> f32 {
     radius
 }
 
-#[derive(Clone, Copy, PartialEq)]
-enum SurfaceShader {
-    Ocean,
-    Waterfall,
-    Earth,
-    Grass,
-    Rock,
-    DarkRock,
-    Sand,
-    Wood,
-    Leaves,
-    YellowBlock,
-    WhiteMark,
-    Flat,
-}
-
-fn surface_shader(material: &str) -> SurfaceShader {
-    let name = material.to_ascii_lowercase();
-    if name.contains("oceano") {
-        SurfaceShader::Ocean
-    } else if name.contains("cascada") {
-        SurfaceShader::Waterfall
-    } else if name.contains("roca_oscura") || name.contains("deep_cave_rock") {
-        SurfaceShader::DarkRock
-    } else if name.contains("roca")
-        || name.contains("underwater_rock")
-        || name.contains("blue_stone")
-    {
-        SurfaceShader::Rock
-    } else if name.contains("tierra") {
-        SurfaceShader::Earth
-    } else if name.contains("cesped") || name.contains("seaweed") {
-        SurfaceShader::Grass
-    } else if name.contains("arena") || name.contains("underwater_sand") {
-        SurfaceShader::Sand
-    } else if name.contains("tronco") {
-        SurfaceShader::Wood
-    } else if name.contains("hojas") {
-        SurfaceShader::Leaves
-    } else if name.contains("bloque_amarillo") {
-        SurfaceShader::YellowBlock
-    } else if name.contains("interrogacion_blanca") {
-        SurfaceShader::WhiteMark
-    } else {
-        SurfaceShader::Flat
-    }
-}
-
 fn screen_size() -> (usize, usize) {
     #[cfg(target_os = "windows")]
     {
@@ -546,111 +498,17 @@ fn create_window(fullscreen: bool) -> Result<Window, minifb::Error> {
     Ok(window)
 }
 
-fn color_for_material(name: &str, effect_spec: Option<&ShipSpec>) -> [u8; 3] {
-    let name = name.to_ascii_lowercase();
-    if name.starts_with("buzz_") {
-        return match name.as_str() {
-            "buzz_white" => [238, 242, 248],
-            "buzz_green" => [153, 226, 38],
-            "buzz_purple" => [116, 61, 177],
-            "buzz_red" => [235, 46, 60],
-            "buzz_glass" => [80, 177, 200],
-            "buzz_dark" => [29, 36, 54],
-            "buzz_blue" => [45, 132, 240],
-            "buzz_gold" => [245, 190, 42],
-            _ => [238, 242, 248],
-        };
-    }
-    if name.contains("cyan_coral") || name.contains("crystal_cyan") {
-        [38, 220, 226]
-    } else if name.contains("orange_coral") {
-        [244, 105, 42]
-    } else if name.contains("pink_coral") {
-        [242, 89, 164]
-    } else if name.contains("purple_coral") {
-        [144, 73, 205]
-    } else if name.contains("bright_seaweed") {
-        [50, 184, 103]
-    } else if name.contains("seaweed_green") {
-        [20, 108, 72]
-    } else if name.contains("spike_orange") {
-        [239, 113, 38]
-    } else if name.contains("spike_yellow") || name.contains("yellow_glow") {
-        [250, 214, 54]
-    } else if name.contains("shark_blue") {
-        [42, 104, 150]
-    } else if name.contains("shark_light") {
-        [138, 191, 203]
-    } else if name.contains("jelly_purple") {
-        [125, 58, 188]
-    } else if name.contains("jelly_pink") {
-        [241, 91, 178]
-    } else if name.contains("cyan_glow") {
-        [40, 225, 242]
-    } else if name.contains("red_glow") {
-        [255, 42, 46]
-    } else if name.contains("laser_core") {
-        effect_spec.map_or([255, 245, 190], |spec| spec.laser_core_color)
-    } else if name.contains("bubble_submarine") {
-        [155, 232, 255]
-    } else if name.contains("laser") {
-        effect_spec.map_or([255, 48, 38], |spec| spec.laser_color)
-    } else if name.contains("turbo_core") {
-        effect_spec.map_or([220, 252, 255], |spec| spec.turbo_core_color)
-    } else if name.contains("turbo") {
-        effect_spec.map_or([36, 142, 255], |spec| spec.turbo_color)
-    } else if name.contains("luz_cian") {
-        [40, 205, 255]
-    } else if name.contains("azul_profundo") {
-        [18, 44, 98]
-    } else if name.contains("azul_cobalto") {
-        [34, 106, 190]
-    } else if name.contains("soft_pink") {
-        [255, 158, 198]
-    } else if name.contains("light_pink") || name.contains("rosy_cheeks") {
-        [255, 105, 158]
-    } else if name.contains("burgundy") {
-        [92, 22, 48]
-    } else if name.contains("golden") || name.contains("gold") {
-        [236, 176, 42]
-    } else if name.contains("coral_rojo") {
-        [238, 42, 58]
-    } else if name.contains("coral_morado") {
-        [151, 46, 205]
-    } else if name.contains("coral_amarillo") {
-        [245, 174, 42]
-    } else if name.contains("planta_marina") {
-        [18, 116, 76]
-    } else if name.contains("ruina") {
-        [84, 112, 108]
-    } else if name.contains("energy_submarina") {
-        [30, 220, 240]
-    } else if name.contains("sun") {
-        [255, 174, 48]
-    } else if name.contains("tierra") {
-        [112, 72, 42]
-    } else if name.contains("arena") {
-        [218, 188, 112]
-    } else if name.contains("cesped") {
-        [55, 142, 72]
-    } else if name.contains("planet_land") {
-        [62, 153, 91]
-    } else if name.contains("planet_ice") {
-        [180, 225, 238]
-    } else if name.contains("planet") || name.contains("blue") {
-        [47, 87, 210]
-    } else if name.contains("glass") || name.contains("vidrio_oscuro") {
-        [24, 60, 78]
-    } else if name.contains("dark") || name.contains("gris_oscuro") {
-        [43, 51, 64]
-    } else if name.contains("yellow") || name.contains("amarillo") {
-        [242, 197, 57]
-    } else if name.contains("red") || name.contains("rojo") {
-        [199, 49, 57]
-    } else if name.contains("metal") {
-        [103, 121, 143]
-    } else {
-        [220, 230, 238]
+fn color_for_material(color: MaterialColor, effect_spec: Option<&ShipSpec>) -> [u8; 3] {
+    match color {
+        MaterialColor::Fixed(color) => color,
+        MaterialColor::LaserCore => {
+            effect_spec.map_or([255, 245, 190], |spec| spec.laser_core_color)
+        }
+        MaterialColor::Laser => effect_spec.map_or([255, 48, 38], |spec| spec.laser_color),
+        MaterialColor::TurboCore => {
+            effect_spec.map_or([220, 252, 255], |spec| spec.turbo_core_color)
+        }
+        MaterialColor::Turbo => effect_spec.map_or([36, 142, 255], |spec| spec.turbo_color),
     }
 }
 
@@ -845,16 +703,9 @@ fn make_sphere(radius: f32, stacks: usize, slices: usize, sun: bool) -> Model {
             } else {
                 "planet_ocean"
             };
-            faces.push(Face {
-                indices: [first, second, first + 1],
-                material: material.to_string(),
-                group: if sun { "sun" } else { "planet" }.to_string(),
-            });
-            faces.push(Face {
-                indices: [first + 1, second, second + 1],
-                material: material.to_string(),
-                group: if sun { "sun" } else { "planet" }.to_string(),
-            });
+            let group = if sun { "sun" } else { "planet" };
+            faces.push(Face::new([first, second, first + 1], material, group));
+            faces.push(Face::new([first + 1, second, second + 1], material, group));
         }
     }
     Model { vertices, faces }
@@ -870,16 +721,15 @@ fn make_turbo_plume(segments: usize) -> Model {
     let mut faces = Vec::new();
     for segment in 0..segments {
         let next = (segment + 1) % segments;
-        faces.push(Face {
-            indices: [0, segment + 1, next + 1],
-            material: if segment % 2 == 0 {
+        faces.push(Face::new(
+            [0, segment + 1, next + 1],
+            if segment % 2 == 0 {
                 "turbo_core"
             } else {
                 "turbo_glow"
-            }
-            .to_string(),
-            group: "turbo".to_string(),
-        });
+            },
+            "turbo",
+        ));
     }
     Model { vertices, faces }
 }
@@ -902,16 +752,8 @@ fn make_laser_bolt() -> Model {
         } else {
             "laser_glow"
         };
-        faces.push(Face {
-            indices: [0, current, next],
-            material: material.to_string(),
-            group: "laser".to_string(),
-        });
-        faces.push(Face {
-            indices: [1, next, current],
-            material: material.to_string(),
-            group: "laser".to_string(),
-        });
+        faces.push(Face::new([0, current, next], material, "laser"));
+        faces.push(Face::new([1, next, current], material, "laser"));
     }
     Model { vertices, faces }
 }
@@ -937,11 +779,7 @@ fn make_bubble_model() -> Model {
     ];
     let faces = triangles
         .into_iter()
-        .map(|indices| Face {
-            indices,
-            material: "bubble_submarine".to_string(),
-            group: "bubble_submarine".to_string(),
-        })
+        .map(|indices| Face::new(indices, "bubble_submarine", "bubble_submarine"))
         .collect();
     Model { vertices, faces }
 }
@@ -1241,11 +1079,6 @@ fn render_model<F>(
     };
     let focal = HEIGHT as f32 / (60.0_f32.to_radians() * 0.5).tan() * 0.5;
     let light = Vec3::new(-0.3, 0.8, -0.5).normalize();
-    // OBJ files usually repeat a very small set of materials over thousands of
-    // faces. Classify/color each unique material once per draw call instead of
-    // allocating a lowercase String for every triangle.
-    let mut material_cache: HashMap<&str, (SurfaceShader, [u8; 3])> = HashMap::new();
-
     for face in &model.faces {
         let [i0, i1, i2] = face.indices;
         let v0 = camera_vertices[i0];
@@ -1264,15 +1097,8 @@ fn render_model<F>(
         let a = project(v0);
         let b = project(v1);
         let c = project(v2);
-        let (shader, flat_color) =
-            *material_cache
-                .entry(face.material.as_str())
-                .or_insert_with(|| {
-                    (
-                        surface_shader(&face.material),
-                        color_for_material(&face.material, effect_spec),
-                    )
-                });
+        let shader = face.shader;
+        let flat_color = color_for_material(face.color, effect_spec);
 
         if shader != SurfaceShader::Flat {
             let p0 = model.vertices[i0];
