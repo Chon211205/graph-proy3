@@ -264,8 +264,9 @@ pub static BUZZ_SPEC: ShipSpec = ShipSpec {
     name: "Buzz Lightyear",
     model_scale: 0.27,
     model_axes: ModelAxes::Astra,
-    turbo_back: 1.55,
-    turbo_side: 0.72,
+    turbo_back: 1.0584,
+    turbo_side: 0.7344,
+    turbo_down: 0.13905,
     turbo_sides: DUAL_SIDES,
     turbo_color: [153, 226, 38],
     turbo_core_color: [238, 242, 248],
@@ -274,6 +275,26 @@ pub static BUZZ_SPEC: ShipSpec = ShipSpec {
     laser_color: [153, 226, 38],
     laser_core_color: [238, 242, 248],
     ..ASTRA_SPEC
+};
+
+pub static BUZZ_CAR_SPEC: ShipSpec = ShipSpec {
+    name: "Buzz Lightyear Carro",
+    turbo_back: 1.0298,
+    turbo_side: 0.2376,
+    turbo_down: 0.0756,
+    muzzle_forward: 1.05,
+    muzzle_side: 0.42,
+    ..BUZZ_SPEC
+};
+
+pub static BUZZ_SUBMARINE_SPEC: ShipSpec = ShipSpec {
+    name: "Buzz Lightyear Submarino",
+    turbo_back: 1.06755,
+    turbo_side: 0.6156,
+    turbo_down: 0.27649,
+    muzzle_forward: 1.10,
+    muzzle_side: 0.40,
+    ..BUZZ_SPEC
 };
 
 pub static ASTRA_CAR_SPEC: ShipSpec = ShipSpec {

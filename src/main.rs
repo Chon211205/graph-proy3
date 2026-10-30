@@ -15,7 +15,8 @@ use framebuffer::Framebuffer;
 use minifb::{Key, ScaleMode, Window, WindowOptions};
 use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use ship::{
-    ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_CAR_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC,
+    ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_CAR_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC,
+    BUZZ_CAR_SPEC, BUZZ_SPEC, BUZZ_SUBMARINE_SPEC,
     COWBOYB_CAR_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC,
     MCQUEEN_CAR_SPEC, MCQUEEN_SPEC, MCQUEEN_SUBMARINE_SPEC, Projectile, Ship, ShipController,
     ShipInput, ShipSpec,
@@ -1007,6 +1008,39 @@ fn procedural_surface_color(
                 255.0 * pulse,
                 72.0 * pulse,
                 12.0 * pulse,
+                1.0 / brightness.max(0.01),
+            )
+        }
+        SurfaceShader::BuzzWhiteMetal => (
+            188.0 + fresnel * 66.0,
+            198.0 + fresnel * 56.0,
+            208.0 + fresnel * 46.0,
+            0.82 + fresnel * 0.52,
+        ),
+        SurfaceShader::BuzzGreenMetal => (
+            72.0 + fresnel * 72.0,
+            164.0 + fresnel * 82.0,
+            18.0 + fresnel * 52.0,
+            0.80 + fresnel * 0.56,
+        ),
+        SurfaceShader::BuzzPurpleMetal => (
+            76.0 + fresnel * 72.0,
+            28.0 + fresnel * 48.0,
+            142.0 + fresnel * 104.0,
+            0.78 + fresnel * 0.58,
+        ),
+        SurfaceShader::BuzzRedMetal => (
+            184.0 + fresnel * 66.0,
+            18.0 + fresnel * 38.0,
+            30.0 + fresnel * 42.0,
+            0.80 + fresnel * 0.52,
+        ),
+        SurfaceShader::BuzzEmission => {
+            let pulse = 0.94 + (time * 8.5 + point.x * 0.8).sin() * 0.06;
+            (
+                128.0 * pulse,
+                255.0 * pulse,
+                30.0 * pulse,
                 1.0 / brightness.max(0.01),
             )
         }
@@ -2718,9 +2752,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut window = create_window(fullscreen)?;
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     let buzz_variants = [
-        load_obj("assets/vehicles/buzz/buzz_nave.obj")?,
-        load_obj("assets/vehicles/buzz/buzz_carro.obj")?,
-        load_obj("assets/vehicles/buzz/buzz_submarino.obj")?,
+        load_obj("assets/vehicles/buzz/buzz_nave_detallada.obj")?,
+        load_obj("assets/vehicles/buzz/buzz_carro_detallado.obj")?,
+        load_obj("assets/vehicles/buzz/buzz_submarino_detallado.obj")?,
     ];
     let mcqueen_model = load_obj("assets/vehicles/mcqueen/mcqueen_nave.obj")?;
     let mcqueen_car_model = load_obj("assets/vehicles/mcqueen/mcqueen_carro.obj")?;
@@ -2755,8 +2789,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         ],
         vec![
             (&buzz_variants[0], &BUZZ_SPEC, "MODO ESPACIAL"),
-            (&buzz_variants[1], &BUZZ_SPEC, "MODO CARRO"),
-            (&buzz_variants[2], &BUZZ_SPEC, "SUBMARINO"),
+            (&buzz_variants[1], &BUZZ_CAR_SPEC, "MODO CARRO"),
+            (&buzz_variants[2], &BUZZ_SUBMARINE_SPEC, "SUBMARINO"),
         ],
         vec![
             (&mcqueen_model, &MCQUEEN_SPEC, "MODO ESPACIAL"),
@@ -2795,7 +2829,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         1 => (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC),
         2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
         3 => (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC),
-        4 => (&buzz_variants[2], &BUZZ_SPEC),
+        4 => (&buzz_variants[2], &BUZZ_SUBMARINE_SPEC),
         5 => (&mcqueen_submarine_model, &MCQUEEN_SUBMARINE_SPEC),
         _ => unreachable!(),
     };
@@ -2906,7 +2940,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             1 => (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC),
                             2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
                             3 => (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC),
-                            4 => (&buzz_variants[2], &BUZZ_SPEC),
+                            4 => (&buzz_variants[2], &BUZZ_SUBMARINE_SPEC),
                             5 => (&mcqueen_submarine_model, &MCQUEEN_SUBMARINE_SPEC),
                             _ => unreachable!(),
                         };
@@ -3730,8 +3764,31 @@ mod tests {
     fn buzz_assets_load_with_valid_geometry_and_recognized_materials() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let mut sizes = Vec::new();
-        for form in ["nave", "carro", "submarino"] {
-            let model = load_obj(root.join(format!("assets/vehicles/buzz/buzz_{form}.obj"))).unwrap();
+        for (form, filename, minimum, core_group, spec) in [
+            (
+                "nave",
+                "buzz_nave_detallada.obj",
+                (5_700, 9_700),
+                "Buzz_Ship_Core_L",
+                &BUZZ_SPEC,
+            ),
+            (
+                "carro",
+                "buzz_carro_detallado.obj",
+                (9_700, 17_100),
+                "Buzz_Car_Core_L",
+                &BUZZ_CAR_SPEC,
+            ),
+            (
+                "submarino",
+                "buzz_submarino_detallado.obj",
+                (7_100, 12_100),
+                "Buzz_Sub_Core_L",
+                &BUZZ_SUBMARINE_SPEC,
+            ),
+        ] {
+            let model = load_obj(root.join("assets/vehicles/buzz").join(filename)).unwrap();
+            assert!(model.vertices.len() > minimum.0 && model.faces.len() > minimum.1);
             assert!(
                 model
                     .vertices
@@ -3750,17 +3807,48 @@ mod tests {
                 "buzz_purple",
                 "buzz_red",
                 "buzz_glass",
+                "buzz_emission",
             ] {
                 assert!(
                     model.faces.iter().any(|f| f.material == material),
                     "{form}: {material}"
                 );
             }
-            let radius = model_radius(&model, model_center(&model)) * BUZZ_SPEC.model_scale;
+            assert!(model.faces.iter().any(|face| {
+                face.material == "buzz_green" && face.shader == SurfaceShader::BuzzGreenMetal
+            }));
+            assert!(model.faces.iter().any(|face| {
+                face.material == "buzz_emission"
+                    && face.shader == SurfaceShader::BuzzEmission
+                    && face.color == MaterialColor::Fixed([128, 255, 30])
+            }));
+            assert!(model.faces.iter().any(|face| face.smooth));
+            let radius = model_radius(&model, model_center(&model)) * spec.model_scale;
             assert!(
                 (1.0..3.0).contains(&radius),
                 "{form}: unexpected size {radius}"
             );
+
+            let mut points = model
+                .faces
+                .iter()
+                .filter(|face| face.group == core_group)
+                .flat_map(|face| face.indices)
+                .map(|index| model.vertices[index]);
+            let first = points.next().expect("missing Buzz emitter geometry");
+            let (mut min, mut max) = (first, first);
+            for point in points {
+                min.x = min.x.min(point.x);
+                min.y = min.y.min(point.y);
+                min.z = min.z.min(point.z);
+                max.x = max.x.max(point.x);
+                max.y = max.y.max(point.y);
+                max.z = max.z.max(point.z);
+            }
+            let core = min.add(max).mul(0.5).sub(model_center(&model));
+            assert!((-core.z * spec.model_scale - spec.turbo_back).abs() < 0.002);
+            assert!((core.x.abs() * spec.model_scale - spec.turbo_side).abs() < 0.002);
+            assert!((-core.y * spec.model_scale - spec.turbo_down).abs() < 0.002);
             sizes.push((model.vertices.len(), model.faces.len()));
         }
         assert_ne!(sizes[0], sizes[1]);

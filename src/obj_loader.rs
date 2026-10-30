@@ -77,6 +77,11 @@ pub enum SurfaceShader {
     CowboyYellowPaint,
     CowboyRedPaint,
     CowboyOrangeEmission,
+    BuzzWhiteMetal,
+    BuzzGreenMetal,
+    BuzzPurpleMetal,
+    BuzzRedMetal,
+    BuzzEmission,
     Flat,
 }
 
@@ -218,6 +223,20 @@ fn classify_surface(name: &str) -> SurfaceShader {
         SurfaceShader::ArwingDarkMetal
     } else if name == "cowboy_glass" {
         SurfaceShader::ArwingGlass
+    } else if name == "buzz_white" || name == "buzz_gold" {
+        SurfaceShader::BuzzWhiteMetal
+    } else if name == "buzz_green" || name == "buzz_blue" {
+        SurfaceShader::BuzzGreenMetal
+    } else if name == "buzz_purple" {
+        SurfaceShader::BuzzPurpleMetal
+    } else if name == "buzz_red" {
+        SurfaceShader::BuzzRedMetal
+    } else if name == "buzz_emission" {
+        SurfaceShader::BuzzEmission
+    } else if name == "buzz_glass" {
+        SurfaceShader::ArwingGlass
+    } else if name == "buzz_dark" {
+        SurfaceShader::ArwingDarkMetal
     } else if name == "hull_white" {
         SurfaceShader::ArwingHull
     } else if name == "wing_metal" {
@@ -285,6 +304,7 @@ fn classify_color(name: &str) -> MaterialColor {
             "buzz_dark" => [29, 36, 54],
             "buzz_blue" => [45, 132, 240],
             "buzz_gold" => [245, 190, 42],
+            "buzz_emission" => [128, 255, 30],
             _ => [238, 242, 248],
         }
     } else if matches!(
