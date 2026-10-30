@@ -2545,16 +2545,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
-    let arwing_path = "assets/vehicles/arwing.obj";
-    let kirby_path = "assets/vehicles/kirby.obj";
-    let astra_path = "assets/vehicles/nave_astra.obj";
-    let astra_car_path = "assets/vehicles/astra_carro.obj";
-    let cowboyb_path = "assets/vehicles/nave_cowboyb.obj";
-    let cowboyb_car_path = "assets/vehicles/cb_carro.obj";
-    let astra_submarine_path = "assets/vehicles/astra_submarino.obj";
-    let cowboyb_submarine_path = "assets/vehicles/cb_submarino.obj";
-    let arwing_submarine_path = "assets/vehicles/arwingsub.obj";
-    let kirby_submarine_path = "assets/vehicles/kirbysub.obj";
+    let arwing_path = "assets/vehicles/arwing/arwing2.obj";
+    let kirby_path = "assets/vehicles/kirby/kirby.obj";
+    let astra_path = "assets/vehicles/astra/nave_astra.obj";
+    let astra_car_path = "assets/vehicles/astra/astra_carro.obj";
+    let cowboyb_path = "assets/vehicles/cowboy/nave_cowboyb.obj";
+    let cowboyb_car_path = "assets/vehicles/cowboy/cb_carro.obj";
+    let astra_submarine_path = "assets/vehicles/astra/astra_submarino.obj";
+    let cowboyb_submarine_path = "assets/vehicles/cowboy/cb_submarino.obj";
+    let arwing_submarine_path = "assets/vehicles/arwing/arwing2_submarino.obj";
+    let kirby_submarine_path = "assets/vehicles/kirby/kirbysub.obj";
     let arwing_model =
         load_obj(arwing_path).map_err(|error| format!("Error al cargar {arwing_path}: {error}"))?;
     let kirby_model =
@@ -2581,13 +2581,13 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut window = create_window(fullscreen)?;
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     let buzz_variants = [
-        load_obj("assets/vehicles/buzz_nave.obj")?,
-        load_obj("assets/vehicles/buzz_carro.obj")?,
-        load_obj("assets/vehicles/buzz_submarino.obj")?,
+        load_obj("assets/vehicles/buzz/buzz_nave.obj")?,
+        load_obj("assets/vehicles/buzz/buzz_carro.obj")?,
+        load_obj("assets/vehicles/buzz/buzz_submarino.obj")?,
     ];
-    let mcqueen_model = load_obj("assets/vehicles/mcqueen_nave.obj")?;
-    let mcqueen_car_model = load_obj("assets/vehicles/mcqueen_carro.obj")?;
-    let mcqueen_submarine_model = load_obj("assets/vehicles/mcqueen_submarino.obj")?;
+    let mcqueen_model = load_obj("assets/vehicles/mcqueen/mcqueen_nave.obj")?;
+    let mcqueen_car_model = load_obj("assets/vehicles/mcqueen/mcqueen_carro.obj")?;
+    let mcqueen_submarine_model = load_obj("assets/vehicles/mcqueen/mcqueen_submarino.obj")?;
     let mcqueen_car_center = model_center(&mcqueen_car_model);
     let choices = [
         (&arwing_model, &ARWING_SPEC),
@@ -3099,7 +3099,7 @@ mod tests {
     #[test]
     fn mcqueen_submarine_has_aquatic_parts_and_renders_from_multiple_angles() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let model = load_obj(root.join("assets/vehicles/mcqueen_submarino.obj")).unwrap();
+        let model = load_obj(root.join("assets/vehicles/mcqueen/mcqueen_submarino.obj")).unwrap();
         assert!(
             model
                 .vertices
@@ -3192,8 +3192,8 @@ mod tests {
     #[test]
     fn mcqueen_car_has_four_exposed_wheels_and_renders_from_multiple_angles() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let model = load_obj(root.join("assets/vehicles/mcqueen_carro.obj")).unwrap();
-        let spaceship = load_obj(root.join("assets/vehicles/mcqueen_nave.obj")).unwrap();
+        let model = load_obj(root.join("assets/vehicles/mcqueen/mcqueen_carro.obj")).unwrap();
+        let spaceship = load_obj(root.join("assets/vehicles/mcqueen/mcqueen_nave.obj")).unwrap();
         assert_ne!(model.faces.len(), spaceship.faces.len());
         assert!(
             model
@@ -3277,7 +3277,7 @@ mod tests {
     #[test]
     fn mcqueen_spaceship_loads_and_renders_from_multiple_angles() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let model = load_obj(root.join("assets/vehicles/mcqueen_nave.obj")).unwrap();
+        let model = load_obj(root.join("assets/vehicles/mcqueen/mcqueen_nave.obj")).unwrap();
         assert!(
             model
                 .vertices
@@ -3594,7 +3594,7 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let mut sizes = Vec::new();
         for form in ["nave", "carro", "submarino"] {
-            let model = load_obj(root.join(format!("assets/vehicles/buzz_{form}.obj"))).unwrap();
+            let model = load_obj(root.join(format!("assets/vehicles/buzz/buzz_{form}.obj"))).unwrap();
             assert!(
                 model
                     .vertices
@@ -3634,9 +3634,9 @@ mod tests {
     #[test]
     fn detailed_arwing_asset_has_expected_scale_and_axes() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let model = load_obj(root.join("assets/vehicles/arwing.obj")).unwrap();
-        assert!(model.vertices.len() > 3_000);
-        assert!(model.faces.len() > 6_000);
+        let model = load_obj(root.join("assets/vehicles/arwing/arwing2.obj")).unwrap();
+        assert!(model.vertices.len() > 600);
+        assert!(model.faces.len() > 1_200);
         let radius = model_radius(&model, model_center(&model)) * ARWING_SPEC.model_scale;
         assert!((1.5..3.5).contains(&radius), "unexpected radius {radius}");
         assert!(model.faces.iter().any(|face| {
@@ -3650,14 +3650,28 @@ mod tests {
         let transformed = ARWING_SPEC.model_to_world(Vec3::new(1.0, 2.0, 3.0), forward, right, up);
         assert_eq!(
             (transformed.x, transformed.y, transformed.z),
-            (1.0, 3.0, 2.0)
+            (-1.0, 3.0, -2.0)
         );
+
+        let submarine =
+            load_obj(root.join("assets/vehicles/arwing/arwing2_submarino.obj")).unwrap();
+        assert!(submarine.vertices.len() > 4_000);
+        assert!(submarine.faces.len() > 8_000);
+        let submarine_radius =
+            model_radius(&submarine, model_center(&submarine)) * ARWING_SUBMARINE_SPEC.model_scale;
+        assert!(
+            (1.5..2.5).contains(&submarine_radius),
+            "unexpected submarine radius {submarine_radius}"
+        );
+        assert!(submarine.faces.iter().any(|face| {
+            face.group.contains("aro_helice") && face.material == "fin_blue"
+        }));
     }
 
     #[test]
     fn detailed_kirby_asset_has_expected_scale_axes_and_palette() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let model = load_obj(root.join("assets/vehicles/kirby.obj")).unwrap();
+        let model = load_obj(root.join("assets/vehicles/kirby/kirby.obj")).unwrap();
         assert!(model.vertices.len() > 10_000);
         assert!(model.faces.len() > 19_000);
         let radius = model_radius(&model, model_center(&model)) * KIRBY_SPEC.model_scale;
