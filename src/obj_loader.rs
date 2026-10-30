@@ -74,6 +74,9 @@ pub enum SurfaceShader {
     AstraCobalt,
     AstraDeepBlue,
     AstraRedEmission,
+    CowboyYellowPaint,
+    CowboyRedPaint,
+    CowboyOrangeEmission,
     Flat,
 }
 
@@ -203,6 +206,18 @@ fn classify_surface(name: &str) -> SurfaceShader {
         SurfaceShader::ArwingEmission
     } else if name == "luz_roja" {
         SurfaceShader::AstraRedEmission
+    } else if name == "amarillo" || name == "cowboy_yellow" || name == "cowboy_cream" {
+        SurfaceShader::CowboyYellowPaint
+    } else if name == "rojo" || name == "cowboy_red" || name == "cowboy_darkred" {
+        SurfaceShader::CowboyRedPaint
+    } else if name == "cowboy_orangeglow" {
+        SurfaceShader::CowboyOrangeEmission
+    } else if name == "gris_oscuro" || name == "cowboy_metal" {
+        SurfaceShader::ArwingMetal
+    } else if name == "cowboy_graphite" {
+        SurfaceShader::ArwingDarkMetal
+    } else if name == "cowboy_glass" {
+        SurfaceShader::ArwingGlass
     } else if name == "hull_white" {
         SurfaceShader::ArwingHull
     } else if name == "wing_metal" {
@@ -290,6 +305,34 @@ fn classify_color(name: &str) -> MaterialColor {
             "dark_metal" => [25, 31, 42],
             "engine_cyan" => [40, 225, 242],
             "warning_yellow" => [250, 194, 34],
+            _ => unreachable!(),
+        }
+    } else if matches!(
+        name,
+        "amarillo"
+            | "rojo"
+            | "gris_oscuro"
+            | "cowboy_yellow"
+            | "cowboy_red"
+            | "cowboy_darkred"
+            | "cowboy_metal"
+            | "cowboy_graphite"
+            | "cowboy_glass"
+            | "cowboy_orangeglow"
+            | "cowboy_cream"
+    ) {
+        match name {
+            "amarillo" => [238, 145, 12],
+            "rojo" => [190, 22, 18],
+            "gris_oscuro" => [56, 64, 76],
+            "cowboy_yellow" => [244, 158, 20],
+            "cowboy_red" => [205, 28, 22],
+            "cowboy_darkred" => [78, 16, 14],
+            "cowboy_metal" => [112, 124, 134],
+            "cowboy_graphite" => [26, 31, 40],
+            "cowboy_glass" => [22, 73, 94],
+            "cowboy_orangeglow" => [255, 72, 12],
+            "cowboy_cream" => [246, 214, 150],
             _ => unreachable!(),
         }
     } else if matches!(

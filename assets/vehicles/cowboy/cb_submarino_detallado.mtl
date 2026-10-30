@@ -1,0 +1,68 @@
+# Detailed Cowboy / Swordfish II materials
+newmtl Amarillo
+Kd 0.92 0.54 0.025
+Ks 0.88 0.72 0.34
+Ns 210
+illum 2
+
+newmtl Rojo
+Kd 0.72 0.022 0.018
+Ks 0.82 0.30 0.20
+Ns 195
+illum 2
+
+newmtl Gris_oscuro
+Kd 0.09 0.105 0.125
+Ks 0.82 0.86 0.90
+Ns 230
+illum 2
+
+newmtl Cowboy_Yellow
+Kd 0.95 0.61 0.04
+Ks 0.90 0.76 0.38
+Ns 220
+illum 2
+
+newmtl Cowboy_Red
+Kd 0.78 0.035 0.025
+Ks 0.86 0.34 0.24
+Ns 205
+illum 2
+
+newmtl Cowboy_DarkRed
+Kd 0.26 0.018 0.014
+Ks 0.68 0.24 0.18
+Ns 175
+illum 2
+
+newmtl Cowboy_Metal
+Kd 0.36 0.40 0.43
+Ks 0.78 0.82 0.84
+Ns 165
+illum 2
+
+newmtl Cowboy_Graphite
+Kd 0.035 0.040 0.050
+Ks 0.25 0.28 0.32
+Ns 85
+illum 2
+
+newmtl Cowboy_Glass
+Kd 0.035 0.12 0.17
+Ks 0.72 0.88 0.95
+Ns 210
+d 0.82
+Ni 1.46
+illum 9
+
+newmtl Cowboy_OrangeGlow
+Kd 1.00 0.24 0.025
+Ke 0.92 0.12 0.01
+Ns 180
+illum 2
+
+newmtl Cowboy_Cream
+Kd 0.96 0.82 0.55
+Ks 0.42 0.32 0.16
+Ns 90
+illum 2

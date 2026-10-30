@@ -989,6 +989,27 @@ fn procedural_surface_color(
                 1.0 / brightness.max(0.01),
             )
         }
+        SurfaceShader::CowboyYellowPaint => (
+            170.0 + fresnel * 82.0,
+            91.0 + fresnel * 76.0,
+            8.0 + fresnel * 56.0,
+            0.78 + fresnel * 0.62,
+        ),
+        SurfaceShader::CowboyRedPaint => (
+            145.0 + fresnel * 104.0,
+            12.0 + fresnel * 42.0,
+            9.0 + fresnel * 34.0,
+            0.76 + fresnel * 0.66,
+        ),
+        SurfaceShader::CowboyOrangeEmission => {
+            let pulse = 0.94 + (time * 8.0 + point.z * 1.7).sin() * 0.06;
+            (
+                255.0 * pulse,
+                72.0 * pulse,
+                12.0 * pulse,
+                1.0 / brightness.max(0.01),
+            )
+        }
         SurfaceShader::Flat => (220.0, 230.0, 238.0, 1.0),
     };
 
@@ -2665,10 +2686,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let kirby_path = "assets/vehicles/kirby/kirby_detallado.obj";
     let astra_path = "assets/vehicles/astra/nave_astra_detallada.obj";
     let astra_car_path = "assets/vehicles/astra/astra_carro_detallado.obj";
-    let cowboyb_path = "assets/vehicles/cowboy/nave_cowboyb.obj";
-    let cowboyb_car_path = "assets/vehicles/cowboy/cb_carro.obj";
+    let cowboyb_path = "assets/vehicles/cowboy/nave_cowboyb_detallada.obj";
+    let cowboyb_car_path = "assets/vehicles/cowboy/cb_carro_detallado.obj";
     let astra_submarine_path = "assets/vehicles/astra/astra_submarino_detallado.obj";
-    let cowboyb_submarine_path = "assets/vehicles/cowboy/cb_submarino.obj";
+    let cowboyb_submarine_path = "assets/vehicles/cowboy/cb_submarino_detallado.obj";
     let arwing_submarine_path = "assets/vehicles/arwing/arwing2_submarino.obj";
     let kirby_submarine_path = "assets/vehicles/kirby/kirbysub_detallado.obj";
     let arwing_model =
@@ -3969,6 +3990,130 @@ mod tests {
             ),
             &ASTRA_SUBMARINE_SPEC,
         );
+    }
+
+    #[test]
+    fn detailed_cowboy_assets_have_geometry_materials_and_aligned_thrusters() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let ship = load_obj(
+            root.join("assets/vehicles/cowboy/nave_cowboyb_detallada.obj"),
+        )
+        .unwrap();
+        let car = load_obj(root.join("assets/vehicles/cowboy/cb_carro_detallado.obj")).unwrap();
+        let submarine =
+            load_obj(root.join("assets/vehicles/cowboy/cb_submarino_detallado.obj")).unwrap();
+
+        assert!(ship.vertices.len() > 1_900 && ship.faces.len() > 2_700);
+        assert!(car.vertices.len() > 3_300 && car.faces.len() > 5_400);
+        assert!(submarine.vertices.len() > 3_100 && submarine.faces.len() > 5_000);
+
+        for (name, model) in [("nave", &ship), ("carro", &car), ("submarino", &submarine)] {
+            assert!(model.faces.iter().any(|face| face.smooth), "{name}: no smooth shading");
+            for material in [
+                "Cowboy_Metal",
+                "Cowboy_Graphite",
+                "Cowboy_Glass",
+                "Cowboy_OrangeGlow",
+                "Cowboy_Cream",
+            ] {
+                assert!(
+                    model.faces.iter().any(|face| face.material == material),
+                    "{name}: missing Cowboy material {material}"
+                );
+            }
+        }
+        for material in ["Cowboy_Yellow", "Cowboy_Red", "Cowboy_DarkRed"] {
+            assert!(
+                [&ship, &car, &submarine]
+                    .iter()
+                    .any(|model| model.faces.iter().any(|face| face.material == material)),
+                "missing Cowboy paint {material}"
+            );
+        }
+        assert!(ship.faces.iter().any(|face| {
+            face.material == "Cowboy_Yellow"
+                && face.shader == SurfaceShader::CowboyYellowPaint
+                && face.color == MaterialColor::Fixed([244, 158, 20])
+        }));
+        assert!(ship.faces.iter().any(|face| {
+            face.material == "Cowboy_OrangeGlow"
+                && face.shader == SurfaceShader::CowboyOrangeEmission
+                && face.color == MaterialColor::Fixed([255, 72, 12])
+        }));
+        for (material, shader) in [
+            ("Amarillo", SurfaceShader::CowboyYellowPaint),
+            ("Rojo", SurfaceShader::CowboyRedPaint),
+            ("Gris_oscuro", SurfaceShader::ArwingMetal),
+        ] {
+            assert!(
+                ship.faces
+                    .iter()
+                    .any(|face| face.material == material && face.shader == shader),
+                "main ship surface {material} is not metallic"
+            );
+        }
+
+        for (model, groups) in [
+            (&ship, ["Cowboy_Ship_Core_L", "Cowboy_Ship_Canopy"]),
+            (&car, ["Cowboy_Car_Core_L", "Cowboy_Car_Rim_Front_L"]),
+            (&submarine, ["Cowboy_Sub_Core_L", "Cowboy_Sub_Guard_L"]),
+        ] {
+            for group in groups {
+                assert!(model.faces.iter().any(|face| face.group == group), "missing {group}");
+            }
+        }
+
+        let group_center = |candidate: &Model, group: &str| {
+            let mut points = candidate
+                .faces
+                .iter()
+                .filter(|face| face.group == group)
+                .flat_map(|face| face.indices)
+                .map(|index| candidate.vertices[index]);
+            let first = points.next().expect("missing Cowboy emitter geometry");
+            let (mut min, mut max) = (first, first);
+            for point in points {
+                min.x = min.x.min(point.x);
+                min.y = min.y.min(point.y);
+                min.z = min.z.min(point.z);
+                max.x = max.x.max(point.x);
+                max.y = max.y.max(point.y);
+                max.z = max.z.max(point.z);
+            }
+            min.add(max).mul(0.5).sub(model_center(candidate))
+        };
+        let assert_emitter = |actual: (f32, f32, f32), spec: &ShipSpec| {
+            assert!((actual.0 - spec.turbo_back).abs() < 0.002);
+            assert!((actual.1 - spec.turbo_side).abs() < 0.002);
+            assert!((actual.2 - spec.turbo_down).abs() < 0.002);
+        };
+        let ship_core = group_center(&ship, "Cowboy_Ship_Core_L");
+        assert_emitter(
+            (
+                ship_core.y * COWBOYB_SPEC.model_scale,
+                ship_core.x.abs() * COWBOYB_SPEC.model_scale,
+                -ship_core.z * COWBOYB_SPEC.model_scale,
+            ),
+            &COWBOYB_SPEC,
+        );
+        for (model, group, spec) in [
+            (&car, "Cowboy_Car_Core_L", &COWBOYB_CAR_SPEC),
+            (
+                &submarine,
+                "Cowboy_Sub_Core_L",
+                &COWBOYB_SUBMARINE_SPEC,
+            ),
+        ] {
+            let core = group_center(model, group);
+            assert_emitter(
+                (
+                    -core.z * spec.model_scale,
+                    core.x.abs() * spec.model_scale,
+                    -core.y * spec.model_scale,
+                ),
+                spec,
+            );
+        }
     }
 
     #[test]

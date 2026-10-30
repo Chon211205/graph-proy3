@@ -203,9 +203,9 @@ pub static COWBOYB_SPEC: ShipSpec = ShipSpec {
     chase_distance: 12.0,
     chase_height: 4.0,
     chase_look_ahead: 8.0,
-    turbo_back: 1.1,
-    turbo_side: 0.62,
-    turbo_down: 0.05,
+    turbo_back: 1.113,
+    turbo_side: 0.6216,
+    turbo_down: 0.1279,
     turbo_sides: DUAL_SIDES,
     turbo_color: [255, 105, 35],
     turbo_core_color: [255, 230, 155],
@@ -303,8 +303,9 @@ pub static COWBOYB_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     name: "Swordfish II Submarino",
     model_scale: 0.30,
     model_axes: ModelAxes::Astra,
-    turbo_back: 1.38,
-    turbo_side: 0.58,
+    turbo_back: 1.2687,
+    turbo_side: 0.51,
+    turbo_down: 0.249,
     muzzle_forward: 1.95,
     muzzle_side: 0.88,
     ..COWBOYB_SPEC
@@ -313,6 +314,9 @@ pub static COWBOYB_SUBMARINE_SPEC: ShipSpec = ShipSpec {
 pub static COWBOYB_CAR_SPEC: ShipSpec = ShipSpec {
     name: "Swordfish II",
     model_axes: ModelAxes::Astra,
+    turbo_back: 0.896,
+    turbo_side: 0.1848,
+    turbo_down: 0.1484,
     ..COWBOYB_SPEC
 };
 
