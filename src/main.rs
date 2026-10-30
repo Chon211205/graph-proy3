@@ -2547,9 +2547,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let arwing_path = "assets/vehicles/arwing.obj";
     let kirby_path = "assets/vehicles/kirby.obj";
-    let astra_path = "assets/vehicles/nave_astra.obj";
     let astra_car_path = "assets/vehicles/astra_carro.obj";
-    let cowboyb_path = "assets/vehicles/nave_cowboyb.obj";
     let cowboyb_car_path = "assets/vehicles/cb_carro.obj";
     let astra_submarine_path = "assets/vehicles/astra_submarino.obj";
     let cowboyb_submarine_path = "assets/vehicles/cb_submarino.obj";
@@ -2559,10 +2557,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         load_obj(arwing_path).map_err(|error| format!("Error al cargar {arwing_path}: {error}"))?;
     let kirby_model =
         load_obj(kirby_path).map_err(|error| format!("Error al cargar {kirby_path}: {error}"))?;
+    let astra_path = "assets/vehicles/Astra.obj";
     let astra_model =
         load_obj(astra_path).map_err(|error| format!("Error al cargar {astra_path}: {error}"))?;
     let astra_car_model = load_obj(astra_car_path)
         .map_err(|error| format!("Error al cargar {astra_car_path}: {error}"))?;
+    let cowboyb_path = "assets/vehicles/Swordfish II.obj";
     let cowboyb_model = load_obj(cowboyb_path)
         .map_err(|error| format!("Error al cargar {cowboyb_path}: {error}"))?;
     let mut cowboyb_car_model = load_obj(cowboyb_car_path)
