@@ -184,7 +184,7 @@ pub static ASTRA_SPEC: ShipSpec = ShipSpec {
 pub static COWBOYB_SPEC: ShipSpec = ShipSpec {
     name: "Swordfish II",
     model_scale: 0.28,
-    model_axes: ModelAxes::CowboyB,
+    model_axes: ModelAxes::Astra,
     collision_radius: 2.0,
     min_speed: 4.0,
     cruise_speed: 12.0,

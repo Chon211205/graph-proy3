@@ -207,6 +207,34 @@ fn classify_color(name: &str) -> MaterialColor {
             "buzz_gold" => [245, 190, 42],
             _ => [238, 242, 248],
         }
+    } else if name == "casco_blanco" {
+        [228, 234, 241]
+    } else if name == "grafito" {
+        [53, 61, 74]
+    } else if name == "titanio" {
+        [136, 150, 166]
+    } else if name == "luz_blanca" {
+        [255, 255, 255]
+    } else if name == "luz_cian" {
+        [40, 220, 240]
+    } else if name == "luz_roja" {
+        [240, 44, 52]
+    } else if name == "luz_verde" || name == "verde_marca" {
+        [64, 188, 112]
+    } else if name == "magenta_marca" {
+        [218, 66, 160]
+    } else if name == "amarillo_tecnico" {
+        [242, 190, 54]
+    } else if name == "negro" {
+        [24, 27, 34]
+    } else if name == "cristal_ambar" {
+        [241, 174, 56]
+    } else if name == "lente_verde" {
+        [83, 212, 91]
+    } else if name == "rojo_claro" {
+        [247, 76, 70]
+    } else if name == "rojo_oscuro" {
+        [116, 22, 29]
     } else if name.contains("cyan_coral") || name.contains("crystal_cyan") {
         [38, 220, 226]
     } else if name.contains("orange_coral") {
