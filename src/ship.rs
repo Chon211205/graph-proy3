@@ -60,7 +60,7 @@ const CENTER_SIDE: &[f32] = &[0.0];
 
 pub static ARWING_SPEC: ShipSpec = ShipSpec {
     name: "Arwing",
-    model_scale: 0.16,
+    model_scale: 0.22,
     model_axes: ModelAxes::Arwing,
     collision_radius: 2.0,
     min_speed: 4.0,
@@ -81,9 +81,9 @@ pub static ARWING_SPEC: ShipSpec = ShipSpec {
     chase_distance: 12.0,
     chase_height: 4.0,
     chase_look_ahead: 8.0,
-    turbo_back: 1.45,
-    turbo_side: 0.72,
-    turbo_down: 0.05,
+    turbo_back: 1.13,
+    turbo_side: 0.49,
+    turbo_down: 0.15,
     turbo_sides: DUAL_SIDES,
     turbo_color: [36, 142, 255],
     turbo_core_color: [220, 252, 255],
@@ -307,12 +307,13 @@ pub static COWBOYB_CAR_SPEC: ShipSpec = ShipSpec {
 
 pub static ARWING_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     name: "Arwing Submarino",
-    model_scale: 0.07,
+    model_scale: 0.30,
     model_axes: ModelAxes::ArwingSubmarine,
-    turbo_back: 1.55,
-    turbo_side: 0.62,
-    muzzle_forward: 1.9,
-    muzzle_side: 0.9,
+    turbo_back: 1.58,
+    turbo_side: 0.47,
+    turbo_down: 0.10,
+    muzzle_forward: 1.72,
+    muzzle_side: 0.18,
     ..ARWING_SPEC
 };
 
@@ -332,8 +333,8 @@ impl ShipSpec {
     pub fn model_to_world(&self, local: Vec3, forward: Vec3, right: Vec3, up: Vec3) -> Vec3 {
         match self.model_axes {
             ModelAxes::Arwing => forward
-                .mul(local.x)
-                .add(right.mul(local.y))
+                .mul(-local.x)
+                .add(right.mul(-local.y))
                 .add(up.mul(local.z)),
             ModelAxes::ArwingSubmarine => forward
                 .mul(-local.x)

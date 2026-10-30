@@ -43,11 +43,11 @@ En el hangar, selecciona Rayo McQueen y pulsa **V** para alternar nave/carro/sub
 
 Desde el espacio, **1** te acerca al planeta acuático. Ya en órbita, **Enter** inicia el nivel y transforma a Rayo en submarino. **Backspace** vuelve al espacio y recupera la forma anterior; también se recupera al completar el recorrido. Si empezaste directamente en submarino, regresarás en forma de nave.
 
-El carro `assets/vehicles/mcqueen_carro.obj` tiene carrocería roja, rayos y número 95 amarillos, ojos azules y cuatro ruedas negras con llantas rojas. El submarino `assets/vehicles/mcqueen_submarino.obj` mantiene esa paleta e incorpora periscopio, aletas, flotadores, faros y dos hélices con aros protectores. El juego define los colores en su renderizador.
+El carro `assets/vehicles/mcqueen/mcqueen_carro.obj` tiene carrocería roja, rayos y número 95 amarillos, ojos azules y cuatro ruedas negras con llantas rojas. El submarino `assets/vehicles/mcqueen/mcqueen_submarino.obj` mantiene esa paleta e incorpora periscopio, aletas, flotadores, faros y dos hélices con aros protectores. El juego define los colores en su renderizador.
 
 ## Modelos de Buzz
 
-Los tres modelos originales inspirados en Buzz usan blanco, verde lima, morado y detalles rojos, cabina azul y botones de colores. Están en `assets/vehicles/buzz_*.obj`; `buzz.mtl` permite ver los materiales también en herramientas externas. El juego define la misma paleta en su renderizador.
+Los tres modelos originales inspirados en Buzz usan blanco, verde lima, morado y detalles rojos, cabina azul y botones de colores. Están en `assets/vehicles/buzz/buzz_*.obj`; sus materiales permiten ver la misma paleta en herramientas externas y en el juego.
 
 Se pueden reconstruir, sin paquetes adicionales, con:
 
@@ -60,3 +60,52 @@ Pruebas de entrada y de carga de los modelos:
 ```powershell
 cargo test --locked
 ```
+
+## Modelado con Blender mediante MCP
+
+`blender_mcp/` permite que un cliente MCP controle Blender para crear modelos a
+partir de cubos, esferas, cilindros, conos y toros, inspeccionar la escena y
+exportar OBJ/MTL directamente a `assets/`. La comunicacion es local
+(`127.0.0.1:9876`) y Blender solo acepta el conjunto de comandos definido por el
+complemento; no expone ejecucion arbitraria de Python.
+
+1. Instala Blender 4.x y, en **Edit > Preferences > Add-ons > Install from
+   Disk**, selecciona `blender_mcp/addon.py`. Activa **Local MCP Bridge**.
+2. Crea un entorno virtual e instala el SDK oficial:
+
+   ```powershell
+   py -3.11 -m venv .venv
+   .\.venv\Scripts\python -m pip install -r blender_mcp\requirements.txt
+   ```
+
+3. Copia `blender_mcp/mcp-config.example.json` a la configuracion de tu cliente
+   MCP, sustituye las rutas de ejemplo por rutas absolutas y usa el Python del
+   entorno virtual como `command`.
+4. Reinicia el cliente MCP y comprueba la conexion con `blender_status`.
+
+Las herramientas disponibles permiten limpiar e inspeccionar la escena, crear
+una primitiva, transformar un objeto, construir hasta 500 piezas de una vez,
+guardar el `.blend` y exportar `.obj`. Por seguridad, las dos ultimas operaciones
+solo escriben dentro de `assets/`.
+
+Si se define `BLENDER_MCP_TOKEN`, debe tener el mismo valor tanto en el entorno
+que inicia Blender como en la entrada `env` del servidor MCP.
+
+Pruebas del puente (no requieren Blender):
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+### Interceptor azul de referencia
+
+El modelo `assets/vehicles/arwing/arwing2.obj` incluye materiales MTL para el
+juego y visores OBJ. Para obtener los materiales PBR completos en Blender
+(metal pintado, laca, cristal y emisión), ejecuta desde la raíz:
+
+```powershell
+blender --background --python scripts/setup_interceptor_blender.py
+```
+
+El script importa el OBJ, crea shaders Principled BSDF, aplica micro-bisel y
+suavizado, configura Eevee y guarda `assets/vehicles/arwing/arwing2.blend`.
