@@ -548,11 +548,13 @@ fn extract_model_group(model: &Model, group_name: &str) -> Result<Model, String>
                 index
             });
         }
-        faces.push(Face::new(
+        let mut extracted_face = Face::new(
             indices,
             face.material.clone(),
             face.group.clone(),
-        ));
+        );
+        extracted_face.smooth = face.smooth;
+        faces.push(extracted_face);
     }
 
     if faces.is_empty() {
@@ -574,6 +576,7 @@ fn stretch_model_group_height(model: &mut Model, group_name: &str, base: f32, fa
         }
     }
     model.recalculate_bounds();
+    model.recalculate_normals();
 }
 
 fn build_level_colliders(model: &Model) -> Vec<LevelCollider> {
@@ -925,6 +928,46 @@ fn procedural_surface_color(
             (245.0, 190.0, 28.0, pulse)
         }
         SurfaceShader::WhiteMark => (255.0, 250.0, 220.0, 1.15),
+        SurfaceShader::ArwingHull => (
+            238.0 + fresnel * 17.0,
+            243.0 + fresnel * 12.0,
+            248.0 + fresnel * 7.0,
+            0.88 + fresnel * 0.28,
+        ),
+        SurfaceShader::ArwingMetal => (
+            91.0 + fresnel * 70.0,
+            105.0 + fresnel * 74.0,
+            119.0 + fresnel * 80.0,
+            0.78 + fresnel * 0.42,
+        ),
+        SurfaceShader::ArwingBlue => (
+            30.0 + fresnel * 32.0,
+            78.0 + fresnel * 58.0,
+            190.0 + fresnel * 65.0,
+            0.84 + fresnel * 0.35,
+        ),
+        SurfaceShader::ArwingGlass => (
+            15.0 + fresnel * 52.0,
+            47.0 + fresnel * 86.0,
+            74.0 + fresnel * 115.0,
+            0.72 + fresnel * 0.58,
+        ),
+        SurfaceShader::ArwingDarkMetal => (
+            25.0 + fresnel * 48.0,
+            31.0 + fresnel * 53.0,
+            42.0 + fresnel * 60.0,
+            0.72 + fresnel * 0.44,
+        ),
+        SurfaceShader::ArwingEmission => {
+            let pulse = 0.96 + (time * 8.0 + point.x * 0.7).sin() * 0.04;
+            (40.0 * pulse, 225.0 * pulse, 242.0 * pulse, 1.0 / brightness.max(0.01))
+        }
+        SurfaceShader::ArwingYellow => (
+            250.0,
+            194.0 + fresnel * 38.0,
+            34.0 + fresnel * 28.0,
+            0.88 + fresnel * 0.28,
+        ),
         SurfaceShader::Flat => (220.0, 230.0, 238.0, 1.0),
     };
 
@@ -1405,6 +1448,10 @@ fn move_around_planet(
 
 enum TriangleStyle {
     Flat(u32),
+    Smooth {
+        color: [u8; 3],
+        brightness: [f32; 3],
+    },
     Procedural {
         shader: SurfaceShader,
         points: [Vec3; 3],
@@ -1477,6 +1524,26 @@ impl TriangleBatch {
                                 c,
                                 |_, _, _, _, _| *color,
                             ),
+                            TriangleStyle::Smooth { color, brightness } => {
+                                draw_triangle_shaded_region(
+                                    tile_pixels,
+                                    tile_depth,
+                                    width,
+                                    height,
+                                    region_y,
+                                    a,
+                                    b,
+                                    c,
+                                    |w0, w1, w2, _, _| {
+                                        pack(
+                                            *color,
+                                            brightness[0] * w0
+                                                + brightness[1] * w1
+                                                + brightness[2] * w2,
+                                        )
+                                    },
+                                )
+                            }
                             TriangleStyle::Procedural {
                                 shader,
                                 points,
@@ -1642,6 +1709,23 @@ fn queue_model_with_scratch<F>(
         camera_vertices.reserve(model.vertices.len());
         camera_vertices.extend(model.vertices.iter().map(transform_vertex));
     }
+    let camera_normals: Vec<Vec3> = if model.faces.iter().any(|face| face.smooth) {
+        model
+            .vertex_normals
+            .iter()
+            .map(|normal| {
+                let world_direction = transform(local_center.add(*normal)).sub(world_center);
+                Vec3::new(
+                    world_direction.dot(camera.right),
+                    world_direction.dot(camera.up),
+                    world_direction.dot(camera.forward),
+                )
+                .normalize()
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let focal = batch.viewport_height as f32 / tan_half_vertical * 0.5;
     let light = Vec3::new(-0.3, 0.8, -0.5).normalize();
     for face in &model.faces {
@@ -1698,6 +1782,17 @@ fn queue_model_with_scratch<F>(
                     time,
                     brightness,
                     fresnel,
+                },
+            });
+        } else if face.smooth {
+            let brightness = [i0, i1, i2].map(|index| {
+                0.34 + camera_normals[index].dot(light).abs() * 0.66
+            });
+            batch.commands.push(TriangleCommand {
+                vertices: [a, b, c],
+                style: TriangleStyle::Smooth {
+                    color: flat_color,
+                    brightness,
                 },
             });
         } else {
@@ -2546,7 +2641,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let arwing_path = "assets/vehicles/arwing/arwing2.obj";
-    let kirby_path = "assets/vehicles/kirby/kirby.obj";
+    let kirby_path = "assets/vehicles/kirby/kirby_detallado.obj";
     let astra_path = "assets/vehicles/astra/nave_astra.obj";
     let astra_car_path = "assets/vehicles/astra/astra_carro.obj";
     let cowboyb_path = "assets/vehicles/cowboy/nave_cowboyb.obj";
@@ -2554,7 +2649,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let astra_submarine_path = "assets/vehicles/astra/astra_submarino.obj";
     let cowboyb_submarine_path = "assets/vehicles/cowboy/cb_submarino.obj";
     let arwing_submarine_path = "assets/vehicles/arwing/arwing2_submarino.obj";
-    let kirby_submarine_path = "assets/vehicles/kirby/kirbysub.obj";
+    let kirby_submarine_path = "assets/vehicles/kirby/kirbysub_detallado.obj";
     let arwing_model =
         load_obj(arwing_path).map_err(|error| format!("Error al cargar {arwing_path}: {error}"))?;
     let kirby_model =
@@ -3666,14 +3761,35 @@ mod tests {
         assert!(submarine.faces.iter().any(|face| {
             face.group.contains("aro_helice") && face.material == "fin_blue"
         }));
+        for candidate in [&model, &submarine] {
+            for material in [
+                "hull_white",
+                "wing_metal",
+                "fin_blue",
+                "cockpit_blue",
+                "dark_metal",
+                "engine_cyan",
+                "warning_yellow",
+            ] {
+                assert!(
+                    candidate.faces.iter().any(|face| face.material == material),
+                    "missing Arwing material {material}"
+                );
+            }
+        }
     }
 
     #[test]
     fn detailed_kirby_asset_has_expected_scale_axes_and_palette() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let model = load_obj(root.join("assets/vehicles/kirby/kirby.obj")).unwrap();
-        assert!(model.vertices.len() > 10_000);
-        assert!(model.faces.len() > 19_000);
+        let model = load_obj(root.join("assets/vehicles/kirby/kirby_detallado.obj")).unwrap();
+        assert!(model.vertices.len() > 14_000);
+        assert!(model.faces.len() > 29_000);
+        assert!(model.faces.iter().any(|face| face.smooth));
+        assert!(model
+            .vertex_normals
+            .iter()
+            .any(|normal| normal.dot(*normal) > 0.9));
         let radius = model_radius(&model, model_center(&model)) * KIRBY_SPEC.model_scale;
         assert!((1.5..2.0).contains(&radius), "unexpected radius {radius}");
 
@@ -3695,6 +3811,60 @@ mod tests {
                 .contains("kirby_smooth_pink")
                 && face.color == MaterialColor::Fixed([255, 158, 198])
         }));
+        assert!(model.faces.iter().any(|face| face.group == "Kirby_Star_Emblem"));
+        assert!(model.faces.iter().any(|face| face.group == "Thruster_Guard_L"));
+
+        let submarine =
+            load_obj(root.join("assets/vehicles/kirby/kirbysub_detallado.obj")).unwrap();
+        assert!(submarine.vertices.len() > 10_000);
+        assert!(submarine.faces.len() > 21_000);
+        assert!(submarine.faces.iter().any(|face| face.smooth));
+        assert!(submarine
+            .faces
+            .iter()
+            .any(|face| face.group == "Submarine_Star_Emblem"));
+        assert!(submarine
+            .faces
+            .iter()
+            .any(|face| face.group == "Sub_Propeller_Guard_L"));
+
+        let emitter_offset = |candidate: &Model, group: &str, scale: f32| {
+            let mut points = candidate
+                .faces
+                .iter()
+                .filter(|face| face.group == group)
+                .flat_map(|face| face.indices)
+                .map(|index| candidate.vertices[index]);
+            let first = points.next().expect("missing emitter geometry");
+            let (mut min, mut max) = (first, first);
+            for point in points {
+                min.x = min.x.min(point.x);
+                min.y = min.y.min(point.y);
+                min.z = min.z.min(point.z);
+                max.x = max.x.max(point.x);
+                max.y = max.y.max(point.y);
+                max.z = max.z.max(point.z);
+            }
+            let relative = min.add(max).mul(0.5).sub(model_center(candidate));
+            (relative.y * scale, relative.x.abs() * scale, -relative.z * scale)
+        };
+        let assert_emitter = |actual: (f32, f32, f32), spec: &ShipSpec| {
+            assert!((actual.0 - spec.turbo_back).abs() < 0.002);
+            assert!((actual.1 - spec.turbo_side).abs() < 0.002);
+            assert!((actual.2 - spec.turbo_down).abs() < 0.002);
+        };
+        assert_emitter(
+            emitter_offset(&model, "Rear_Core_L", KIRBY_SPEC.model_scale),
+            &KIRBY_SPEC,
+        );
+        assert_emitter(
+            emitter_offset(
+                &submarine,
+                "Sub_Propeller_Core_L",
+                KIRBY_SUBMARINE_SPEC.model_scale,
+            ),
+            &KIRBY_SUBMARINE_SPEC,
+        );
     }
 
     #[test]

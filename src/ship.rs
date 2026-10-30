@@ -56,7 +56,6 @@ pub struct ShipSpec {
 }
 
 const DUAL_SIDES: &[f32] = &[-1.0, 1.0];
-const CENTER_SIDE: &[f32] = &[0.0];
 
 pub static ARWING_SPEC: ShipSpec = ShipSpec {
     name: "Arwing",
@@ -122,12 +121,12 @@ pub static KIRBY_SPEC: ShipSpec = ShipSpec {
     chase_distance: 12.0,
     chase_height: 4.0,
     chase_look_ahead: 8.0,
-    turbo_back: 1.45,
-    turbo_side: 0.0,
-    turbo_down: 0.2,
-    turbo_sides: CENTER_SIDE,
-    turbo_color: [255, 190, 18],
-    turbo_core_color: [255, 252, 180],
+    turbo_back: 1.2294,
+    turbo_side: 0.297,
+    turbo_down: 0.1973,
+    turbo_sides: DUAL_SIDES,
+    turbo_color: [40, 205, 255],
+    turbo_core_color: [220, 252, 255],
     laser_speed: 220.0,
     laser_lifetime: 3.0,
     max_charge_time: 1.4,
@@ -321,9 +320,10 @@ pub static KIRBY_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     name: "Kirby Submarino",
     model_scale: 0.22,
     model_axes: ModelAxes::Kirby,
-    turbo_back: 1.45,
-    turbo_side: 0.0,
-    turbo_sides: CENTER_SIDE,
+    turbo_back: 1.551,
+    turbo_side: 0.473,
+    turbo_down: 0.2005,
+    turbo_sides: DUAL_SIDES,
     muzzle_forward: 1.8,
     muzzle_side: 0.75,
     ..KIRBY_SPEC
