@@ -1,0 +1,50 @@
+# ASTRA detailed materials
+newmtl Casco_blanco
+Kd 0.88 0.92 0.96
+Ks 0.65 0.70 0.75
+Ns 140
+illum 2
+
+newmtl Azul_cobalto
+Kd 0.04 0.26 0.78
+Ks 0.30 0.48 0.90
+Ns 130
+illum 2
+
+newmtl Azul_profundo
+Kd 0.02 0.08 0.26
+Ks 0.20 0.30 0.55
+Ns 95
+illum 2
+
+newmtl Vidrio_oscuro
+Kd 0.03 0.16 0.24
+Ks 0.60 0.78 0.92
+Ns 190
+d 0.80
+Ni 1.45
+illum 9
+
+newmtl Luz_cian
+Kd 0.04 0.78 1.00
+Ke 0.02 0.55 0.90
+Ns 180
+illum 2
+
+newmtl Luz_roja
+Kd 1.00 0.04 0.06
+Ke 0.65 0.01 0.01
+Ns 150
+illum 2
+
+newmtl Titanio
+Kd 0.34 0.40 0.48
+Ks 0.62 0.68 0.75
+Ns 115
+illum 2
+
+newmtl Grafito
+Kd 0.035 0.045 0.065
+Ks 0.24 0.28 0.34
+Ns 75
+illum 2

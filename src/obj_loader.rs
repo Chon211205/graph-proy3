@@ -71,6 +71,9 @@ pub enum SurfaceShader {
     ArwingDarkMetal,
     ArwingEmission,
     ArwingYellow,
+    AstraCobalt,
+    AstraDeepBlue,
+    AstraRedEmission,
     Flat,
 }
 
@@ -184,7 +187,23 @@ impl Model {
 }
 
 fn classify_surface(name: &str) -> SurfaceShader {
-    if name == "hull_white" {
+    if name == "casco_blanco" {
+        SurfaceShader::ArwingHull
+    } else if name == "titanio" {
+        SurfaceShader::ArwingMetal
+    } else if name == "grafito" {
+        SurfaceShader::ArwingDarkMetal
+    } else if name == "azul_cobalto" {
+        SurfaceShader::AstraCobalt
+    } else if name == "azul_profundo" {
+        SurfaceShader::AstraDeepBlue
+    } else if name == "vidrio_oscuro" {
+        SurfaceShader::ArwingGlass
+    } else if name == "luz_cian" {
+        SurfaceShader::ArwingEmission
+    } else if name == "luz_roja" {
+        SurfaceShader::AstraRedEmission
+    } else if name == "hull_white" {
         SurfaceShader::ArwingHull
     } else if name == "wing_metal" {
         SurfaceShader::ArwingMetal
@@ -271,6 +290,28 @@ fn classify_color(name: &str) -> MaterialColor {
             "dark_metal" => [25, 31, 42],
             "engine_cyan" => [40, 225, 242],
             "warning_yellow" => [250, 194, 34],
+            _ => unreachable!(),
+        }
+    } else if matches!(
+        name,
+        "casco_blanco"
+            | "azul_cobalto"
+            | "azul_profundo"
+            | "vidrio_oscuro"
+            | "luz_cian"
+            | "luz_roja"
+            | "titanio"
+            | "grafito"
+    ) {
+        match name {
+            "casco_blanco" => [238, 244, 250],
+            "azul_cobalto" => [28, 92, 224],
+            "azul_profundo" => [14, 38, 105],
+            "vidrio_oscuro" => [22, 70, 94],
+            "luz_cian" => [40, 205, 255],
+            "luz_roja" => [255, 35, 42],
+            "titanio" => [104, 124, 148],
+            "grafito" => [28, 35, 48],
             _ => unreachable!(),
         }
     } else if name.contains("cyan_lights") {
@@ -571,6 +612,25 @@ mod tests {
                 MaterialColor::Fixed(color),
                 "unexpected color for {name}"
             );
+        }
+    }
+
+    #[test]
+    fn astra_materials_have_dedicated_colors_and_shaders() {
+        let cases = [
+            ("Casco_blanco", [238, 244, 250], SurfaceShader::ArwingHull),
+            ("Azul_cobalto", [28, 92, 224], SurfaceShader::AstraCobalt),
+            ("Azul_profundo", [14, 38, 105], SurfaceShader::AstraDeepBlue),
+            ("Vidrio_oscuro", [22, 70, 94], SurfaceShader::ArwingGlass),
+            ("Luz_cian", [40, 205, 255], SurfaceShader::ArwingEmission),
+            ("Luz_roja", [255, 35, 42], SurfaceShader::AstraRedEmission),
+            ("Titanio", [104, 124, 148], SurfaceShader::ArwingMetal),
+            ("Grafito", [28, 35, 48], SurfaceShader::ArwingDarkMetal),
+        ];
+        for (name, color, shader) in cases {
+            let face = Face::new([0, 1, 2], name, "astra");
+            assert_eq!(face.color, MaterialColor::Fixed(color));
+            assert_eq!(face.shader, shader);
         }
     }
 }

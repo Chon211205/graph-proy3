@@ -162,9 +162,9 @@ pub static ASTRA_SPEC: ShipSpec = ShipSpec {
     chase_distance: 12.0,
     chase_height: 4.0,
     chase_look_ahead: 8.0,
-    turbo_back: 1.18,
-    turbo_side: 0.72,
-    turbo_down: 0.05,
+    turbo_back: 1.2236,
+    turbo_side: 0.7199,
+    turbo_down: 0.1495,
     turbo_sides: DUAL_SIDES,
     turbo_color: [35, 145, 255],
     turbo_core_color: [120, 235, 255],
@@ -276,12 +276,24 @@ pub static BUZZ_SPEC: ShipSpec = ShipSpec {
     ..ASTRA_SPEC
 };
 
+pub static ASTRA_CAR_SPEC: ShipSpec = ShipSpec {
+    name: "ASTRA Carro",
+    turbo_back: 0.713,
+    turbo_side: 0.1656,
+    turbo_down: 0.1127,
+    muzzle_forward: 0.72,
+    muzzle_side: 0.17,
+    muzzle_down: 0.03,
+    ..ASTRA_SPEC
+};
+
 pub static ASTRA_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     name: "ASTRA Submarino",
     model_scale: 0.34,
     model_axes: ModelAxes::Astra,
-    turbo_back: 1.35,
-    turbo_side: 0.52,
+    turbo_back: 1.3617,
+    turbo_side: 0.5202,
+    turbo_down: 0.2431,
     muzzle_forward: 1.85,
     muzzle_side: 0.78,
     ..ASTRA_SPEC

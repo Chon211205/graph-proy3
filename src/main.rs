@@ -15,7 +15,7 @@ use framebuffer::Framebuffer;
 use minifb::{Key, ScaleMode, Window, WindowOptions};
 use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use ship::{
-    ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC,
+    ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_CAR_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC,
     COWBOYB_CAR_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC,
     MCQUEEN_CAR_SPEC, MCQUEEN_SPEC, MCQUEEN_SUBMARINE_SPEC, Projectile, Ship, ShipController,
     ShipInput, ShipSpec,
@@ -968,6 +968,27 @@ fn procedural_surface_color(
             34.0 + fresnel * 28.0,
             0.88 + fresnel * 0.28,
         ),
+        SurfaceShader::AstraCobalt => (
+            28.0 + fresnel * 34.0,
+            92.0 + fresnel * 58.0,
+            224.0 + fresnel * 31.0,
+            0.82 + fresnel * 0.36,
+        ),
+        SurfaceShader::AstraDeepBlue => (
+            14.0 + fresnel * 28.0,
+            38.0 + fresnel * 45.0,
+            105.0 + fresnel * 72.0,
+            0.76 + fresnel * 0.42,
+        ),
+        SurfaceShader::AstraRedEmission => {
+            let pulse = 0.96 + (time * 7.0 + point.z).sin() * 0.04;
+            (
+                255.0 * pulse,
+                35.0 * pulse,
+                42.0 * pulse,
+                1.0 / brightness.max(0.01),
+            )
+        }
         SurfaceShader::Flat => (220.0, 230.0, 238.0, 1.0),
     };
 
@@ -2642,11 +2663,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let arwing_path = "assets/vehicles/arwing/arwing2.obj";
     let kirby_path = "assets/vehicles/kirby/kirby_detallado.obj";
-    let astra_path = "assets/vehicles/astra/nave_astra.obj";
-    let astra_car_path = "assets/vehicles/astra/astra_carro.obj";
+    let astra_path = "assets/vehicles/astra/nave_astra_detallada.obj";
+    let astra_car_path = "assets/vehicles/astra/astra_carro_detallado.obj";
     let cowboyb_path = "assets/vehicles/cowboy/nave_cowboyb.obj";
     let cowboyb_car_path = "assets/vehicles/cowboy/cb_carro.obj";
-    let astra_submarine_path = "assets/vehicles/astra/astra_submarino.obj";
+    let astra_submarine_path = "assets/vehicles/astra/astra_submarino_detallado.obj";
     let cowboyb_submarine_path = "assets/vehicles/cowboy/cb_submarino.obj";
     let arwing_submarine_path = "assets/vehicles/arwing/arwing2_submarino.obj";
     let kirby_submarine_path = "assets/vehicles/kirby/kirbysub_detallado.obj";
@@ -2703,7 +2724,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         ],
         vec![
             (&astra_model, &ASTRA_SPEC, "MODO ESPACIAL"),
-            (&astra_car_model, &ASTRA_SPEC, "MODO CARRO"),
+            (&astra_car_model, &ASTRA_CAR_SPEC, "MODO CARRO"),
             (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC, "SUBMARINO"),
         ],
         vec![
@@ -3864,6 +3885,89 @@ mod tests {
                 KIRBY_SUBMARINE_SPEC.model_scale,
             ),
             &KIRBY_SUBMARINE_SPEC,
+        );
+    }
+
+    #[test]
+    fn detailed_astra_assets_have_geometry_materials_and_thrusters() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let ship = load_obj(root.join("assets/vehicles/astra/nave_astra_detallada.obj")).unwrap();
+        let car = load_obj(root.join("assets/vehicles/astra/astra_carro_detallado.obj")).unwrap();
+        let submarine =
+            load_obj(root.join("assets/vehicles/astra/astra_submarino_detallado.obj")).unwrap();
+
+        assert!(ship.vertices.len() > 2_300 && ship.faces.len() > 4_300);
+        assert!(car.vertices.len() > 2_700 && car.faces.len() > 5_100);
+        assert!(submarine.vertices.len() > 2_700 && submarine.faces.len() > 5_100);
+
+        for (name, model) in [("nave", &ship), ("carro", &car), ("submarino", &submarine)] {
+            assert!(model.faces.iter().any(|face| face.smooth), "{name}: missing smooth shading");
+            for material in [
+                "Casco_blanco",
+                "Azul_cobalto",
+                "Azul_profundo",
+                "Vidrio_oscuro",
+                "Luz_cian",
+                "Titanio",
+                "Grafito",
+            ] {
+                assert!(
+                    model.faces.iter().any(|face| face.material == material),
+                    "{name}: missing ASTRA material {material}"
+                );
+            }
+        }
+
+        for (model, groups) in [
+            (&ship, ["Astra_Engine_Core_L", "Astra_Wingtip_L"]),
+            (&car, ["Astra_Car_Core_L", "Astra_Rim_Front_L"]),
+            (&submarine, ["Astra_Sub_Core_L", "Astra_Sub_Guard_L"]),
+        ] {
+            for group in groups {
+                assert!(model.faces.iter().any(|face| face.group == group), "missing ASTRA group {group}");
+            }
+        }
+
+        let emitter_offset = |candidate: &Model, group: &str, scale: f32| {
+            let mut points = candidate
+                .faces
+                .iter()
+                .filter(|face| face.group == group)
+                .flat_map(|face| face.indices)
+                .map(|index| candidate.vertices[index]);
+            let first = points.next().expect("missing ASTRA emitter geometry");
+            let (mut min, mut max) = (first, first);
+            for point in points {
+                min.x = min.x.min(point.x);
+                min.y = min.y.min(point.y);
+                min.z = min.z.min(point.z);
+                max.x = max.x.max(point.x);
+                max.y = max.y.max(point.y);
+                max.z = max.z.max(point.z);
+            }
+            let relative = min.add(max).mul(0.5).sub(model_center(candidate));
+            (-relative.z * scale, relative.x.abs() * scale, -relative.y * scale)
+        };
+        let assert_emitter = |actual: (f32, f32, f32), spec: &ShipSpec| {
+            assert!((actual.0 - spec.turbo_back).abs() < 0.002);
+            assert!((actual.1 - spec.turbo_side).abs() < 0.002);
+            assert!((actual.2 - spec.turbo_down).abs() < 0.002);
+        };
+        assert_emitter(
+            emitter_offset(&ship, "Astra_Engine_Core_L", ASTRA_SPEC.model_scale),
+            &ASTRA_SPEC,
+        );
+        assert_emitter(
+            emitter_offset(&car, "Astra_Car_Core_L", ASTRA_CAR_SPEC.model_scale),
+            &ASTRA_CAR_SPEC,
+        );
+        assert_emitter(
+            emitter_offset(
+                &submarine,
+                "Astra_Sub_Core_L",
+                ASTRA_SUBMARINE_SPEC.model_scale,
+            ),
+            &ASTRA_SUBMARINE_SPEC,
         );
     }
 
