@@ -225,9 +225,9 @@ pub static MCQUEEN_SPEC: ShipSpec = ShipSpec {
     name: "Rayo McQueen",
     model_scale: 0.30,
     model_axes: ModelAxes::Astra,
-    turbo_back: 1.02,
+    turbo_back: 1.1655,
     turbo_side: 0.585,
-    turbo_down: 0.10,
+    turbo_down: 0.14775,
     turbo_color: [255, 116, 20],
     turbo_core_color: [255, 232, 135],
     muzzle_forward: 0.70,
@@ -240,9 +240,9 @@ pub static MCQUEEN_SPEC: ShipSpec = ShipSpec {
 
 pub static MCQUEEN_CAR_SPEC: ShipSpec = ShipSpec {
     model_scale: 0.38,
-    turbo_back: 1.36,
-    turbo_side: 0.34,
-    turbo_down: 0.32,
+    turbo_back: 1.54052,
+    turbo_side: 0.342,
+    turbo_down: 0.1957,
     muzzle_forward: 1.45,
     muzzle_side: 0.43,
     muzzle_down: 0.05,
@@ -251,9 +251,9 @@ pub static MCQUEEN_CAR_SPEC: ShipSpec = ShipSpec {
 
 pub static MCQUEEN_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     model_scale: 0.38,
-    turbo_back: 1.25,
-    turbo_side: 0.70,
-    turbo_down: 0.50,
+    turbo_back: 1.51768,
+    turbo_side: 0.779,
+    turbo_down: 0.38533,
     muzzle_forward: 1.10,
     muzzle_side: 0.36,
     muzzle_down: 0.55,

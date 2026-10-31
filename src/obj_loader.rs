@@ -82,6 +82,10 @@ pub enum SurfaceShader {
     BuzzPurpleMetal,
     BuzzRedMetal,
     BuzzEmission,
+    McQueenRedMetal,
+    McQueenYellowMetal,
+    McQueenWhiteMetal,
+    McQueenEmission,
     Flat,
 }
 
@@ -223,6 +227,20 @@ fn classify_surface(name: &str) -> SurfaceShader {
         SurfaceShader::ArwingDarkMetal
     } else if name == "cowboy_glass" {
         SurfaceShader::ArwingGlass
+    } else if name == "mcqueen_red" || name == "mcqueen_darkred" {
+        SurfaceShader::McQueenRedMetal
+    } else if name == "mcqueen_yellow" {
+        SurfaceShader::McQueenYellowMetal
+    } else if name == "mcqueen_white" {
+        SurfaceShader::McQueenWhiteMetal
+    } else if name == "mcqueen_emission" || name == "mcqueen_orange" {
+        SurfaceShader::McQueenEmission
+    } else if name == "mcqueen_glass" {
+        SurfaceShader::ArwingGlass
+    } else if name == "mcqueen_dark" {
+        SurfaceShader::ArwingDarkMetal
+    } else if name == "mcqueen_blue" {
+        SurfaceShader::AstraCobalt
     } else if name == "buzz_white" || name == "buzz_gold" {
         SurfaceShader::BuzzWhiteMetal
     } else if name == "buzz_green" || name == "buzz_blue" {
@@ -292,6 +310,7 @@ fn classify_color(name: &str) -> MaterialColor {
             "mcqueen_glass" => [73, 156, 211],
             "mcqueen_blue" => [32, 105, 220],
             "mcqueen_dark" => [26, 29, 38],
+            "mcqueen_emission" => [255, 82, 14],
             _ => [225, 26, 35],
         }
     } else if name.starts_with("buzz_") {

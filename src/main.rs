@@ -1044,6 +1044,33 @@ fn procedural_surface_color(
                 1.0 / brightness.max(0.01),
             )
         }
+        SurfaceShader::McQueenRedMetal => (
+            174.0 + fresnel * 78.0,
+            12.0 + fresnel * 38.0,
+            18.0 + fresnel * 42.0,
+            0.76 + fresnel * 0.68,
+        ),
+        SurfaceShader::McQueenYellowMetal => (
+            210.0 + fresnel * 44.0,
+            132.0 + fresnel * 74.0,
+            12.0 + fresnel * 46.0,
+            0.80 + fresnel * 0.58,
+        ),
+        SurfaceShader::McQueenWhiteMetal => (
+            202.0 + fresnel * 52.0,
+            208.0 + fresnel * 46.0,
+            216.0 + fresnel * 38.0,
+            0.84 + fresnel * 0.48,
+        ),
+        SurfaceShader::McQueenEmission => {
+            let pulse = 0.93 + (time * 9.0 + point.z * 1.4).sin() * 0.07;
+            (
+                255.0 * pulse,
+                82.0 * pulse,
+                14.0 * pulse,
+                1.0 / brightness.max(0.01),
+            )
+        }
         SurfaceShader::Flat => (220.0, 230.0, 238.0, 1.0),
     };
 
@@ -2756,9 +2783,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         load_obj("assets/vehicles/buzz/buzz_carro_detallado.obj")?,
         load_obj("assets/vehicles/buzz/buzz_submarino_detallado.obj")?,
     ];
-    let mcqueen_model = load_obj("assets/vehicles/mcqueen/mcqueen_nave.obj")?;
-    let mcqueen_car_model = load_obj("assets/vehicles/mcqueen/mcqueen_carro.obj")?;
-    let mcqueen_submarine_model = load_obj("assets/vehicles/mcqueen/mcqueen_submarino.obj")?;
+    let mcqueen_model = load_obj("assets/vehicles/mcqueen/mcqueen_nave_detallada.obj")?;
+    let mcqueen_car_model = load_obj("assets/vehicles/mcqueen/mcqueen_carro_detallado.obj")?;
+    let mcqueen_submarine_model =
+        load_obj("assets/vehicles/mcqueen/mcqueen_submarino_detallado.obj")?;
     let mcqueen_car_center = model_center(&mcqueen_car_model);
     let choices = [
         (&arwing_model, &ARWING_SPEC),
@@ -3270,7 +3298,8 @@ mod tests {
     #[test]
     fn mcqueen_submarine_has_aquatic_parts_and_renders_from_multiple_angles() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let model = load_obj(root.join("assets/vehicles/mcqueen/mcqueen_submarino.obj")).unwrap();
+        let model =
+            load_obj(root.join("assets/vehicles/mcqueen/mcqueen_submarino_detallado.obj")).unwrap();
         assert!(
             model
                 .vertices
@@ -3363,8 +3392,10 @@ mod tests {
     #[test]
     fn mcqueen_car_has_four_exposed_wheels_and_renders_from_multiple_angles() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let model = load_obj(root.join("assets/vehicles/mcqueen/mcqueen_carro.obj")).unwrap();
-        let spaceship = load_obj(root.join("assets/vehicles/mcqueen/mcqueen_nave.obj")).unwrap();
+        let model =
+            load_obj(root.join("assets/vehicles/mcqueen/mcqueen_carro_detallado.obj")).unwrap();
+        let spaceship =
+            load_obj(root.join("assets/vehicles/mcqueen/mcqueen_nave_detallada.obj")).unwrap();
         assert_ne!(model.faces.len(), spaceship.faces.len());
         assert!(
             model
@@ -3448,7 +3479,8 @@ mod tests {
     #[test]
     fn mcqueen_spaceship_loads_and_renders_from_multiple_angles() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let model = load_obj(root.join("assets/vehicles/mcqueen/mcqueen_nave.obj")).unwrap();
+        let model =
+            load_obj(root.join("assets/vehicles/mcqueen/mcqueen_nave_detallada.obj")).unwrap();
         assert!(
             model
                 .vertices
@@ -3518,6 +3550,80 @@ mod tests {
         }
         if let Ok(path) = std::env::var("MCQUEEN_PREVIEW") {
             frame.save_png(&path).unwrap();
+        }
+    }
+
+    #[test]
+    fn detailed_mcqueen_assets_have_metallic_materials_and_aligned_thrusters() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let variants = [
+            (
+                load_obj(root.join("assets/vehicles/mcqueen/mcqueen_nave_detallada.obj")).unwrap(),
+                "McQueen_Ship_Core_L",
+                "McQueen_Ship_Guard_L",
+                &MCQUEEN_SPEC,
+                (9_000, 15_400),
+            ),
+            (
+                load_obj(root.join("assets/vehicles/mcqueen/mcqueen_carro_detallado.obj")).unwrap(),
+                "McQueen_Car_Core_L",
+                "McQueen_Car_Rim_Front_L",
+                &MCQUEEN_CAR_SPEC,
+                (8_900, 15_200),
+            ),
+            (
+                load_obj(root.join("assets/vehicles/mcqueen/mcqueen_submarino_detallado.obj")).unwrap(),
+                "McQueen_Sub_Core_L",
+                "McQueen_Sub_Guard_L",
+                &MCQUEEN_SUBMARINE_SPEC,
+                (9_500, 16_300),
+            ),
+        ];
+
+        for (model, core_group, detail_group, spec, minimum) in variants {
+            assert!(model.vertices.len() > minimum.0 && model.faces.len() > minimum.1);
+            assert!(model.faces.iter().any(|face| face.smooth));
+            assert!(model.faces.iter().any(|face| face.group == detail_group));
+            assert!(model.faces.iter().any(|face| {
+                face.material == "mcqueen_red" && face.shader == SurfaceShader::McQueenRedMetal
+            }));
+            assert!(model.faces.iter().any(|face| {
+                face.material == "mcqueen_emission"
+                    && face.shader == SurfaceShader::McQueenEmission
+                    && face.color == MaterialColor::Fixed([255, 82, 14])
+            }));
+            assert!(model.faces.iter().any(|face| {
+                face.group.contains("Ojo") || face.group.contains("Iris")
+            }));
+            assert!(model.faces.iter().any(|face| {
+                face.group == "Pupila" && face.material == "mcqueen_dark"
+            }));
+            for glass_group in ["Cabina_azul", "Parabrisas", "Cupula"] {
+                assert!(!model.faces.iter().any(|face| {
+                    face.group == glass_group && face.material == "mcqueen_glass"
+                }));
+            }
+
+            let mut points = model
+                .faces
+                .iter()
+                .filter(|face| face.group == core_group)
+                .flat_map(|face| face.indices)
+                .map(|index| model.vertices[index]);
+            let first = points.next().expect("missing McQueen emitter geometry");
+            let (mut min, mut max) = (first, first);
+            for point in points {
+                min.x = min.x.min(point.x);
+                min.y = min.y.min(point.y);
+                min.z = min.z.min(point.z);
+                max.x = max.x.max(point.x);
+                max.y = max.y.max(point.y);
+                max.z = max.z.max(point.z);
+            }
+            let core = min.add(max).mul(0.5).sub(model_center(&model));
+            assert!((-core.z * spec.model_scale - spec.turbo_back).abs() < 0.002);
+            assert!((core.x.abs() * spec.model_scale - spec.turbo_side).abs() < 0.002);
+            assert!((-core.y * spec.model_scale - spec.turbo_down).abs() < 0.002);
         }
     }
 
