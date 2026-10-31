@@ -3588,6 +3588,23 @@ mod tests {
     }
 
     #[test]
+    fn approaching_spiky_planet_cannot_cross_its_surface() {
+        let center = Vec3::default();
+        let mut ship = Ship::new(&ASTRA_SPEC);
+        ship.position = Vec3::new(100.0, 0.0, 0.0);
+        ship.yaw = 0.0;
+        move_around_planet(&mut ship, 80.0, center, SPIKY_PLANET_RADIUS, 0.0, &[], 0, 0);
+        let offset = ship.position.sub(center);
+        let distance = offset.dot(offset).sqrt();
+        let safe_radius = SPIKY_PLANET_RADIUS + ship.spec.collision_radius + COLLISION_MARGIN;
+        assert!(ship.planet_locked);
+        assert!(
+            distance >= safe_radius - 0.001,
+            "ship reached radius {distance}"
+        );
+    }
+
+    #[test]
     fn mcqueen_submarine_has_aquatic_parts_and_renders_from_multiple_angles() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let model =
