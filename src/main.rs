@@ -43,9 +43,9 @@ const COLLISION_MARGIN: f32 = 4.0;
 const AVOIDANCE_DISTANCE: f32 = 52.0;
 const ORBIT_LIMIT_RADIUS: f32 = 60.0;
 const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
-const WATER_LEVEL_LENGTH: f32 = 175.0;
-const WATER_LEVEL_HALF_WIDTH: f32 = 7.6;
-const WATER_LEVEL_SOFT_BORDER: f32 = 6.2;
+const WATER_LEVEL_LENGTH: f32 = 525.0;
+const WATER_LEVEL_HALF_WIDTH: f32 = 10.0;
+const WATER_LEVEL_SOFT_BORDER: f32 = 8.4;
 const WATER_LEVEL_BORDER_STRENGTH: f32 = 26.0;
 const WATER_LEVEL_MIN_HEIGHT: f32 = 2.4;
 const WATER_LEVEL_MAX_HEIGHT: f32 = 11.5;
@@ -441,10 +441,10 @@ impl BubbleEmitter {
 
 impl WaterLevelState {
     fn new() -> Self {
-        let enemies = (0..12)
+        let enemies = (0..30)
             .map(|index| WaterEnemy {
                 kind: index % 3,
-                progress: 18.0 + index as f32 * 13.0,
+                progress: 18.0 + index as f32 * 16.0,
                 lateral: [-3.5, 2.6, -1.0, 3.4, 0.7, -2.9][index % 6],
                 height: [3.0, 5.5, 8.5, 4.0, 10.0, 7.0][index % 6],
                 phase: index as f32 * 1.37,
@@ -540,7 +540,11 @@ fn extract_model_group(model: &Model, group_name: &str) -> Result<Model, String>
     let mut vertices = Vec::new();
     let mut faces = Vec::new();
 
-    for face in model.faces.iter().filter(|face| face.group == group_name) {
+    for face in model
+        .faces
+        .iter()
+        .filter(|face| face.group.starts_with(group_name))
+    {
         let mut indices = [0_usize; 3];
         for (target, source) in indices.iter_mut().zip(face.indices) {
             *target = *index_map.entry(source).or_insert_with(|| {
@@ -566,7 +570,11 @@ fn extract_model_group(model: &Model, group_name: &str) -> Result<Model, String>
 
 fn stretch_model_group_height(model: &mut Model, group_name: &str, base: f32, factor: f32) {
     let mut affected = vec![false; model.vertices.len()];
-    for face in model.faces.iter().filter(|face| face.group == group_name) {
+    for face in model
+        .faces
+        .iter()
+        .filter(|face| face.group.starts_with(group_name))
+    {
         for index in face.indices {
             affected[index] = true;
         }
@@ -3017,13 +3025,13 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let spiky_planet_path = "assets/planets/planeta_espinas.obj";
     let spiky_planet = load_obj(spiky_planet_path)
         .map_err(|error| format!("Error al cargar {spiky_planet_path}: {error}"))?;
-    let water_level_path = "assets/levels/waterlevel.obj";
+    let water_level_path = "assets/levels/waterlevel_extendido.obj";
     let mut water_level = load_obj(water_level_path)
         .map_err(|error| format!("Error al cargar {water_level_path}: {error}"))?;
     water_level
         .faces
-        .retain(|face| face.group != "CAVES_AND_ARCHES");
-    stretch_model_group_height(&mut water_level, "TERRAIN_WALLS", -5.0, 2.4);
+        .retain(|face| !face.group.starts_with("CAVES_AND_ARCHES"));
+    stretch_model_group_height(&mut water_level, "TERRAIN_WALLS", -5.0, 3.6);
     let enemy_path = "assets/enemies/acuaticenemies.obj";
     let enemy_source =
         load_obj(enemy_path).map_err(|error| format!("Error al cargar {enemy_path}: {error}"))?;
@@ -4000,6 +4008,71 @@ mod tests {
         );
         assert_eq!(spatial.visible_chunks(5.0).count(), 1);
         assert_eq!(spatial.visible_chunks(300.0).count(), 1);
+    }
+
+    #[test]
+    fn extended_water_level_is_long_chunked_and_has_collision_gates() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut level =
+            load_obj(root.join("assets/levels/waterlevel_extendido.obj")).unwrap();
+        assert!(level.vertices.len() > 35_000);
+        assert!(level.faces.len() > 50_000);
+        let min_x = level
+            .vertices
+            .iter()
+            .map(|vertex| vertex.x)
+            .fold(f32::INFINITY, f32::min);
+        let max_x = level
+            .vertices
+            .iter()
+            .map(|vertex| vertex.x)
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(max_x - min_x >= 540.0);
+        let min_y = level
+            .vertices
+            .iter()
+            .map(|vertex| vertex.y)
+            .fold(f32::INFINITY, f32::min);
+        let max_y = level
+            .vertices
+            .iter()
+            .map(|vertex| vertex.y)
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(max_y - min_y >= 34.0);
+        assert!(!level.faces.iter().any(|face| {
+            face.group.starts_with("CAVES_AND_ARCHES")
+                || face.group.starts_with("obstacle_arch_top")
+        }));
+        for sector in 1..=3 {
+            assert!(level.faces.iter().any(|face| {
+                face.group == format!("TERRAIN_MAIN_SECTOR_{sector}")
+            }));
+        }
+        assert!(level.faces.iter().any(|face| {
+            face.group.starts_with("LONG_LEVEL_CRYSTAL_")
+                && face.material == "Crystal_Cyan"
+        }));
+
+        stretch_model_group_height(&mut level, "TERRAIN_WALLS", -5.0, 3.6);
+        let wall_top = level
+            .faces
+            .iter()
+            .filter(|face| face.group.starts_with("TERRAIN_WALLS"))
+            .flat_map(|face| face.indices)
+            .map(|index| level.vertices[index].z)
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(wall_top > 13.0);
+
+        let colliders = build_level_colliders(&level);
+        assert!(colliders.len() >= 7);
+        let spatial = LevelSpatialIndex::new(&level, colliders);
+        assert!(spatial.render_chunks.len() >= 17);
+        assert!(!spatial.nearby_colliders(70.0).is_empty());
+        assert!(!spatial.nearby_colliders(510.0).is_empty());
+
+        let state = WaterLevelState::new();
+        assert_eq!(state.enemies.len(), 30);
+        assert!(state.enemies.last().unwrap().progress < WATER_LEVEL_LENGTH);
     }
 
     #[test]
