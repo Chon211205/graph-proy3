@@ -1282,6 +1282,66 @@ fn make_sphere(radius: f32, stacks: usize, slices: usize, sun: bool) -> Model {
     Model::new(vertices, faces)
 }
 
+fn make_wormhole_sphere(radius: f32, stacks: usize, slices: usize) -> Model {
+    let mut model = make_sphere(radius, stacks, slices, false);
+    for face in &mut model.faces {
+        face.shader = SurfaceShader::Flat;
+        face.color = MaterialColor::Fixed([2, 1, 7]);
+    }
+    model
+}
+
+fn make_wormhole_ring(major_radius: f32, tube_radius: f32) -> Model {
+    let major_segments = 48;
+    let tube_segments = 8;
+    let mut vertices = Vec::with_capacity((major_segments + 1) * (tube_segments + 1));
+    for major in 0..=major_segments {
+        let u = TAU * major as f32 / major_segments as f32;
+        let (sin_u, cos_u) = u.sin_cos();
+        for tube in 0..=tube_segments {
+            let v = TAU * tube as f32 / tube_segments as f32;
+            let (sin_v, cos_v) = v.sin_cos();
+            let ring = major_radius + tube_radius * cos_v;
+            vertices.push(Vec3::new(ring * cos_u, ring * sin_u, tube_radius * sin_v));
+        }
+    }
+
+    let mut faces = Vec::with_capacity(major_segments * tube_segments * 2);
+    for major in 0..major_segments {
+        for tube in 0..tube_segments {
+            let a = major * (tube_segments + 1) + tube;
+            let b = a + tube_segments + 1;
+            let c = a + 1;
+            let d = b + 1;
+            let color = if major % 3 == 0 {
+                [102, 63, 255]
+            } else {
+                [48, 204, 255]
+            };
+            for indices in [[a, b, c], [c, b, d]] {
+                let mut face = Face::new(indices, "wormhole_glow", "wormhole_ring");
+                face.shader = SurfaceShader::Flat;
+                face.color = MaterialColor::Fixed(color);
+                faces.push(face);
+            }
+        }
+    }
+    Model::new(vertices, faces)
+}
+
+fn wormhole_position() -> Vec3 {
+    Vec3::new(150.0, 42.0, 0.0)
+}
+
+fn rotate_x_axis(point: Vec3, angle: f32) -> Vec3 {
+    let (sin, cos) = angle.sin_cos();
+    Vec3::new(
+        point.x,
+        point.y * cos - point.z * sin,
+        point.y * sin + point.z * cos,
+    )
+}
+
 fn make_turbo_plume(segments: usize) -> Model {
     let mut vertices = vec![Vec3::new(-1.0, 0.0, 0.0)];
     for segment in 0..segments {
@@ -2148,6 +2208,9 @@ fn render_scene(
     spiky_planet_center: Vec3,
     spiky_planet_scale: f32,
     sun: &Model,
+    wormhole: &Model,
+    wormhole_ring: &Model,
+    wormhole_center: Vec3,
     framebuffer: &mut Framebuffer,
     batch: &mut TriangleBatch,
     ship: &Ship,
@@ -2213,6 +2276,23 @@ fn render_scene(
             )
             .add(spiky_position)
         },
+        None,
+        None,
+    );
+
+    queue_model(
+        wormhole_ring,
+        batch,
+        &camera,
+        |vertex| rotate_x_axis(vertex, 0.52).add(wormhole_center),
+        None,
+        None,
+    );
+    queue_model(
+        wormhole,
+        batch,
+        &camera,
+        |vertex| vertex.add(wormhole_center),
         None,
         None,
     );
@@ -3121,6 +3201,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let planet_surface_radius = material_radius(&planet, planet_center, "Oceano") * planet_scale;
     let object_colliders = build_object_colliders(&planet, planet_center, planet_scale);
     let sun = make_sphere(55.0, 18, 28, true);
+    let wormhole = make_wormhole_sphere(22.0, 18, 28);
+    let wormhole_ring = make_wormhole_ring(30.0, 3.2);
     let turbo_plume = make_turbo_plume(12);
     let laser_bolt = make_laser_bolt();
     let bubble_model = make_bubble_model();
@@ -3437,6 +3519,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     spiky_planet_center,
                     spiky_planet_scale,
                     &sun,
+                    &wormhole,
+                    &wormhole_ring,
+                    wormhole_position(),
                     &mut scene_framebuffer,
                     &mut triangle_batch,
                     &ship_controller.ship,
