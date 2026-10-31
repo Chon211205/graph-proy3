@@ -1499,6 +1499,22 @@ fn place_ship_near_spiky_planet(controller: &mut ShipController, world_time: f32
     ship.orbit_camera_blend = 1.0;
 }
 
+fn launch_ship_after_guardian_victory(controller: &mut ShipController, world_time: f32) {
+    controller.reset();
+    let center = spiky_planet_position(world_time);
+    let radial = Vec3::new(1.0, 0.22, 0.0).normalize();
+    let ship = &mut controller.ship;
+    ship.position = center.add(radial.mul(SPIKY_PLANET_RADIUS + ORBIT_LIMIT_RADIUS + 20.0));
+    (ship.yaw, ship.pitch) = direction_to_angles(radial);
+    ship.speed = ship.spec.cruise_speed;
+    ship.planet_locked = false;
+    ship.spiky_planet_locked = false;
+    ship.orbit_center = None;
+    ship.orbit_plane_normal = None;
+    ship.orbit_camera_blend = 0.0;
+    ship.orbit_release_active = false;
+}
+
 fn direction_to_angles(direction: Vec3) -> (f32, f32) {
     let direction = direction.normalize();
     let pitch = direction.y.clamp(-1.0, 1.0).asin();
@@ -3488,18 +3504,23 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     confirm: crate::input::pressed(Key::Enter),
                     exit: crate::input::pressed(Key::Backspace),
                 };
-                if guardian_fight.update(
+                let action = guardian_fight.update(
                     delta_time,
                     input,
                     scene_framebuffer.width,
                     scene_framebuffer.height,
-                ) == GuardianAction::Exit
-                {
+                );
+                if action == GuardianAction::Exit {
                     game_mode = GameMode::FreeWorld;
-                    place_ship_near_spiky_planet(&mut ship_controller, world_time);
-                    window.set_title(
-                        "Planeta rosado | Enter: Guardián del Núcleo | Backspace: salir",
-                    );
+                    if guardian_fight.is_victory() {
+                        launch_ship_after_guardian_victory(&mut ship_controller, world_time);
+                        window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
+                    } else {
+                        place_ship_near_spiky_planet(&mut ship_controller, world_time);
+                        window.set_title(
+                            "Planeta rosado | Enter: Guardián del Núcleo | Backspace: salir",
+                        );
+                    }
                 }
                 guardian_fight.render_scene(
                     &mut scene_framebuffer,
@@ -3516,7 +3537,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             guardian_fight.draw_hud(&mut framebuffer);
             draw_selection_label(&mut framebuffer, "GUARDIAN DEL NUCLEO", 600, 8, 2, 0xffe2ed);
             let message = if guardian_fight.is_victory() {
-                "VICTORIA! ENTER PARA VOLVER"
+                "JEFE DESTRUIDO - SALIENDO AL ESPACIO"
             } else if guardian_fight.is_defeat() {
                 "DERROTA  R: REINTENTAR  BACKSPACE: SALIR"
             } else if guardian_fight.is_exposed() {
