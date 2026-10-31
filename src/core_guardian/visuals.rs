@@ -20,19 +20,21 @@ impl CoreGuardian {
                 0x8c4b3a
             },
         );
-        let plates = [(0.0, -0.075), (-0.072, 0.045), (0.072, 0.045)];
-        for (index, (offset_x, offset_y)) in plates.into_iter().enumerate() {
+        let plate_angles = [
+            -std::f32::consts::FRAC_PI_2,
+            std::f32::consts::FRAC_PI_6,
+            5.0 * std::f32::consts::FRAC_PI_6,
+        ];
+        for (index, angle) in plate_angles.into_iter().enumerate() {
             let opening = self.opening_amount(index);
-            circle(
+            let warning = self.phase == Phase::Warning && index == self.open_plate;
+            draw_shell_plate(
                 framebuffer,
-                boss_x + offset_x * width * (1.0 + opening),
-                boss_y + offset_y * height - opening * height * 0.07,
-                height * 0.052,
-                if self.phase == Phase::Warning && index == self.open_plate {
-                    0xf19a75
-                } else {
-                    0xce6a75
-                },
+                (boss_x, boss_y),
+                height * 0.125,
+                angle,
+                opening * if index == 0 { -1.0 } else { 1.0 },
+                if warning { 0xf19a75 } else { 0xce6a75 },
             );
         }
         for shot in self.player_shots.iter().filter(|shot| shot.alive) {
@@ -79,6 +81,43 @@ impl CoreGuardian {
             );
         }
     }
+}
+
+fn draw_shell_plate(
+    framebuffer: &mut Framebuffer,
+    center: (f32, f32),
+    radius: f32,
+    angle: f32,
+    opening: f32,
+    color: u32,
+) {
+    let half_angle = std::f32::consts::FRAC_PI_3;
+    let (sin, cos) = angle.sin_cos();
+    let pivot = (center.0 + cos * radius, center.1 + sin * radius);
+    let rotation = opening * 0.92;
+    let (rotation_sin, rotation_cos) = rotation.sin_cos();
+    let mut panel = [center; 8];
+    for index in 0..=6 {
+        let spoke = angle - half_angle + (2.0 * half_angle * index as f32 / 6.0);
+        panel[index + 1] = (
+            center.0 + spoke.cos() * radius,
+            center.1 + spoke.sin() * radius,
+        );
+    }
+    let transformed = panel.map(|point| {
+        let x = point.0 - pivot.0;
+        let y = point.1 - pivot.1;
+        (
+            pivot.0 + x * rotation_cos - y * rotation_sin,
+            pivot.1 + x * rotation_sin + y * rotation_cos,
+        )
+    });
+    polygon(framebuffer, &transformed, color);
+
+    let highlight = transformed[2];
+    let edge = transformed[3];
+    line(framebuffer, highlight, edge, 3.0, 0xf4a2a0);
+    circle(framebuffer, pivot.0, pivot.1, radius * 0.07, 0x833953);
 }
 
 fn draw_cavern(framebuffer: &mut Framebuffer, elapsed: f32) {
