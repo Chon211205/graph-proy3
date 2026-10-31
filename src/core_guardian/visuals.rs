@@ -11,6 +11,7 @@ static GUARDIAN_CORE_EXPOSED: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_CORE_HIT: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_SHELL: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_SHELL_WARNING: OnceLock<Model> = OnceLock::new();
+static GUARDIAN_TUNNEL: OnceLock<Model> = OnceLock::new();
 
 impl CoreGuardian {
     pub fn render_scene(
@@ -331,68 +332,18 @@ fn draw_cavern(framebuffer: &mut Framebuffer, elapsed: f32) {
     if framebuffer.width == 0 || framebuffer.height == 0 {
         return;
     }
-    for y in 0..framebuffer.height {
-        let depth = y as f32 / framebuffer.height.max(1) as f32;
-        let pulse = (elapsed * 0.8 + depth * 4.0).sin() * 3.0;
-        let red = (35.0 + depth * 55.0 + pulse) as u32;
-        let green = (9.0 + depth * 15.0 + pulse * 0.3) as u32;
-        let blue = (31.0 + depth * 22.0) as u32;
-        let color = (red << 16) | (green << 8) | blue;
-        let row = y * framebuffer.width;
-        framebuffer.pixels[row..row + framebuffer.width].fill(color);
-    }
-
-    // Deep rock silhouettes frame a clear central lane for the battle.
-    let horizon = height * 0.38;
-    polygon(
-        framebuffer,
-        &[
-            (0.0, 0.0),
-            (width * 0.28, 0.0),
-            (width * 0.20, horizon * 0.72),
-            (width * 0.34, horizon),
-            (width * 0.18, horizon * 1.18),
-            (width * 0.25, height * 0.68),
-            (width * 0.14, height),
-            (0.0, height),
-        ],
-        0x51213f,
-    );
-    polygon(
-        framebuffer,
-        &[
-            (width, 0.0),
-            (width * 0.72, 0.0),
-            (width * 0.80, horizon * 0.72),
-            (width * 0.66, horizon),
-            (width * 0.82, horizon * 1.18),
-            (width * 0.75, height * 0.68),
-            (width * 0.86, height),
-            (width, height),
-        ],
-        0x49203d,
-    );
-
-    // Repeating ledges imply forward movement without a sky or a star field.
-    let travel = (elapsed * 34.0) % (height * 0.22);
-    for index in 0..4 {
-        let y = horizon + index as f32 * height * 0.16 + travel;
-        if y > height * 0.95 {
-            continue;
-        }
-        line(
+    framebuffer.pixels.fill(0x170917);
+    let tunnel = GUARDIAN_TUNNEL.get_or_init(cavern_tunnel_model);
+    let camera = scene_camera();
+    let scroll = (elapsed * 3.2) % 80.0;
+    for offset in [-scroll, 80.0 - scroll] {
+        render_model(
+            tunnel,
             framebuffer,
-            (width * 0.08, y),
-            (width * 0.37, y - height * 0.035),
-            5.0,
-            0x8b365a,
-        );
-        line(
-            framebuffer,
-            (width * 0.63, y - height * 0.035),
-            (width * 0.92, y),
-            5.0,
-            0x783052,
+            &camera,
+            |vertex| vertex.add(Vec3::new(0.0, 0.0, offset)),
+            None,
+            None,
         );
     }
 
@@ -418,6 +369,47 @@ fn draw_cavern(framebuffer: &mut Framebuffer, elapsed: f32) {
         elapsed + 3.1,
     );
     draw_cave_spines(framebuffer, elapsed);
+}
+
+fn cavern_tunnel_model() -> Model {
+    let rings = 16;
+    let sectors = 32;
+    let length = 80.0;
+    let mut vertices = Vec::with_capacity((rings + 1) * (sectors + 1));
+    for ring in 0..=rings {
+        let t = ring as f32 / rings as f32;
+        let wave = (t * std::f32::consts::TAU).sin();
+        let radius_x = 17.0 + wave * 1.2;
+        let radius_y = 13.0 + wave * 0.8;
+        let center_x = wave * 0.45;
+        let center_y = (t * std::f32::consts::TAU).cos() * 0.35;
+        for sector in 0..=sectors {
+            let angle = std::f32::consts::TAU * sector as f32 / sectors as f32;
+            let roughness = 1.0 + (angle * 5.0 + t * 8.0).sin() * 0.06;
+            vertices.push(Vec3::new(
+                center_x + radius_x * roughness * angle.cos(),
+                center_y + radius_y * roughness * angle.sin(),
+                t * length,
+            ));
+        }
+    }
+    let palette = [[53, 20, 48], [72, 25, 53], [91, 30, 59], [112, 39, 67]];
+    let mut faces = Vec::with_capacity(rings * sectors * 2);
+    for ring in 0..rings {
+        for sector in 0..sectors {
+            let a = ring * (sectors + 1) + sector;
+            let b = a + sectors + 1;
+            let c = a + 1;
+            let d = b + 1;
+            let color_index = ((sector / 3 + ring / 2) % palette.len()) as usize;
+            for indices in [[a, b, c], [b, d, c]] {
+                let mut face = Face::new(indices, "guardian_rock", "cavern_wall");
+                face.color = MaterialColor::Fixed(palette[color_index]);
+                faces.push(face);
+            }
+        }
+    }
+    Model::new(vertices, faces)
 }
 
 fn draw_crystal_cluster(framebuffer: &mut Framebuffer, x: f32, y: f32, size: f32, time: f32) {
