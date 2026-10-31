@@ -847,16 +847,22 @@ fn procedural_surface_color(
             let direction = point.normalize();
             let wave_a = (direction.x * 19.0 + direction.z * 7.0 + time * 1.8).sin();
             let wave_b = (direction.z * 25.0 - direction.y * 9.0 - time * 1.35).sin();
-            let wave = (wave_a + wave_b) * 0.5;
+            let current = (direction.x.atan2(direction.z) * 7.0
+                + direction.y * 16.0
+                + time * 0.55)
+                .sin();
+            let fine_wave = (direction.x * 52.0 - direction.z * 47.0 + time * 2.7).sin();
+            let wave = wave_a * 0.34 + wave_b * 0.28 + current * 0.24 + fine_wave * 0.14;
+            let foam = (wave * 0.5 + current * 0.5 - 0.58).max(0.0).powf(2.0) * 2.8;
             let sparkle = (x as f32 * 0.07 + y as f32 * 0.04 + time * 3.2)
                 .sin()
                 .max(0.0)
                 .powf(18.0);
             (
-                5.0 + fresnel * 32.0 + sparkle * 115.0,
-                72.0 + wave * 18.0 + fresnel * 80.0 + sparkle * 95.0,
-                142.0 + wave * 22.0 + fresnel * 105.0 + sparkle * 70.0,
-                0.88 + wave * 0.12,
+                3.0 + wave * 4.0 + fresnel * 38.0 + sparkle * 120.0 + foam * 74.0,
+                58.0 + wave * 22.0 + fresnel * 92.0 + sparkle * 102.0 + foam * 92.0,
+                132.0 + wave * 32.0 + fresnel * 118.0 + sparkle * 76.0 + foam * 80.0,
+                0.82 + wave * 0.12 + fresnel * 0.16,
             )
         }
         SurfaceShader::Waterfall => {
@@ -1080,6 +1086,49 @@ fn procedural_surface_color(
         | (blue * scale).clamp(0.0, 255.0) as u32
 }
 
+fn refract_water_color(
+    surface: u32,
+    background: &[u32],
+    width: usize,
+    height: usize,
+    x: i32,
+    y: i32,
+    point: Vec3,
+    time: f32,
+    fresnel: f32,
+) -> u32 {
+    let distortion_strength = (1.0 - fresnel).clamp(0.12, 1.0) * 5.5;
+    let offset_x = ((point.y * 23.0 + point.z * 17.0 + time * 1.9).sin()
+        + (point.x * 41.0 - time * 2.4).sin() * 0.45)
+        * distortion_strength;
+    let offset_y = ((point.x * 19.0 - point.z * 29.0 - time * 1.5).cos()
+        + (point.y * 37.0 + time * 2.1).sin() * 0.38)
+        * distortion_strength
+        * 0.65;
+    let sample_x = (x as f32 + offset_x).round().clamp(0.0, width.saturating_sub(1) as f32)
+        as usize;
+    let sample_y = (y as f32 + offset_y)
+        .round()
+        .clamp(0.0, height.saturating_sub(1) as f32) as usize;
+    let refracted = background[sample_y * width + sample_x];
+
+    let surface_r = ((surface >> 16) & 0xff) as f32;
+    let surface_g = ((surface >> 8) & 0xff) as f32;
+    let surface_b = (surface & 0xff) as f32;
+    let refracted_r = ((refracted >> 16) & 0xff) as f32;
+    let refracted_g = ((refracted >> 8) & 0xff) as f32;
+    let refracted_b = (refracted & 0xff) as f32;
+    let transmission = (0.66 * (1.0 - fresnel) + 0.10).clamp(0.18, 0.72);
+    let reflection = 1.0 - transmission;
+    let depth_tint = 0.82 + fresnel * 0.18;
+    let red = (refracted_r * transmission * 0.38 + surface_r * reflection).min(255.0);
+    let green =
+        (refracted_g * transmission * 0.72 + surface_g * reflection + 8.0).min(255.0);
+    let blue = (refracted_b * transmission * depth_tint + surface_b * reflection + 18.0)
+        .min(255.0);
+    ((red as u32) << 16) | ((green as u32) << 8) | blue as u32
+}
+
 fn hash(mut value: u32) -> u32 {
     value ^= value >> 16;
     value = value.wrapping_mul(0x7feb_352d);
@@ -1129,6 +1178,64 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32) {
                     framebuffer.pixels[py as usize * framebuffer.width + px as usize] = color;
                 }
             }
+        }
+    }
+}
+
+fn draw_water_planet_atmosphere(
+    framebuffer: &mut Framebuffer,
+    camera: &Camera,
+    planet_position: Vec3,
+    planet_radius: f32,
+    time: f32,
+) {
+    let relative = planet_position.sub(camera.position);
+    let camera_x = relative.dot(camera.right);
+    let camera_y = relative.dot(camera.up);
+    let camera_z = relative.dot(camera.forward);
+    if camera_z <= NEAR_PLANE {
+        return;
+    }
+
+    let focal = framebuffer.height as f32 / (VERTICAL_FOV * 0.5).tan() * 0.5;
+    let center_x = framebuffer.width as f32 * 0.5 + camera_x * focal / camera_z;
+    let center_y = framebuffer.height as f32 * 0.5 - camera_y * focal / camera_z;
+    let radius = (planet_radius * focal / camera_z).max(1.0);
+    let inner = radius * 0.94;
+    let outer = radius * 1.32;
+    let min_x = (center_x - outer).floor().max(0.0) as usize;
+    let max_x = (center_x + outer)
+        .ceil()
+        .min((framebuffer.width.saturating_sub(1)) as f32) as usize;
+    let min_y = (center_y - outer).floor().max(0.0) as usize;
+    let max_y = (center_y + outer)
+        .ceil()
+        .min((framebuffer.height.saturating_sub(1)) as f32) as usize;
+    if min_x > max_x || min_y > max_y {
+        return;
+    }
+
+    let pulse = 0.92 + (time * 0.8).sin() * 0.08;
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            let dx = x as f32 + 0.5 - center_x;
+            let dy = y as f32 + 0.5 - center_y;
+            let distance = (dx * dx + dy * dy).sqrt();
+            if distance < inner || distance > outer {
+                continue;
+            }
+            let edge = ((outer - distance) / (outer - inner)).clamp(0.0, 1.0);
+            let rim = (1.0 - ((distance - radius) / (outer - radius)).abs()).clamp(0.0, 1.0);
+            let strength = (edge * edge * 0.34 + rim.powf(3.0) * 0.42) * pulse;
+            let index = y * framebuffer.width + x;
+            let old = framebuffer.pixels[index];
+            let old_r = ((old >> 16) & 0xff) as f32;
+            let old_g = ((old >> 8) & 0xff) as f32;
+            let old_b = (old & 0xff) as f32;
+            let red = (old_r + 18.0 * strength).min(255.0) as u32;
+            let green = (old_g + 126.0 * strength).min(255.0) as u32;
+            let blue = (old_b + 220.0 * strength).min(255.0) as u32;
+            framebuffer.pixels[index] = (red << 16) | (green << 8) | blue;
         }
     }
 }
@@ -1604,6 +1711,19 @@ impl TriangleBatch {
         let worker_count = worker_count.clamp(1, height.max(1));
         let tile_height = height.div_ceil(worker_count).div_ceil(32) * 32;
         let commands = &self.commands;
+        let refractive_background = commands
+            .iter()
+            .any(|command| {
+                matches!(
+                    &command.style,
+                    TriangleStyle::Procedural {
+                        shader: SurfaceShader::Ocean,
+                        ..
+                    }
+                )
+            })
+            .then(|| framebuffer.pixels.clone());
+        let refractive_background = refractive_background.as_deref();
         let (pixels, depth) = framebuffer.buffers_mut();
         thread::scope(|scope| {
             for (tile_index, (tile_pixels, tile_depth)) in pixels
@@ -1667,7 +1787,7 @@ impl TriangleBatch {
                                         .mul(w0)
                                         .add(points[1].mul(w1))
                                         .add(points[2].mul(w2));
-                                    procedural_surface_color(
+                                    let surface = procedural_surface_color(
                                         *shader,
                                         point,
                                         x,
@@ -1675,7 +1795,26 @@ impl TriangleBatch {
                                         *time,
                                         *brightness,
                                         *fresnel,
-                                    )
+                                    );
+                                    if *shader == SurfaceShader::Ocean {
+                                        if let Some(background) = refractive_background {
+                                            refract_water_color(
+                                                surface,
+                                                background,
+                                                width,
+                                                height,
+                                                x,
+                                                y,
+                                                point,
+                                                *time,
+                                                *fresnel,
+                                            )
+                                        } else {
+                                            surface
+                                        }
+                                    } else {
+                                        surface
+                                    }
                                 },
                             ),
                         }
@@ -1960,6 +2099,14 @@ fn render_scene(
     let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let planet_position = water_planet_position(world_time);
     let planet_rotation = world_time * 0.25;
+
+    draw_water_planet_atmosphere(
+        framebuffer,
+        &camera,
+        planet_position,
+        WATER_PLANET_RADIUS,
+        world_time,
+    );
 
     queue_model(
         sun,
@@ -3634,6 +3781,54 @@ mod tests {
             right: Vec3::new(1.0, 0.0, 0.0),
             up: Vec3::new(0.0, 1.0, 0.0),
         }
+    }
+
+    #[test]
+    fn water_planet_atmosphere_draws_a_halo_without_covering_the_center() {
+        let mut framebuffer = Framebuffer::new(320, 200);
+        framebuffer.clear(0x030718);
+        draw_water_planet_atmosphere(
+            &mut framebuffer,
+            &test_camera(),
+            Vec3::new(0.0, 0.0, 100.0),
+            WATER_PLANET_RADIUS,
+            1.5,
+        );
+        assert_eq!(framebuffer.pixels[100 * 320 + 160], 0x030718);
+        assert!(framebuffer.pixels.iter().any(|&pixel| pixel != 0x030718));
+        assert!(framebuffer.pixels.iter().any(|&pixel| {
+            let green = (pixel >> 8) & 0xff;
+            let blue = pixel & 0xff;
+            pixel != 0x030718 && blue > green
+        }));
+    }
+
+    #[test]
+    fn refractive_water_distorts_and_tints_the_background() {
+        let width = 16;
+        let height = 16;
+        let background: Vec<u32> = (0..width * height)
+            .map(|index| {
+                let x = (index % width) as u32;
+                let y = (index / width) as u32;
+                (x * 12 << 16) | (y * 10 << 8) | 0x24
+            })
+            .collect();
+        let surface = 0x168dcc;
+        let refracted = refract_water_color(
+            surface,
+            &background,
+            width,
+            height,
+            8,
+            8,
+            Vec3::new(0.3, -0.2, 0.7),
+            1.25,
+            0.18,
+        );
+        assert_ne!(refracted, surface);
+        assert_ne!(refracted, background[8 * width + 8]);
+        assert!((refracted & 0xff) > ((refracted >> 16) & 0xff));
     }
 
     fn test_triangle(z: f32) -> Model {
