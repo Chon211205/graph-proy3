@@ -6,9 +6,12 @@ const PLAYER_SPEED: f32 = 0.82;
 const PLAYER_SHOT_INTERVAL: f32 = 0.12;
 const PLAYER_SHOT_SPEED: f32 = 1.35;
 const SEED_SPEED: f32 = 0.42;
+const OBSTACLE_SPEED: f32 = 0.22;
+const OBSTACLE_SPAWN_INTERVAL: f32 = 2.8;
 const INVULNERABILITY_TIME: f32 = 1.25;
 const MAX_PLAYER_SHOTS: usize = 28;
 const MAX_SEEDS: usize = 12;
+const MAX_OBSTACLES: usize = 8;
 const MAX_DROPS: usize = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,6 +67,17 @@ struct ShieldDrop {
     alive: bool,
 }
 
+#[derive(Clone, Copy)]
+struct Obstacle {
+    x: f32,
+    y: f32,
+    previous_x: f32,
+    previous_y: f32,
+    radius: f32,
+    variant: usize,
+    alive: bool,
+}
+
 pub struct CoreGuardian {
     phase: Phase,
     phase_time: f32,
@@ -80,12 +94,14 @@ pub struct CoreGuardian {
     roll: f32,
     fire_timer: f32,
     attack_timer: f32,
+    obstacle_timer: f32,
     open_plate: usize,
     cycle: u32,
     hit_flash: f32,
     random: u32,
     player_shots: Vec<PlayerShot>,
     seeds: Vec<Seed>,
+    obstacles: Vec<Obstacle>,
     shield_drops: Vec<ShieldDrop>,
 }
 
@@ -107,12 +123,14 @@ impl CoreGuardian {
             roll: 0.0,
             fire_timer: 0.0,
             attack_timer: 1.0,
+            obstacle_timer: 2.0,
             open_plate: 0,
             cycle: 0,
             hit_flash: 0.0,
             random: 0x91e1_0da5,
             player_shots: Vec::with_capacity(MAX_PLAYER_SHOTS),
             seeds: Vec::with_capacity(MAX_SEEDS),
+            obstacles: Vec::with_capacity(MAX_OBSTACLES),
             shield_drops: Vec::with_capacity(MAX_DROPS),
         }
     }
@@ -180,6 +198,7 @@ impl CoreGuardian {
             _ => {}
         }
 
+        self.update_obstacles(dt, width, height);
         self.update_seeds(dt, width, height);
         self.update_player_shots(dt, input.fire, width, height);
         self.update_drops(dt, width, height);
@@ -306,11 +325,106 @@ impl CoreGuardian {
                 }
             }
         }
+        for obstacle in self.obstacles.iter_mut().filter(|obstacle| obstacle.alive) {
+            let obstacle_radius = projected_radius(obstacle.radius, obstacle.y, height) + 5.0;
+            for shot in self.player_shots.iter_mut().filter(|shot| shot.alive) {
+                if swept_distance(
+                    (
+                        shot.previous_x * width as f32,
+                        shot.previous_y * height as f32,
+                    ),
+                    (shot.x * width as f32, shot.y * height as f32),
+                    (
+                        obstacle.previous_x * width as f32,
+                        obstacle.previous_y * height as f32,
+                    ),
+                    (obstacle.x * width as f32, obstacle.y * height as f32),
+                ) < obstacle_radius
+                {
+                    shot.alive = false;
+                    obstacle.alive = false;
+                    break;
+                }
+            }
+        }
         for (x, y) in drops {
             self.spawn_shield_drop(x, y);
         }
         if boss_defeated {
             self.set_phase(Phase::Won);
+        }
+    }
+
+    fn update_obstacles(&mut self, dt: f32, width: usize, height: usize) {
+        if self.phase == Phase::Closed {
+            self.obstacle_timer -= dt;
+            if self.obstacle_timer <= 0.0
+                && self
+                    .obstacles
+                    .iter()
+                    .filter(|obstacle| obstacle.alive)
+                    .count()
+                    < MAX_OBSTACLES
+            {
+                self.spawn_obstacle();
+                self.obstacle_timer += OBSTACLE_SPAWN_INTERVAL;
+            }
+        }
+
+        let player_x = self.player_x;
+        let player_y = 0.82 + self.player_y * 0.10;
+        let previous_player_x = self.previous_player_x;
+        let previous_player_y = 0.82 + self.previous_player_y * 0.10;
+        let mut lost = false;
+        for obstacle in self.obstacles.iter_mut().filter(|obstacle| obstacle.alive) {
+            obstacle.previous_x = obstacle.x;
+            obstacle.previous_y = obstacle.y;
+            obstacle.y += OBSTACLE_SPEED * dt;
+            let collision_radius = projected_radius(obstacle.radius, obstacle.y, height) + 24.0;
+            let hit = swept_distance(
+                (
+                    obstacle.previous_x * width as f32,
+                    obstacle.previous_y * height as f32,
+                ),
+                (obstacle.x * width as f32, obstacle.y * height as f32),
+                (
+                    previous_player_x * width as f32,
+                    previous_player_y * height as f32,
+                ),
+                (player_x * width as f32, player_y * height as f32),
+            ) < collision_radius;
+            if hit && self.invulnerability <= 0.0 {
+                obstacle.alive = false;
+                self.shields = self.shields.saturating_sub(1);
+                self.invulnerability = INVULNERABILITY_TIME;
+                if self.shields == 0 {
+                    lost = true;
+                }
+            } else if obstacle.y > 1.12 {
+                obstacle.alive = false;
+            }
+        }
+        if lost {
+            self.set_phase(Phase::Lost);
+        }
+    }
+
+    fn spawn_obstacle(&mut self) {
+        let lanes = [0.28, 0.5, 0.72];
+        let choice = (self.next_random() as usize) % lanes.len();
+        let obstacle = Obstacle {
+            x: lanes[choice],
+            y: -0.08,
+            previous_x: lanes[choice],
+            previous_y: -0.08,
+            radius: 0.48 + (self.next_random() % 30) as f32 / 100.0,
+            variant: (self.next_random() % 3) as usize,
+            alive: true,
+        };
+        if let Some(slot) = self.obstacles.iter_mut().find(|item| !item.alive) {
+            *slot = obstacle;
+        } else if self.obstacles.len() < MAX_OBSTACLES {
+            self.obstacles.push(obstacle);
         }
     }
 
@@ -424,6 +538,11 @@ fn swept_distance(a0: (f32, f32), a1: (f32, f32), b0: (f32, f32), b1: (f32, f32)
     (dx * dx + dy * dy).sqrt()
 }
 
+fn projected_radius(radius: f32, screen_y: f32, height: usize) -> f32 {
+    let depth = (17.6 - 11.7 * screen_y).clamp(4.0, 24.0);
+    radius * height as f32 / (2.0 * (60.0_f32.to_radians() * 0.5).tan() * depth)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -484,6 +603,53 @@ mod tests {
             "held fire should use the rapid repeat interval"
         );
         assert!(fight.player_shots.len() <= MAX_PLAYER_SHOTS);
+    }
+
+    #[test]
+    fn obstacle_collision_consumes_shield_and_starts_invulnerability() {
+        let mut fight = CoreGuardian::new();
+        fight.set_phase(Phase::Closed);
+        fight.obstacle_timer = 20.0;
+        fight.obstacles.push(Obstacle {
+            x: fight.player_x,
+            y: 0.82,
+            previous_x: fight.player_x,
+            previous_y: 0.82,
+            radius: 0.6,
+            variant: 0,
+            alive: true,
+        });
+        fight.update(0.05, GuardianInput::default(), 1200, 800);
+        assert_eq!(fight.shields, STARTING_SHIELDS - 1);
+        assert!(fight.invulnerability > 0.0);
+        assert!(!fight.obstacles[0].alive);
+    }
+
+    #[test]
+    fn player_shots_destroy_obstacles_before_they_reach_the_ship() {
+        let mut fight = CoreGuardian::new();
+        fight.set_phase(Phase::Closed);
+        fight.obstacle_timer = 20.0;
+        fight.obstacles.push(Obstacle {
+            x: fight.player_x,
+            y: 0.70,
+            previous_x: fight.player_x,
+            previous_y: 0.70,
+            radius: 0.6,
+            variant: 0,
+            alive: true,
+        });
+        fight.update(
+            0.05,
+            GuardianInput {
+                fire: true,
+                ..GuardianInput::default()
+            },
+            1200,
+            800,
+        );
+        assert_eq!(fight.shields, STARTING_SHIELDS);
+        assert!(!fight.obstacles[0].alive);
     }
 
     #[test]
