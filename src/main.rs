@@ -491,7 +491,7 @@ impl WaterLevelState {
         );
         ship.yaw = 0.0;
         ship.pitch = 0.0;
-        ship.orbit_axis = None;
+        ship.orbit_plane_normal = None;
         ship.orbit_center = None;
         ship.orbit_camera_blend = 0.0;
         ship.planet_locked = false;
@@ -1493,7 +1493,9 @@ fn place_ship_near_spiky_planet(controller: &mut ShipController, world_time: f32
     ship.planet_locked = true;
     ship.spiky_planet_locked = true;
     ship.orbit_center = Some(center);
-    ship.orbit_axis = Some(offset.normalize());
+    let radial = offset.normalize();
+    let (_, right, _) = ship.movement_basis();
+    ship.orbit_plane_normal = Some(radial.cross(right).normalize());
     ship.orbit_camera_blend = 1.0;
 }
 
@@ -1572,23 +1574,17 @@ fn move_around_planet(
         }
 
         if ship.planet_locked {
-            ship.orbit_axis = Some(normal);
             ship.orbit_center = Some(planet_center);
 
-            // Advance along the planet's surface instead of integrating a
-            // nearly tangential flight vector. Small radial errors otherwise
-            // accumulate and make the ship appear to fall away from the orbit.
+            // Keep a fixed orbital plane and radius so steering updates cannot
+            // accumulate vertical drift and carry the ship away from the planet.
+            let plane_normal = ship.orbit_plane_normal.unwrap_or_else(|| {
+                let initial_tangent = right.sub(normal.mul(right.dot(normal))).normalize();
+                normal.cross(initial_tangent).normalize()
+            });
+            ship.orbit_plane_normal = Some(plane_normal);
+            let tangent = plane_normal.cross(normal).normalize();
             let target_radius = safe_radius + ORBIT_FLIGHT_ALTITUDE;
-            let mut tangent = forward.sub(normal.mul(forward.dot(normal)));
-            if tangent.dot(tangent) < 0.0001 {
-                tangent = right.sub(normal.mul(right.dot(normal)));
-            }
-            if tangent.dot(tangent) < 0.0001 {
-                tangent = Vec3::new(0.0, 1.0, 0.0)
-                    .cross(normal);
-            }
-            tangent = tangent.normalize();
-
             let angle = step_distance / target_radius;
             let (sin_angle, cos_angle) = angle.sin_cos();
             let next_normal = normal
@@ -1600,13 +1596,12 @@ fn move_around_planet(
                 .sub(normal.mul(sin_angle))
                 .normalize();
             ship.position = planet_center.add(next_normal.mul(target_radius));
-            ship.orbit_axis = Some(next_normal);
             let (yaw, pitch) = direction_to_angles(orbit_forward);
             ship.yaw = yaw;
             ship.pitch = pitch.clamp(-1.25, 1.25);
             continue;
         } else if distance > AVOIDANCE_DISTANCE + 8.0 || ship.orbit_release_active {
-            ship.orbit_axis = None;
+            ship.orbit_plane_normal = None;
         }
 
         if distance < AVOIDANCE_DISTANCE && approaching {
@@ -3353,7 +3348,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     ship.planet_locked = false;
                     ship.spiky_planet_locked = false;
                     ship.orbit_release_active = true;
-                    ship.orbit_axis = None;
+                    ship.orbit_plane_normal = None;
                     println!("Orbita liberada");
                 }
 
@@ -3390,11 +3385,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     yaw_input,
                     pitch_input,
                 );
-                let camera_target = if ship.orbit_axis.is_some() { 1.0 } else { 0.0 };
+                let camera_target = if ship.orbit_plane_normal.is_some() { 1.0 } else { 0.0 };
                 let camera_response = 1.0 - (-2.4 * delta_time).exp();
                 ship.orbit_camera_blend +=
                     (camera_target - ship.orbit_camera_blend) * camera_response;
-                if ship.orbit_axis.is_none() && ship.orbit_camera_blend < 0.001 {
+                if ship.orbit_plane_normal.is_none() && ship.orbit_camera_blend < 0.001 {
                     ship.orbit_center = None;
                     ship.orbit_camera_blend = 0.0;
                 }
