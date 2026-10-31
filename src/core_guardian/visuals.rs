@@ -13,6 +13,7 @@ static GUARDIAN_SHELL: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_SHELL_WARNING: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_TUNNEL: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_CRYSTALS: OnceLock<Model> = OnceLock::new();
+static GUARDIAN_SPINES: OnceLock<Model> = OnceLock::new();
 
 impl CoreGuardian {
     pub fn render_scene(
@@ -353,8 +354,16 @@ fn draw_cavern(framebuffer: &mut Framebuffer, elapsed: f32) {
             None,
             None,
         );
+        let spines = GUARDIAN_SPINES.get_or_init(cavern_spines_model);
+        render_model(
+            spines,
+            framebuffer,
+            &camera,
+            |vertex| vertex.add(Vec3::new(0.0, 0.0, offset)),
+            None,
+            None,
+        );
     }
-    draw_cave_spines(framebuffer, elapsed);
 }
 
 fn cavern_tunnel_model() -> Model {
@@ -453,39 +462,100 @@ fn append_crystal(
     faces.push(bottom);
 }
 
-fn draw_cave_spines(framebuffer: &mut Framebuffer, elapsed: f32) {
-    let width = framebuffer.width as f32;
-    let height = framebuffer.height as f32;
-    let sway = (elapsed * 0.7).sin() * height * 0.008;
-    for (x, y, scale, direction) in [
-        (0.02, 0.30, 1.0, 1.0),
-        (0.09, 0.66, 0.78, 1.0),
-        (0.98, 0.34, 1.08, -1.0),
-        (0.91, 0.72, 0.82, -1.0),
+fn cavern_spines_model() -> Model {
+    let mut vertices = Vec::new();
+    let mut faces = Vec::new();
+    for (side, z, vertical) in [
+        (-1.0, 15.0, -2.0),
+        (1.0, 27.0, 1.5),
+        (-1.0, 44.0, 2.0),
+        (1.0, 61.0, -1.5),
     ] {
-        let root = (width * x, height * y + sway * direction);
-        let bend = (root.0 + width * 0.10 * direction, root.1 - height * 0.015);
-        let tip = (
-            root.0 + width * 0.15 * direction,
-            root.1 - height * 0.13 * scale,
+        let root = Vec3::new(side * 15.0, vertical, z);
+        let bend = Vec3::new(side * 12.5, vertical - 0.5, z + 1.4);
+        let curl = Vec3::new(side * 9.3, vertical + 1.2, z + 3.1);
+        let tip = Vec3::new(side * 10.4, vertical + 3.1, z + 5.2);
+        append_spine_segment(
+            &mut vertices,
+            &mut faces,
+            root,
+            bend,
+            1.0,
+            0.82,
+            [117, 24, 64],
         );
-        let joint = (
-            root.0 + width * 0.17 * direction,
-            root.1 - height * 0.25 * scale,
+        append_spine_segment(
+            &mut vertices,
+            &mut faces,
+            bend,
+            curl,
+            0.82,
+            0.60,
+            [166, 34, 86],
         );
-        let outer = 12.0 * scale;
-        let inner = 5.0 * scale;
-        line(framebuffer, root, bend, outer, 0x7b1948);
-        line(framebuffer, bend, tip, outer, 0x9d2055);
-        line(framebuffer, tip, joint, outer * 0.72, 0xb42a63);
-        line(
-            framebuffer,
-            (root.0, root.1 - 3.0),
-            (tip.0, tip.1 - 3.0),
-            inner,
-            0xd94379,
+        append_spine_segment(
+            &mut vertices,
+            &mut faces,
+            curl,
+            tip,
+            0.60,
+            0.05,
+            [214, 61, 117],
         );
-        circle(framebuffer, joint.0, joint.1, outer * 0.38, 0x781a43);
+    }
+    Model::new(vertices, faces)
+}
+
+fn append_spine_segment(
+    vertices: &mut Vec<Vec3>,
+    faces: &mut Vec<Face>,
+    from: Vec3,
+    to: Vec3,
+    from_radius: f32,
+    to_radius: f32,
+    color: [u8; 3],
+) {
+    let direction = to.sub(from).normalize();
+    let reference = if direction.y.abs() > 0.92 {
+        Vec3::new(1.0, 0.0, 0.0)
+    } else {
+        Vec3::new(0.0, 1.0, 0.0)
+    };
+    let tangent = direction.cross(reference).normalize();
+    let bitangent = direction.cross(tangent).normalize();
+    let start = vertices.len();
+    let sides = 8;
+    for (center, radius) in [(from, from_radius), (to, to_radius)] {
+        for side in 0..sides {
+            let angle = std::f32::consts::TAU * side as f32 / sides as f32;
+            vertices.push(
+                center
+                    .add(tangent.mul(angle.cos() * radius))
+                    .add(bitangent.mul(angle.sin() * radius)),
+            );
+        }
+    }
+    for side in 0..sides {
+        let next = (side + 1) % sides;
+        let shade = if side % 3 == 0 {
+            color.map(|channel| channel.saturating_add(30))
+        } else {
+            color
+        };
+        let mut face = Face::new(
+            [start + side, start + next, start + sides + side],
+            "fuchsia_spine",
+            "cavern_spine",
+        );
+        face.color = MaterialColor::Fixed(shade);
+        faces.push(face);
+        let mut face = Face::new(
+            [start + next, start + sides + next, start + sides + side],
+            "fuchsia_spine",
+            "cavern_spine",
+        );
+        face.color = MaterialColor::Fixed(shade);
+        faces.push(face);
     }
 }
 
