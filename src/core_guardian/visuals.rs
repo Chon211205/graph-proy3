@@ -11,6 +11,7 @@ static GUARDIAN_CORE_EXPOSED: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_CORE_HIT: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_SHELL: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_SHELL_WARNING: OnceLock<Model> = OnceLock::new();
+static GUARDIAN_TENTACLES: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_TUNNEL: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_CRYSTALS: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_SPINES: OnceLock<Model> = OnceLock::new();
@@ -29,6 +30,7 @@ impl CoreGuardian {
         let height = framebuffer.height as f32;
         draw_cavern(framebuffer, self.elapsed);
         let (boss_x, boss_y) = self.boss_center();
+        draw_boss_tentacles(framebuffer, (boss_x, boss_y), self.elapsed);
         draw_boss_spheres(
             framebuffer,
             (boss_x, boss_y),
@@ -244,6 +246,63 @@ fn draw_boss_spheres(
         None,
         None,
     );
+}
+
+fn draw_boss_tentacles(framebuffer: &mut Framebuffer, screen_center: (f32, f32), elapsed: f32) {
+    let model = GUARDIAN_TENTACLES.get_or_init(boss_tentacle_model);
+    let center = scene_position(framebuffer, screen_center, 14.0);
+    let camera = scene_camera();
+    render_model(
+        model,
+        framebuffer,
+        &camera,
+        |vertex| {
+            let radial = (vertex.x * vertex.x + vertex.y * vertex.y).sqrt();
+            let azimuth = vertex.y.atan2(vertex.x);
+            let reach = ((radial - 1.5) / 3.5).clamp(0.0, 1.0);
+            let bend = (elapsed * 1.35 + azimuth * 2.4).sin() * 0.075 * reach;
+            let mut animated = rotate_z(vertex, bend);
+            animated.z += (elapsed * 1.8 + azimuth * 2.4).sin() * 0.10 * reach;
+            center.add(animated)
+        },
+        None,
+        None,
+    );
+}
+
+fn boss_tentacle_model() -> Model {
+    let mut vertices = Vec::new();
+    let mut faces = Vec::new();
+    let angles = [
+        0.0,
+        std::f32::consts::FRAC_PI_3,
+        -std::f32::consts::FRAC_PI_3,
+        std::f32::consts::PI,
+        2.0 * std::f32::consts::FRAC_PI_3,
+        4.0 * std::f32::consts::FRAC_PI_3,
+    ];
+    let path = [
+        Vec3::new(1.55, 0.05, -0.38),
+        Vec3::new(2.45, 0.32, -0.52),
+        Vec3::new(3.55, 0.22, -0.42),
+        Vec3::new(4.45, -0.22, -0.12),
+        Vec3::new(5.0, -0.78, 0.08),
+    ];
+    let radii = [0.50, 0.42, 0.31, 0.18, 0.015];
+    for angle in angles {
+        for index in 0..path.len() - 1 {
+            append_spine_segment(
+                &mut vertices,
+                &mut faces,
+                rotate_z(path[index], angle),
+                rotate_z(path[index + 1], angle),
+                radii[index],
+                radii[index + 1],
+                [145, 25, 76],
+            );
+        }
+    }
+    Model::new(vertices, faces)
 }
 
 fn sphere_model(radius: f32, color: [u8; 3]) -> Model {
