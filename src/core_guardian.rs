@@ -3,7 +3,7 @@ mod visuals;
 const STARTING_SHIELDS: u8 = 3;
 const BOSS_HEALTH: u32 = 42;
 const PLAYER_SPEED: f32 = 0.82;
-const PLAYER_SHOT_INTERVAL: f32 = 0.45;
+const PLAYER_SHOT_INTERVAL: f32 = 0.12;
 const PLAYER_SHOT_SPEED: f32 = 1.35;
 const SEED_SPEED: f32 = 0.42;
 const INVULNERABILITY_TIME: f32 = 1.25;
@@ -462,6 +462,28 @@ mod tests {
             );
         }
         assert!(fight.boss_health < BOSS_HEALTH);
+    }
+
+    #[test]
+    fn holding_fire_repeats_without_an_ammo_limit() {
+        let mut fight = CoreGuardian::new();
+        fight.set_phase(Phase::Closed);
+        for _ in 0..12 {
+            fight.update(
+                0.05,
+                GuardianInput {
+                    fire: true,
+                    ..GuardianInput::default()
+                },
+                1200,
+                800,
+            );
+        }
+        assert!(
+            fight.fire_timer < 0.05,
+            "held fire should use the rapid repeat interval"
+        );
+        assert!(fight.player_shots.len() <= MAX_PLAYER_SHOTS);
     }
 
     #[test]
