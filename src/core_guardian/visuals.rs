@@ -50,6 +50,13 @@ impl CoreGuardian {
         let (_, boss_y) = self.boss_center();
         draw_reticle(framebuffer, (self.player_x * width, boss_y * height));
         let (player_x, player_y) = self.player_screen_position();
+        let damage = STARTING_SHIELDS - self.shields;
+        draw_damage_smoke(
+            framebuffer,
+            (player_x * width, player_y * height),
+            damage,
+            self.elapsed,
+        );
         draw_selected_ship(
             framebuffer,
             ship_model,
@@ -87,6 +94,43 @@ impl CoreGuardian {
                 },
             );
         }
+        let ship_health = self.shields as f32 / STARTING_SHIELDS as f32;
+        let ship_health_color = if self.shields <= 1 {
+            0xff594f
+        } else {
+            0x68e58e
+        };
+        rect(framebuffer, 16.0, 50.0, 116.0, 10.0, 0x350c20);
+        rect(
+            framebuffer,
+            18.0,
+            52.0,
+            112.0 * ship_health,
+            6.0,
+            ship_health_color,
+        );
+    }
+}
+
+fn draw_damage_smoke(
+    framebuffer: &mut Framebuffer,
+    ship_center: (f32, f32),
+    damage: u8,
+    elapsed: f32,
+) {
+    let puff_count = damage as usize * 3;
+    for index in 0..puff_count {
+        let phase = (elapsed * (1.8 + damage as f32 * 0.2) + index as f32 * 0.37)
+            .rem_euclid(1.0);
+        let engine = if index % 2 == 0 { -1.0 } else { 1.0 };
+        let spread = 5.0 + phase * (10.0 + damage as f32 * 2.0);
+        let drift = (elapsed * 2.6 + index as f32 * 1.7).sin() * (3.0 + damage as f32);
+        let x = ship_center.0 + engine * spread + drift;
+        let y = ship_center.1 + 18.0 + phase * (24.0 + damage as f32 * 5.0);
+        let radius = 3.0 + phase * 4.0 + damage as f32 * 0.7;
+        circle(framebuffer, x, y, radius, 0x39333f);
+        circle(framebuffer, x - radius * 0.12, y - radius * 0.12, radius * 0.68, 0x706a73);
+        circle(framebuffer, x - radius * 0.18, y - radius * 0.2, radius * 0.34, 0xaaa2a8);
     }
 }
 
