@@ -71,6 +71,21 @@ pub enum SurfaceShader {
     ArwingDarkMetal,
     ArwingEmission,
     ArwingYellow,
+    AstraCobalt,
+    AstraDeepBlue,
+    AstraRedEmission,
+    CowboyYellowPaint,
+    CowboyRedPaint,
+    CowboyOrangeEmission,
+    BuzzWhiteMetal,
+    BuzzGreenMetal,
+    BuzzPurpleMetal,
+    BuzzRedMetal,
+    BuzzEmission,
+    McQueenRedMetal,
+    McQueenYellowMetal,
+    McQueenWhiteMetal,
+    McQueenEmission,
     Flat,
 }
 
@@ -184,7 +199,63 @@ impl Model {
 }
 
 fn classify_surface(name: &str) -> SurfaceShader {
-    if name == "hull_white" {
+    if name == "casco_blanco" {
+        SurfaceShader::ArwingHull
+    } else if name == "titanio" {
+        SurfaceShader::ArwingMetal
+    } else if name == "grafito" {
+        SurfaceShader::ArwingDarkMetal
+    } else if name == "azul_cobalto" {
+        SurfaceShader::AstraCobalt
+    } else if name == "azul_profundo" {
+        SurfaceShader::AstraDeepBlue
+    } else if name == "vidrio_oscuro" {
+        SurfaceShader::ArwingGlass
+    } else if name == "luz_cian" {
+        SurfaceShader::ArwingEmission
+    } else if name == "luz_roja" {
+        SurfaceShader::AstraRedEmission
+    } else if name == "amarillo" || name == "cowboy_yellow" || name == "cowboy_cream" {
+        SurfaceShader::CowboyYellowPaint
+    } else if name == "rojo" || name == "cowboy_red" || name == "cowboy_darkred" {
+        SurfaceShader::CowboyRedPaint
+    } else if name == "cowboy_orangeglow" {
+        SurfaceShader::CowboyOrangeEmission
+    } else if name == "gris_oscuro" || name == "cowboy_metal" {
+        SurfaceShader::ArwingMetal
+    } else if name == "cowboy_graphite" {
+        SurfaceShader::ArwingDarkMetal
+    } else if name == "cowboy_glass" {
+        SurfaceShader::ArwingGlass
+    } else if name == "mcqueen_red" || name == "mcqueen_darkred" {
+        SurfaceShader::McQueenRedMetal
+    } else if name == "mcqueen_yellow" {
+        SurfaceShader::McQueenYellowMetal
+    } else if name == "mcqueen_white" {
+        SurfaceShader::McQueenWhiteMetal
+    } else if name == "mcqueen_emission" || name == "mcqueen_orange" {
+        SurfaceShader::McQueenEmission
+    } else if name == "mcqueen_glass" {
+        SurfaceShader::ArwingGlass
+    } else if name == "mcqueen_dark" {
+        SurfaceShader::ArwingDarkMetal
+    } else if name == "mcqueen_blue" {
+        SurfaceShader::AstraCobalt
+    } else if name == "buzz_white" || name == "buzz_gold" {
+        SurfaceShader::BuzzWhiteMetal
+    } else if name == "buzz_green" || name == "buzz_blue" {
+        SurfaceShader::BuzzGreenMetal
+    } else if name == "buzz_purple" {
+        SurfaceShader::BuzzPurpleMetal
+    } else if name == "buzz_red" {
+        SurfaceShader::BuzzRedMetal
+    } else if name == "buzz_emission" {
+        SurfaceShader::BuzzEmission
+    } else if name == "buzz_glass" {
+        SurfaceShader::ArwingGlass
+    } else if name == "buzz_dark" {
+        SurfaceShader::ArwingDarkMetal
+    } else if name == "hull_white" {
         SurfaceShader::ArwingHull
     } else if name == "wing_metal" {
         SurfaceShader::ArwingMetal
@@ -239,6 +310,7 @@ fn classify_color(name: &str) -> MaterialColor {
             "mcqueen_glass" => [73, 156, 211],
             "mcqueen_blue" => [32, 105, 220],
             "mcqueen_dark" => [26, 29, 38],
+            "mcqueen_emission" => [255, 82, 14],
             _ => [225, 26, 35],
         }
     } else if name.starts_with("buzz_") {
@@ -251,6 +323,7 @@ fn classify_color(name: &str) -> MaterialColor {
             "buzz_dark" => [29, 36, 54],
             "buzz_blue" => [45, 132, 240],
             "buzz_gold" => [245, 190, 42],
+            "buzz_emission" => [128, 255, 30],
             _ => [238, 242, 248],
         }
     } else if matches!(
@@ -271,6 +344,56 @@ fn classify_color(name: &str) -> MaterialColor {
             "dark_metal" => [25, 31, 42],
             "engine_cyan" => [40, 225, 242],
             "warning_yellow" => [250, 194, 34],
+            _ => unreachable!(),
+        }
+    } else if matches!(
+        name,
+        "amarillo"
+            | "rojo"
+            | "gris_oscuro"
+            | "cowboy_yellow"
+            | "cowboy_red"
+            | "cowboy_darkred"
+            | "cowboy_metal"
+            | "cowboy_graphite"
+            | "cowboy_glass"
+            | "cowboy_orangeglow"
+            | "cowboy_cream"
+    ) {
+        match name {
+            "amarillo" => [238, 145, 12],
+            "rojo" => [190, 22, 18],
+            "gris_oscuro" => [56, 64, 76],
+            "cowboy_yellow" => [244, 158, 20],
+            "cowboy_red" => [205, 28, 22],
+            "cowboy_darkred" => [78, 16, 14],
+            "cowboy_metal" => [112, 124, 134],
+            "cowboy_graphite" => [26, 31, 40],
+            "cowboy_glass" => [22, 73, 94],
+            "cowboy_orangeglow" => [255, 72, 12],
+            "cowboy_cream" => [246, 214, 150],
+            _ => unreachable!(),
+        }
+    } else if matches!(
+        name,
+        "casco_blanco"
+            | "azul_cobalto"
+            | "azul_profundo"
+            | "vidrio_oscuro"
+            | "luz_cian"
+            | "luz_roja"
+            | "titanio"
+            | "grafito"
+    ) {
+        match name {
+            "casco_blanco" => [238, 244, 250],
+            "azul_cobalto" => [28, 92, 224],
+            "azul_profundo" => [14, 38, 105],
+            "vidrio_oscuro" => [22, 70, 94],
+            "luz_cian" => [40, 205, 255],
+            "luz_roja" => [255, 35, 42],
+            "titanio" => [104, 124, 148],
+            "grafito" => [28, 35, 48],
             _ => unreachable!(),
         }
     } else if name.contains("cyan_lights") {
@@ -571,6 +694,25 @@ mod tests {
                 MaterialColor::Fixed(color),
                 "unexpected color for {name}"
             );
+        }
+    }
+
+    #[test]
+    fn astra_materials_have_dedicated_colors_and_shaders() {
+        let cases = [
+            ("Casco_blanco", [238, 244, 250], SurfaceShader::ArwingHull),
+            ("Azul_cobalto", [28, 92, 224], SurfaceShader::AstraCobalt),
+            ("Azul_profundo", [14, 38, 105], SurfaceShader::AstraDeepBlue),
+            ("Vidrio_oscuro", [22, 70, 94], SurfaceShader::ArwingGlass),
+            ("Luz_cian", [40, 205, 255], SurfaceShader::ArwingEmission),
+            ("Luz_roja", [255, 35, 42], SurfaceShader::AstraRedEmission),
+            ("Titanio", [104, 124, 148], SurfaceShader::ArwingMetal),
+            ("Grafito", [28, 35, 48], SurfaceShader::ArwingDarkMetal),
+        ];
+        for (name, color, shader) in cases {
+            let face = Face::new([0, 1, 2], name, "astra");
+            assert_eq!(face.color, MaterialColor::Fixed(color));
+            assert_eq!(face.shader, shader);
         }
     }
 }
