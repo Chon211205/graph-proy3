@@ -1,8 +1,17 @@
 use super::{CoreGuardian, Phase, STARTING_SHIELDS};
 use crate::framebuffer::Framebuffer;
+use crate::obj_loader::{Model, Vec3};
+use crate::ship::ShipSpec;
+use crate::{Camera, render_model};
 
 impl CoreGuardian {
-    pub fn render_scene(&self, framebuffer: &mut Framebuffer) {
+    pub fn render_scene(
+        &self,
+        framebuffer: &mut Framebuffer,
+        ship_model: &Model,
+        ship_center: Vec3,
+        ship_spec: &ShipSpec,
+    ) {
         let width = framebuffer.width as f32;
         let height = framebuffer.height as f32;
         draw_cavern(framebuffer, self.elapsed);
@@ -43,14 +52,14 @@ impl CoreGuardian {
         for seed in self.seeds.iter().filter(|seed| seed.alive) {
             circle(framebuffer, seed.x * width, seed.y * height, 10.0, 0xffbb2e);
         }
-        let player_x = self.player_x * width;
-        let player_y = (0.82 + self.player_y * 0.10) * height;
-        triangle(
+        draw_selected_ship(
             framebuffer,
-            (player_x, player_y - height * 0.09),
-            (player_x - height * 0.10, player_y + height * 0.04),
-            (player_x + height * 0.10, player_y + height * 0.04),
-            0xe8443b,
+            ship_model,
+            ship_center,
+            ship_spec,
+            self.player_x,
+            0.82 + self.player_y * 0.10,
+            self.roll,
         );
     }
 
@@ -118,6 +127,47 @@ fn draw_shell_plate(
     let edge = transformed[3];
     line(framebuffer, highlight, edge, 3.0, 0xf4a2a0);
     circle(framebuffer, pivot.0, pivot.1, radius * 0.07, 0x833953);
+}
+
+fn draw_selected_ship(
+    framebuffer: &mut Framebuffer,
+    model: &Model,
+    model_center: Vec3,
+    spec: &ShipSpec,
+    screen_x: f32,
+    screen_y: f32,
+    roll: f32,
+) {
+    let depth = 8.0;
+    let tan_half_fov = (60.0_f32.to_radians() * 0.5).tan();
+    let aspect = framebuffer.width as f32 / framebuffer.height.max(1) as f32;
+    let position = Vec3::new(
+        (screen_x - 0.5) * depth * 2.0 * tan_half_fov * aspect,
+        (0.5 - screen_y) * depth * 2.0 * tan_half_fov,
+        depth,
+    );
+    let (sin, cos) = roll.clamp(-0.28, 0.28).sin_cos();
+    let forward = Vec3::new(0.0, 0.0, 1.0);
+    let right = Vec3::new(cos, sin, 0.0);
+    let up = Vec3::new(-sin, cos, 0.0);
+    let camera = Camera {
+        position: Vec3::default(),
+        forward,
+        right: Vec3::new(1.0, 0.0, 0.0),
+        up: Vec3::new(0.0, 1.0, 0.0),
+    };
+    framebuffer.buffers_mut().1.fill(f32::NEG_INFINITY);
+    render_model(
+        model,
+        framebuffer,
+        &camera,
+        |vertex| {
+            let local = vertex.sub(model_center).mul(spec.model_scale);
+            position.add(spec.model_to_world(local, forward, right, up))
+        },
+        None,
+        None,
+    );
 }
 
 fn draw_cavern(framebuffer: &mut Framebuffer, elapsed: f32) {

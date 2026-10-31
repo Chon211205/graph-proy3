@@ -3475,7 +3475,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         "Planeta rosado | Enter: Guardián del Núcleo | Backspace: salir",
                     );
                 }
-                guardian_fight.render_scene(&mut scene_framebuffer);
+                guardian_fight.render_scene(
+                    &mut scene_framebuffer,
+                    active_model,
+                    ship_center,
+                    ship_controller.ship.spec,
+                );
             }
         }
 
