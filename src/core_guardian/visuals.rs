@@ -619,20 +619,23 @@ fn draw_cavern(framebuffer: &mut Framebuffer, elapsed: f32) {
 }
 
 fn cavern_tunnel_model() -> Model {
-    let rings = 16;
-    let sectors = 32;
+    let rings = 24;
+    let sectors = 40;
     let length = 80.0;
     let mut vertices = Vec::with_capacity((rings + 1) * (sectors + 1));
     for ring in 0..=rings {
         let t = ring as f32 / rings as f32;
         let wave = (t * std::f32::consts::TAU).sin();
-        let radius_x = 17.0 + wave * 1.2;
-        let radius_y = 13.0 + wave * 0.8;
-        let center_x = wave * 0.45;
-        let center_y = (t * std::f32::consts::TAU).cos() * 0.35;
+        let radius_x = 16.2 + wave * 1.5 + (t * std::f32::consts::TAU * 2.0).sin() * 0.8;
+        let radius_y = 12.7 + wave * 1.1 + (t * std::f32::consts::TAU * 1.5).cos() * 0.7;
+        let center_x = (t * std::f32::consts::TAU * 1.3).sin() * 1.1;
+        let center_y = (t * std::f32::consts::TAU * 1.7 + 0.8).cos() * 0.65;
         for sector in 0..=sectors {
             let angle = std::f32::consts::TAU * sector as f32 / sectors as f32;
-            let roughness = 1.0 + (angle * 5.0 + t * 8.0).sin() * 0.06;
+            let roughness = 1.0
+                + (angle * 3.0 + t * 11.0).sin() * 0.09
+                + (angle * 7.0 - t * 17.0).cos() * 0.055
+                + (angle * 13.0 + t * 29.0).sin() * 0.025;
             vertices.push(Vec3::new(
                 center_x + radius_x * roughness * angle.cos(),
                 center_y + radius_y * roughness * angle.sin(),
@@ -648,7 +651,18 @@ fn cavern_tunnel_model() -> Model {
             let b = a + sectors + 1;
             let c = a + 1;
             let d = b + 1;
-            let color_index = ((sector / 3 + ring / 2) % palette.len()) as usize;
+            let mineral_band = (angle_from_sector(sector, sectors) * 2.2
+                + ring as f32 * 0.37)
+                .sin();
+            let color_index = if mineral_band > 0.48 {
+                3
+            } else if mineral_band > -0.05 {
+                2
+            } else if mineral_band > -0.58 {
+                1
+            } else {
+                0
+            };
             for indices in [[a, b, c], [b, d, c]] {
                 let mut face = Face::new(indices, "guardian_rock", "cavern_wall");
                 face.color = MaterialColor::Fixed(palette[color_index]);
@@ -657,6 +671,10 @@ fn cavern_tunnel_model() -> Model {
         }
     }
     Model::new(vertices, faces)
+}
+
+fn angle_from_sector(sector: usize, sectors: usize) -> f32 {
+    std::f32::consts::TAU * sector as f32 / sectors as f32
 }
 
 fn crystal_cluster_model() -> Model {
