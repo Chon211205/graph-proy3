@@ -1,3 +1,4 @@
+mod core_guardian;
 mod framebuffer;
 mod input;
 mod menu;
@@ -11,15 +12,15 @@ use std::sync::OnceLock;
 use std::thread;
 use std::time::Instant;
 
+use core_guardian::{CoreGuardian, GuardianAction, GuardianInput};
 use framebuffer::Framebuffer;
 use minifb::{Key, ScaleMode, Window, WindowOptions};
 use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use ship::{
     ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_CAR_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC,
-    BUZZ_CAR_SPEC, BUZZ_SPEC, BUZZ_SUBMARINE_SPEC,
-    COWBOYB_CAR_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC,
-    MCQUEEN_CAR_SPEC, MCQUEEN_SPEC, MCQUEEN_SUBMARINE_SPEC, Projectile, Ship, ShipController,
-    ShipInput, ShipSpec,
+    BUZZ_CAR_SPEC, BUZZ_SPEC, BUZZ_SUBMARINE_SPEC, COWBOYB_CAR_SPEC, COWBOYB_SPEC,
+    COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC, MCQUEEN_CAR_SPEC, MCQUEEN_SPEC,
+    MCQUEEN_SUBMARINE_SPEC, Projectile, Ship, ShipController, ShipInput, ShipSpec,
 };
 use triangle::{ScreenVertex, draw_triangle_shaded_region};
 
@@ -338,6 +339,7 @@ impl LevelSpatialIndex {
 enum GameMode {
     FreeWorld,
     WaterLevel,
+    CoreGuardian,
 }
 
 struct WaterLevelState {
@@ -489,7 +491,7 @@ impl WaterLevelState {
         );
         ship.yaw = 0.0;
         ship.pitch = 0.0;
-        ship.orbit_axis = None;
+        ship.orbit_plane_normal = None;
         ship.orbit_center = None;
         ship.orbit_camera_blend = 0.0;
         ship.planet_locked = false;
@@ -553,11 +555,7 @@ fn extract_model_group(model: &Model, group_name: &str) -> Result<Model, String>
                 index
             });
         }
-        let mut extracted_face = Face::new(
-            indices,
-            face.material.clone(),
-            face.group.clone(),
-        );
+        let mut extracted_face = Face::new(indices, face.material.clone(), face.group.clone());
         extracted_face.smooth = face.smooth;
         faces.push(extracted_face);
     }
@@ -855,10 +853,8 @@ fn procedural_surface_color(
             let direction = point.normalize();
             let wave_a = (direction.x * 19.0 + direction.z * 7.0 + time * 1.8).sin();
             let wave_b = (direction.z * 25.0 - direction.y * 9.0 - time * 1.35).sin();
-            let current = (direction.x.atan2(direction.z) * 7.0
-                + direction.y * 16.0
-                + time * 0.55)
-                .sin();
+            let current =
+                (direction.x.atan2(direction.z) * 7.0 + direction.y * 16.0 + time * 0.55).sin();
             let fine_wave = (direction.x * 52.0 - direction.z * 47.0 + time * 2.7).sin();
             let wave = wave_a * 0.34 + wave_b * 0.28 + current * 0.24 + fine_wave * 0.14;
             let foam = (wave * 0.5 + current * 0.5 - 0.58).max(0.0).powf(2.0) * 2.8;
@@ -975,7 +971,12 @@ fn procedural_surface_color(
         ),
         SurfaceShader::ArwingEmission => {
             let pulse = 0.96 + (time * 8.0 + point.x * 0.7).sin() * 0.04;
-            (40.0 * pulse, 225.0 * pulse, 242.0 * pulse, 1.0 / brightness.max(0.01))
+            (
+                40.0 * pulse,
+                225.0 * pulse,
+                242.0 * pulse,
+                1.0 / brightness.max(0.01),
+            )
         }
         SurfaceShader::ArwingYellow => (
             250.0,
@@ -1113,8 +1114,9 @@ fn refract_water_color(
         + (point.y * 37.0 + time * 2.1).sin() * 0.38)
         * distortion_strength
         * 0.65;
-    let sample_x = (x as f32 + offset_x).round().clamp(0.0, width.saturating_sub(1) as f32)
-        as usize;
+    let sample_x = (x as f32 + offset_x)
+        .round()
+        .clamp(0.0, width.saturating_sub(1) as f32) as usize;
     let sample_y = (y as f32 + offset_y)
         .round()
         .clamp(0.0, height.saturating_sub(1) as f32) as usize;
@@ -1130,10 +1132,8 @@ fn refract_water_color(
     let reflection = 1.0 - transmission;
     let depth_tint = 0.82 + fresnel * 0.18;
     let red = (refracted_r * transmission * 0.38 + surface_r * reflection).min(255.0);
-    let green =
-        (refracted_g * transmission * 0.72 + surface_g * reflection + 8.0).min(255.0);
-    let blue = (refracted_b * transmission * depth_tint + surface_b * reflection + 18.0)
-        .min(255.0);
+    let green = (refracted_g * transmission * 0.72 + surface_g * reflection + 8.0).min(255.0);
+    let blue = (refracted_b * transmission * depth_tint + surface_b * reflection + 18.0).min(255.0);
     ((red as u32) << 16) | ((green as u32) << 8) | blue as u32
 }
 
@@ -1467,12 +1467,36 @@ fn spiky_planet_position(world_time: f32) -> Vec3 {
     ))
 }
 
+fn spiky_planet_is_closer(ship_position: Vec3, water_center: Vec3, spiky_center: Vec3) -> bool {
+    let water_offset = ship_position.sub(water_center);
+    let spiky_offset = ship_position.sub(spiky_center);
+    spiky_offset.dot(spiky_offset) < water_offset.dot(water_offset)
+}
+
 fn place_ship_near_water_planet(controller: &mut ShipController, world_time: f32) {
     controller.reset();
     let ship = &mut controller.ship;
     ship.position = water_planet_position(world_time).add(Vec3::new(45.0, 8.0, 0.0));
+    ship.spiky_planet_locked = false;
     ship.pitch = -0.08;
     ship.speed = ship.spec.cruise_speed;
+}
+
+fn place_ship_near_spiky_planet(controller: &mut ShipController, world_time: f32) {
+    controller.reset();
+    let ship = &mut controller.ship;
+    let center = spiky_planet_position(world_time);
+    let offset = Vec3::new(45.0, 8.0, 0.0);
+    ship.position = center.add(offset);
+    ship.pitch = direction_to_angles(offset.mul(-1.0)).1;
+    ship.speed = ship.spec.cruise_speed;
+    ship.planet_locked = true;
+    ship.spiky_planet_locked = true;
+    ship.orbit_center = Some(center);
+    let radial = offset.normalize();
+    let (_, right, _) = ship.movement_basis();
+    ship.orbit_plane_normal = Some(radial.cross(right).normalize());
+    ship.orbit_camera_blend = 1.0;
 }
 
 fn direction_to_angles(direction: Vec3) -> (f32, f32) {
@@ -1550,10 +1574,34 @@ fn move_around_planet(
         }
 
         if ship.planet_locked {
-            ship.orbit_axis = Some(normal);
             ship.orbit_center = Some(planet_center);
+
+            // Keep a fixed orbital plane and radius so steering updates cannot
+            // accumulate vertical drift and carry the ship away from the planet.
+            let plane_normal = ship.orbit_plane_normal.unwrap_or_else(|| {
+                let initial_tangent = right.sub(normal.mul(right.dot(normal))).normalize();
+                normal.cross(initial_tangent).normalize()
+            });
+            ship.orbit_plane_normal = Some(plane_normal);
+            let tangent = plane_normal.cross(normal).normalize();
+            let target_radius = safe_radius + ORBIT_FLIGHT_ALTITUDE;
+            let angle = step_distance / target_radius;
+            let (sin_angle, cos_angle) = angle.sin_cos();
+            let next_normal = normal
+                .mul(cos_angle)
+                .add(tangent.mul(sin_angle))
+                .normalize();
+            let orbit_forward = tangent
+                .mul(cos_angle)
+                .sub(normal.mul(sin_angle))
+                .normalize();
+            ship.position = planet_center.add(next_normal.mul(target_radius));
+            let (yaw, pitch) = direction_to_angles(orbit_forward);
+            ship.yaw = yaw;
+            ship.pitch = pitch.clamp(-1.25, 1.25);
+            continue;
         } else if distance > AVOIDANCE_DISTANCE + 8.0 || ship.orbit_release_active {
-            ship.orbit_axis = None;
+            ship.orbit_plane_normal = None;
         }
 
         if distance < AVOIDANCE_DISTANCE && approaching {
@@ -1807,15 +1855,8 @@ impl TriangleBatch {
                                     if *shader == SurfaceShader::Ocean {
                                         if let Some(background) = refractive_background {
                                             refract_water_color(
-                                                surface,
-                                                background,
-                                                width,
-                                                height,
-                                                x,
-                                                y,
-                                                point,
-                                                *time,
-                                                *fresnel,
+                                                surface, background, width, height, x, y, point,
+                                                *time, *fresnel,
                                             )
                                         } else {
                                             surface
@@ -2035,9 +2076,8 @@ fn queue_model_with_scratch<F>(
                 },
             });
         } else if face.smooth {
-            let brightness = [i0, i1, i2].map(|index| {
-                0.34 + camera_normals[index].dot(light).abs() * 0.66
-            });
+            let brightness =
+                [i0, i1, i2].map(|index| 0.34 + camera_normals[index].dot(light).abs() * 0.66);
             batch.commands.push(TriangleCommand {
                 vertices: [a, b, c],
                 style: TriangleStyle::Smooth {
@@ -2900,9 +2940,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let arwing_path = "assets/vehicles/arwing/arwing2.obj";
     let kirby_path = "assets/vehicles/kirby/kirby_detallado.obj";
-    let astra_path = "assets/vehicles/astra/nave_astra_detallada.obj";
+    let astra_path = "assets/vehicles/Astra.obj";
     let astra_car_path = "assets/vehicles/astra/astra_carro_detallado.obj";
-    let cowboyb_path = "assets/vehicles/cowboy/nave_cowboyb_detallada.obj";
+    let cowboyb_path = "assets/vehicles/Swordfish II.obj";
     let cowboyb_car_path = "assets/vehicles/cowboy/cb_carro_detallado.obj";
     let astra_submarine_path = "assets/vehicles/astra/astra_submarino_detallado.obj";
     let cowboyb_submarine_path = "assets/vehicles/cowboy/cb_submarino_detallado.obj";
@@ -2968,7 +3008,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         vec![
             (&cowboyb_model, &COWBOYB_SPEC, "MODO ESPACIAL"),
             (&cowboyb_car_model, &COWBOYB_CAR_SPEC, "MODO CARRO"),
-            (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC, "SUBMARINO"),
+            (
+                &cowboyb_submarine_model,
+                &COWBOYB_SUBMARINE_SPEC,
+                "SUBMARINO",
+            ),
         ],
         vec![
             (&buzz_variants[0], &BUZZ_SPEC, "MODO ESPACIAL"),
@@ -3096,6 +3140,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     }
     let mut water_level_state = WaterLevelState::new();
     let mut bubble_emitter = BubbleEmitter::new();
+    let mut guardian_fight = CoreGuardian::new();
     let mut previous = Instant::now();
     let mut world_time = 0.0_f32;
     let mut distance = 0.0_f32;
@@ -3196,16 +3241,24 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             window = create_window(fullscreen)?;
         }
         if crate::input::pressed(Key::R) {
-            ship_controller.reset();
-            if game_mode == GameMode::WaterLevel {
-                water_level_state = WaterLevelState::new();
-                bubble_emitter.clear();
+            if game_mode == GameMode::CoreGuardian {
+                guardian_fight = CoreGuardian::new();
+            } else {
+                ship_controller.reset();
+                if game_mode == GameMode::WaterLevel {
+                    water_level_state = WaterLevelState::new();
+                    bubble_emitter.clear();
+                }
             }
             distance = 0.0;
         }
         if game_mode == GameMode::FreeWorld && crate::input::pressed(Key::Key1) {
             place_ship_near_water_planet(&mut ship_controller, world_time);
             println!("Warp completado: planeta acuatico");
+        }
+        if game_mode == GameMode::FreeWorld && crate::input::pressed(Key::Key2) {
+            place_ship_near_spiky_planet(&mut ship_controller, world_time);
+            println!("Warp completado: planeta rosado | Enter: Guardián del Núcleo");
         }
 
         let pitch_input = (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8
@@ -3222,13 +3275,21 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             && ship_controller.ship.planet_locked
             && crate::input::pressed(Key::Enter)
         {
-            ship_controller = ShipController::new(level_ship_spec);
-            water_level_state = WaterLevelState::new();
-            bubble_emitter.clear();
-            game_mode = GameMode::WaterLevel;
-            entered_level = true;
-            window.set_title("Nivel submarino | Backspace: volver al sistema solar");
-            println!("Nivel submarino iniciado");
+            if ship_controller.ship.spiky_planet_locked {
+                guardian_fight = CoreGuardian::new();
+                game_mode = GameMode::CoreGuardian;
+                entered_level = true;
+                window.set_title("Guardian del Nucleo | Space: disparar | Backspace: salir");
+                println!("Minijuego Guardián del Núcleo iniciado");
+            } else {
+                ship_controller = ShipController::new(level_ship_spec);
+                water_level_state = WaterLevelState::new();
+                bubble_emitter.clear();
+                game_mode = GameMode::WaterLevel;
+                entered_level = true;
+                window.set_title("Nivel submarino | Backspace: volver al sistema solar");
+                println!("Nivel submarino iniciado");
+            }
         } else if game_mode == GameMode::WaterLevel && crate::input::pressed(Key::Backspace) {
             game_mode = GameMode::FreeWorld;
             bubble_emitter.clear();
@@ -3285,33 +3346,65 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 
                 if crate::input::pressed(Key::Backspace) && ship.planet_locked {
                     ship.planet_locked = false;
+                    ship.spiky_planet_locked = false;
                     ship.orbit_release_active = true;
-                    ship.orbit_axis = None;
+                    ship.orbit_plane_normal = None;
                     println!("Orbita liberada");
                 }
 
+                let empty_colliders: [ObjectCollider; 0] = [];
+                let water_center = water_planet_position(world_time);
+                let spiky_center = spiky_planet_position(world_time);
+                if !ship.planet_locked {
+                    ship.spiky_planet_locked =
+                        spiky_planet_is_closer(ship.position, water_center, spiky_center);
+                }
+                let (orbit_center, orbit_radius, orbit_rotation, orbit_colliders) =
+                    if ship.spiky_planet_locked {
+                        (
+                            spiky_center,
+                            SPIKY_PLANET_RADIUS,
+                            world_time * SPIKY_PLANET_ROTATION_SPEED,
+                            empty_colliders.as_slice(),
+                        )
+                    } else {
+                        (
+                            water_center,
+                            planet_surface_radius,
+                            world_time * 0.25,
+                            object_colliders.as_slice(),
+                        )
+                    };
                 move_around_planet(
                     ship,
                     movement,
-                    water_planet_position(world_time),
-                    planet_surface_radius,
-                    world_time * 0.25,
-                    &object_colliders,
+                    orbit_center,
+                    orbit_radius,
+                    orbit_rotation,
+                    orbit_colliders,
                     yaw_input,
                     pitch_input,
                 );
-                let camera_target = if ship.orbit_axis.is_some() { 1.0 } else { 0.0 };
+                let camera_target = if ship.orbit_plane_normal.is_some() { 1.0 } else { 0.0 };
                 let camera_response = 1.0 - (-2.4 * delta_time).exp();
                 ship.orbit_camera_blend +=
                     (camera_target - ship.orbit_camera_blend) * camera_response;
-                if ship.orbit_axis.is_none() && ship.orbit_camera_blend < 0.001 {
+                if ship.orbit_plane_normal.is_none() && ship.orbit_camera_blend < 0.001 {
                     ship.orbit_center = None;
                     ship.orbit_camera_blend = 0.0;
                 }
                 distance += movement;
 
                 if ship.planet_locked {
-                    window.set_title("Planeta acuatico | Enter: iniciar nivel | Backspace: salir");
+                    if ship.spiky_planet_locked {
+                        window.set_title(
+                            "Planeta rosado | Enter: Guardián del Núcleo | Backspace: salir",
+                        );
+                    } else {
+                        window.set_title(
+                            "Planeta acuatico | Enter: iniciar nivel | Backspace: salir",
+                        );
+                    }
                 } else {
                     window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
                 }
@@ -3383,59 +3476,125 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     println!("Nivel submarino completado");
                 }
             }
+            GameMode::CoreGuardian => {
+                let input = GuardianInput {
+                    horizontal: window.is_key_down(Key::D) as i8 as f32
+                        - window.is_key_down(Key::A) as i8 as f32,
+                    vertical: window.is_key_down(Key::S) as i8 as f32
+                        + window.is_key_down(Key::Down) as i8 as f32
+                        - window.is_key_down(Key::W) as i8 as f32
+                        - window.is_key_down(Key::Up) as i8 as f32,
+                    fire: window.is_key_down(Key::Space) || window.is_key_down(Key::Enter),
+                    confirm: crate::input::pressed(Key::Enter),
+                    exit: crate::input::pressed(Key::Backspace),
+                };
+                if guardian_fight.update(
+                    delta_time,
+                    input,
+                    scene_framebuffer.width,
+                    scene_framebuffer.height,
+                ) == GuardianAction::Exit
+                {
+                    game_mode = GameMode::FreeWorld;
+                    place_ship_near_spiky_planet(&mut ship_controller, world_time);
+                    window.set_title(
+                        "Planeta rosado | Enter: Guardián del Núcleo | Backspace: salir",
+                    );
+                }
+                guardian_fight.render_scene(
+                    &mut scene_framebuffer,
+                    active_model,
+                    ship_center,
+                    ship_controller.ship.spec,
+                );
+            }
         }
 
         upscale_scene(&scene_framebuffer, &mut framebuffer);
 
-        let form = if selected_ship == 4 {
-            if game_mode == GameMode::WaterLevel {
-                "BUZZ - SUBMARINO"
-            } else if car_mode {
-                "BUZZ - CARRO"
+        if game_mode == GameMode::CoreGuardian {
+            guardian_fight.draw_hud(&mut framebuffer);
+            draw_selection_label(&mut framebuffer, "GUARDIAN DEL NUCLEO", 600, 8, 2, 0xffe2ed);
+            let message = if guardian_fight.is_victory() {
+                "VICTORIA! ENTER PARA VOLVER"
+            } else if guardian_fight.is_defeat() {
+                "DERROTA  R: REINTENTAR  BACKSPACE: SALIR"
+            } else if guardian_fight.is_exposed() {
+                "NUCLEO EXPUESTO - DISPARA!"
             } else {
-                "BUZZ - NAVE"
-            }
-        } else if selected_ship == 5 {
-            if game_mode == GameMode::WaterLevel {
-                "RAYO MCQUEEN - SUBMARINO"
-            } else if car_mode {
-                "RAYO MCQUEEN - CARRO"
-            } else {
-                "RAYO MCQUEEN - NAVE"
-            }
-        } else {
-            ship_spec.name
-        };
-        draw_selection_label(
-            &mut framebuffer,
-            &form.to_ascii_uppercase(),
-            600,
-            22,
-            2,
-            0x99e226,
-        );
-        if game_mode == GameMode::WaterLevel {
-            let enemy_counter = format!(
-                "ENEMIGOS: {}/{}",
-                water_level_state.defeated_enemies,
-                water_level_state.enemies.len()
+                "WASD / FLECHAS: MOVER  ESPACIO: DISPARAR"
+            };
+            draw_selection_label(
+                &mut framebuffer,
+                message,
+                600,
+                64,
+                2,
+                if guardian_fight.is_exposed() {
+                    0xffe68b
+                } else {
+                    0xffd5df
+                },
             );
-            draw_selection_label(&mut framebuffer, &enemy_counter, 1035, 24, 2, 0x65dfea);
-        }
-        draw_selection_label(
-            &mut framebuffer,
-            "ESC: PAUSA   F1: CONTROLES",
-            600,
-            766,
-            2,
-            0xffffff,
-        );
-        let resolution_label = if dynamic_resolution.enabled {
-            format!("F2: RES AUTO {}%", dynamic_resolution.percentage())
+            draw_selection_label(
+                &mut framebuffer,
+                "ESC: PAUSA   BACKSPACE: SALIR",
+                600,
+                766,
+                2,
+                0xffffff,
+            );
         } else {
-            "F2: RES AUTO OFF".to_string()
-        };
-        draw_selection_label(&mut framebuffer, &resolution_label, 1040, 766, 2, 0x9fc5df);
+            let form = if selected_ship == 4 {
+                if game_mode == GameMode::WaterLevel {
+                    "BUZZ - SUBMARINO"
+                } else if car_mode {
+                    "BUZZ - CARRO"
+                } else {
+                    "BUZZ - NAVE"
+                }
+            } else if selected_ship == 5 {
+                if game_mode == GameMode::WaterLevel {
+                    "RAYO MCQUEEN - SUBMARINO"
+                } else if car_mode {
+                    "RAYO MCQUEEN - CARRO"
+                } else {
+                    "RAYO MCQUEEN - NAVE"
+                }
+            } else {
+                ship_spec.name
+            };
+            draw_selection_label(
+                &mut framebuffer,
+                &form.to_ascii_uppercase(),
+                600,
+                22,
+                2,
+                0x99e226,
+            );
+            if game_mode == GameMode::WaterLevel {
+                let enemy_counter = format!(
+                    "ENEMIGOS: {}/{}",
+                    water_level_state.defeated_enemies,
+                    water_level_state.enemies.len()
+                );
+                draw_selection_label(&mut framebuffer, &enemy_counter, 1035, 24, 2, 0x65dfea);
+            }
+            draw_selection_label(
+                &mut framebuffer,
+                "ESC: PAUSA   F1: CONTROLES",
+                600,
+                766,
+                2,
+                0xffffff,
+            );
+            let resolution_label = if dynamic_resolution.enabled {
+                format!("F2: RES AUTO {}%", dynamic_resolution.percentage())
+            } else {
+                "F2: RES AUTO OFF".to_string()
+            };
+            draw_selection_label(&mut framebuffer, &resolution_label, 1040, 766, 2, 0x9fc5df);
+        }
         if crate::input::pressed(Key::P) {
             framebuffer.save_png("captura.png")?;
             println!("Captura guardada: captura.png");
@@ -3449,6 +3608,32 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn free_flight_selects_the_nearest_planet_for_orbit_collision() {
+        let ship = Vec3::new(95.0, 0.0, 0.0);
+        let water = Vec3::new(0.0, 0.0, 0.0);
+        let spiky = Vec3::new(100.0, 0.0, 0.0);
+        assert!(spiky_planet_is_closer(ship, water, spiky));
+        assert!(!spiky_planet_is_closer(ship, spiky, water));
+    }
+
+    #[test]
+    fn approaching_spiky_planet_cannot_cross_its_surface() {
+        let center = Vec3::default();
+        let mut ship = Ship::new(&ASTRA_SPEC);
+        ship.position = Vec3::new(100.0, 0.0, 0.0);
+        ship.yaw = 0.0;
+        move_around_planet(&mut ship, 80.0, center, SPIKY_PLANET_RADIUS, 0.0, &[], 0, 0);
+        let offset = ship.position.sub(center);
+        let distance = offset.dot(offset).sqrt();
+        let safe_radius = SPIKY_PLANET_RADIUS + ship.spec.collision_radius + COLLISION_MARGIN;
+        assert!(ship.planet_locked);
+        assert!(
+            distance >= safe_radius - 0.001,
+            "ship reached radius {distance}"
+        );
+    }
 
     #[test]
     fn mcqueen_submarine_has_aquatic_parts_and_renders_from_multiple_angles() {
@@ -3727,7 +3912,8 @@ mod tests {
                 (8_900, 15_200),
             ),
             (
-                load_obj(root.join("assets/vehicles/mcqueen/mcqueen_submarino_detallado.obj")).unwrap(),
+                load_obj(root.join("assets/vehicles/mcqueen/mcqueen_submarino_detallado.obj"))
+                    .unwrap(),
                 "McQueen_Sub_Core_L",
                 "McQueen_Sub_Guard_L",
                 &MCQUEEN_SUBMARINE_SPEC,
@@ -3747,16 +3933,24 @@ mod tests {
                     && face.shader == SurfaceShader::McQueenEmission
                     && face.color == MaterialColor::Fixed([255, 82, 14])
             }));
-            assert!(model.faces.iter().any(|face| {
-                face.group.contains("Ojo") || face.group.contains("Iris")
-            }));
-            assert!(model.faces.iter().any(|face| {
-                face.group == "Pupila" && face.material == "mcqueen_dark"
-            }));
+            assert!(
+                model
+                    .faces
+                    .iter()
+                    .any(|face| { face.group.contains("Ojo") || face.group.contains("Iris") })
+            );
+            assert!(
+                model
+                    .faces
+                    .iter()
+                    .any(|face| { face.group == "Pupila" && face.material == "mcqueen_dark" })
+            );
             for glass_group in ["Cabina_azul", "Parabrisas", "Cupula"] {
-                assert!(!model.faces.iter().any(|face| {
-                    face.group == glass_group && face.material == "mcqueen_glass"
-                }));
+                assert!(
+                    !model.faces.iter().any(|face| {
+                        face.group == glass_group && face.material == "mcqueen_glass"
+                    })
+                );
             }
 
             let mut points = model
@@ -4013,8 +4207,7 @@ mod tests {
     #[test]
     fn extended_water_level_is_long_chunked_and_has_collision_gates() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let mut level =
-            load_obj(root.join("assets/levels/waterlevel_extendido.obj")).unwrap();
+        let mut level = load_obj(root.join("assets/levels/waterlevel_extendido.obj")).unwrap();
         assert!(level.vertices.len() > 35_000);
         assert!(level.faces.len() > 50_000);
         let min_x = level
@@ -4044,13 +4237,15 @@ mod tests {
                 || face.group.starts_with("obstacle_arch_top")
         }));
         for sector in 1..=3 {
-            assert!(level.faces.iter().any(|face| {
-                face.group == format!("TERRAIN_MAIN_SECTOR_{sector}")
-            }));
+            assert!(
+                level
+                    .faces
+                    .iter()
+                    .any(|face| { face.group == format!("TERRAIN_MAIN_SECTOR_{sector}") })
+            );
         }
         assert!(level.faces.iter().any(|face| {
-            face.group.starts_with("LONG_LEVEL_CRYSTAL_")
-                && face.material == "Crystal_Cyan"
+            face.group.starts_with("LONG_LEVEL_CRYSTAL_") && face.material == "Crystal_Cyan"
         }));
 
         stretch_model_group_height(&mut level, "TERRAIN_WALLS", -5.0, 3.6);
@@ -4262,9 +4457,12 @@ mod tests {
             (1.5..2.5).contains(&submarine_radius),
             "unexpected submarine radius {submarine_radius}"
         );
-        assert!(submarine.faces.iter().any(|face| {
-            face.group.contains("aro_helice") && face.material == "fin_blue"
-        }));
+        assert!(
+            submarine
+                .faces
+                .iter()
+                .any(|face| { face.group.contains("aro_helice") && face.material == "fin_blue" })
+        );
         for candidate in [&model, &submarine] {
             for material in [
                 "hull_white",
@@ -4290,10 +4488,12 @@ mod tests {
         assert!(model.vertices.len() > 14_000);
         assert!(model.faces.len() > 29_000);
         assert!(model.faces.iter().any(|face| face.smooth));
-        assert!(model
-            .vertex_normals
-            .iter()
-            .any(|normal| normal.dot(*normal) > 0.9));
+        assert!(
+            model
+                .vertex_normals
+                .iter()
+                .any(|normal| normal.dot(*normal) > 0.9)
+        );
         let radius = model_radius(&model, model_center(&model)) * KIRBY_SPEC.model_scale;
         assert!((1.5..2.0).contains(&radius), "unexpected radius {radius}");
 
@@ -4315,22 +4515,36 @@ mod tests {
                 .contains("kirby_smooth_pink")
                 && face.color == MaterialColor::Fixed([255, 158, 198])
         }));
-        assert!(model.faces.iter().any(|face| face.group == "Kirby_Star_Emblem"));
-        assert!(model.faces.iter().any(|face| face.group == "Thruster_Guard_L"));
+        assert!(
+            model
+                .faces
+                .iter()
+                .any(|face| face.group == "Kirby_Star_Emblem")
+        );
+        assert!(
+            model
+                .faces
+                .iter()
+                .any(|face| face.group == "Thruster_Guard_L")
+        );
 
         let submarine =
             load_obj(root.join("assets/vehicles/kirby/kirbysub_detallado.obj")).unwrap();
         assert!(submarine.vertices.len() > 10_000);
         assert!(submarine.faces.len() > 21_000);
         assert!(submarine.faces.iter().any(|face| face.smooth));
-        assert!(submarine
-            .faces
-            .iter()
-            .any(|face| face.group == "Submarine_Star_Emblem"));
-        assert!(submarine
-            .faces
-            .iter()
-            .any(|face| face.group == "Sub_Propeller_Guard_L"));
+        assert!(
+            submarine
+                .faces
+                .iter()
+                .any(|face| face.group == "Submarine_Star_Emblem")
+        );
+        assert!(
+            submarine
+                .faces
+                .iter()
+                .any(|face| face.group == "Sub_Propeller_Guard_L")
+        );
 
         let emitter_offset = |candidate: &Model, group: &str, scale: f32| {
             let mut points = candidate
@@ -4350,7 +4564,11 @@ mod tests {
                 max.z = max.z.max(point.z);
             }
             let relative = min.add(max).mul(0.5).sub(model_center(candidate));
-            (relative.y * scale, relative.x.abs() * scale, -relative.z * scale)
+            (
+                relative.y * scale,
+                relative.x.abs() * scale,
+                -relative.z * scale,
+            )
         };
         let assert_emitter = |actual: (f32, f32, f32), spec: &ShipSpec| {
             assert!((actual.0 - spec.turbo_back).abs() < 0.002);
@@ -4384,7 +4602,10 @@ mod tests {
         assert!(submarine.vertices.len() > 2_700 && submarine.faces.len() > 5_100);
 
         for (name, model) in [("nave", &ship), ("carro", &car), ("submarino", &submarine)] {
-            assert!(model.faces.iter().any(|face| face.smooth), "{name}: missing smooth shading");
+            assert!(
+                model.faces.iter().any(|face| face.smooth),
+                "{name}: missing smooth shading"
+            );
             for material in [
                 "Casco_blanco",
                 "Azul_cobalto",
@@ -4407,7 +4628,10 @@ mod tests {
             (&submarine, ["Astra_Sub_Core_L", "Astra_Sub_Guard_L"]),
         ] {
             for group in groups {
-                assert!(model.faces.iter().any(|face| face.group == group), "missing ASTRA group {group}");
+                assert!(
+                    model.faces.iter().any(|face| face.group == group),
+                    "missing ASTRA group {group}"
+                );
             }
         }
 
@@ -4429,7 +4653,11 @@ mod tests {
                 max.z = max.z.max(point.z);
             }
             let relative = min.add(max).mul(0.5).sub(model_center(candidate));
-            (-relative.z * scale, relative.x.abs() * scale, -relative.y * scale)
+            (
+                -relative.z * scale,
+                relative.x.abs() * scale,
+                -relative.y * scale,
+            )
         };
         let assert_emitter = |actual: (f32, f32, f32), spec: &ShipSpec| {
             assert!((actual.0 - spec.turbo_back).abs() < 0.002);
@@ -4457,10 +4685,8 @@ mod tests {
     #[test]
     fn detailed_cowboy_assets_have_geometry_materials_and_aligned_thrusters() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let ship = load_obj(
-            root.join("assets/vehicles/cowboy/nave_cowboyb_detallada.obj"),
-        )
-        .unwrap();
+        let ship =
+            load_obj(root.join("assets/vehicles/cowboy/nave_cowboyb_detallada.obj")).unwrap();
         let car = load_obj(root.join("assets/vehicles/cowboy/cb_carro_detallado.obj")).unwrap();
         let submarine =
             load_obj(root.join("assets/vehicles/cowboy/cb_submarino_detallado.obj")).unwrap();
@@ -4470,7 +4696,10 @@ mod tests {
         assert!(submarine.vertices.len() > 3_100 && submarine.faces.len() > 5_000);
 
         for (name, model) in [("nave", &ship), ("carro", &car), ("submarino", &submarine)] {
-            assert!(model.faces.iter().any(|face| face.smooth), "{name}: no smooth shading");
+            assert!(
+                model.faces.iter().any(|face| face.smooth),
+                "{name}: no smooth shading"
+            );
             for material in [
                 "Cowboy_Metal",
                 "Cowboy_Graphite",
@@ -4521,7 +4750,10 @@ mod tests {
             (&submarine, ["Cowboy_Sub_Core_L", "Cowboy_Sub_Guard_L"]),
         ] {
             for group in groups {
-                assert!(model.faces.iter().any(|face| face.group == group), "missing {group}");
+                assert!(
+                    model.faces.iter().any(|face| face.group == group),
+                    "missing {group}"
+                );
             }
         }
 
@@ -4560,11 +4792,7 @@ mod tests {
         );
         for (model, group, spec) in [
             (&car, "Cowboy_Car_Core_L", &COWBOYB_CAR_SPEC),
-            (
-                &submarine,
-                "Cowboy_Sub_Core_L",
-                &COWBOYB_SUBMARINE_SPEC,
-            ),
+            (&submarine, "Cowboy_Sub_Core_L", &COWBOYB_SUBMARINE_SPEC),
         ] {
             let core = group_center(model, group);
             assert_emitter(

@@ -10,7 +10,6 @@ pub enum ModelAxes {
     ArwingSubmarine,
     Kirby,
     Astra,
-    CowboyB,
 }
 
 #[derive(Clone, Copy)]
@@ -183,7 +182,7 @@ pub static ASTRA_SPEC: ShipSpec = ShipSpec {
 pub static COWBOYB_SPEC: ShipSpec = ShipSpec {
     name: "Swordfish II",
     model_scale: 0.28,
-    model_axes: ModelAxes::CowboyB,
+    model_axes: ModelAxes::Astra,
     collision_radius: 2.0,
     min_speed: 4.0,
     cruise_speed: 12.0,
@@ -385,10 +384,6 @@ impl ShipSpec {
                 .mul(local.z)
                 .add(up.mul(local.y))
                 .add(right.mul(local.x)),
-            ModelAxes::CowboyB => forward
-                .mul(-local.y)
-                .add(up.mul(local.z))
-                .add(right.mul(local.x)),
         }
     }
 }
@@ -421,10 +416,11 @@ pub struct Ship {
     pub pitch_rate: f32,
     pub steering_bank: f32,
     pub steering_pitch: f32,
-    pub orbit_axis: Option<Vec3>,
+    pub orbit_plane_normal: Option<Vec3>,
     pub orbit_center: Option<Vec3>,
     pub orbit_camera_blend: f32,
     pub planet_locked: bool,
+    pub spiky_planet_locked: bool,
     pub orbit_release_active: bool,
     pub speed: f32,
 }
@@ -442,10 +438,11 @@ impl Ship {
             pitch_rate: 0.0,
             steering_bank: 0.0,
             steering_pitch: 0.0,
-            orbit_axis: None,
+            orbit_plane_normal: None,
             orbit_center: None,
             orbit_camera_blend: 0.0,
             planet_locked: false,
+            spiky_planet_locked: false,
             orbit_release_active: false,
             speed: spec.cruise_speed,
         }
