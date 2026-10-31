@@ -10,7 +10,6 @@ pub enum ModelAxes {
     ArwingSubmarine,
     Kirby,
     Astra,
-    CowboyB,
 }
 
 #[derive(Clone, Copy)]
@@ -385,10 +384,6 @@ impl ShipSpec {
                 .mul(local.z)
                 .add(up.mul(local.y))
                 .add(right.mul(local.x)),
-            ModelAxes::CowboyB => forward
-                .mul(-local.y)
-                .add(up.mul(local.z))
-                .add(right.mul(local.x)),
         }
     }
 }
@@ -425,6 +420,7 @@ pub struct Ship {
     pub orbit_center: Option<Vec3>,
     pub orbit_camera_blend: f32,
     pub planet_locked: bool,
+    pub spiky_planet_locked: bool,
     pub orbit_release_active: bool,
     pub speed: f32,
 }
@@ -446,6 +442,7 @@ impl Ship {
             orbit_center: None,
             orbit_camera_blend: 0.0,
             planet_locked: false,
+            spiky_planet_locked: false,
             orbit_release_active: false,
             speed: spec.cruise_speed,
         }
