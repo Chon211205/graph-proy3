@@ -173,6 +173,7 @@ fn draw_cavern(framebuffer: &mut Framebuffer, elapsed: f32) {
         height * 0.07,
         elapsed + 3.1,
     );
+    draw_cave_spines(framebuffer, elapsed);
 }
 
 fn draw_crystal_cluster(framebuffer: &mut Framebuffer, x: f32, y: f32, size: f32, time: f32) {
@@ -206,6 +207,42 @@ fn draw_crystal_cluster(framebuffer: &mut Framebuffer, x: f32, y: f32, size: f32
             2.0,
             0xfff2c2,
         );
+    }
+}
+
+fn draw_cave_spines(framebuffer: &mut Framebuffer, elapsed: f32) {
+    let width = framebuffer.width as f32;
+    let height = framebuffer.height as f32;
+    let sway = (elapsed * 0.7).sin() * height * 0.008;
+    for (x, y, scale, direction) in [
+        (0.02, 0.30, 1.0, 1.0),
+        (0.09, 0.66, 0.78, 1.0),
+        (0.98, 0.34, 1.08, -1.0),
+        (0.91, 0.72, 0.82, -1.0),
+    ] {
+        let root = (width * x, height * y + sway * direction);
+        let bend = (root.0 + width * 0.10 * direction, root.1 - height * 0.015);
+        let tip = (
+            root.0 + width * 0.15 * direction,
+            root.1 - height * 0.13 * scale,
+        );
+        let joint = (
+            root.0 + width * 0.17 * direction,
+            root.1 - height * 0.25 * scale,
+        );
+        let outer = 12.0 * scale;
+        let inner = 5.0 * scale;
+        line(framebuffer, root, bend, outer, 0x7b1948);
+        line(framebuffer, bend, tip, outer, 0x9d2055);
+        line(framebuffer, tip, joint, outer * 0.72, 0xb42a63);
+        line(
+            framebuffer,
+            (root.0, root.1 - 3.0),
+            (tip.0, tip.1 - 3.0),
+            inner,
+            0xd94379,
+        );
+        circle(framebuffer, joint.0, joint.1, outer * 0.38, 0x781a43);
     }
 }
 
