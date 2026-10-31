@@ -15,7 +15,8 @@ use framebuffer::Framebuffer;
 use minifb::{Key, ScaleMode, Window, WindowOptions};
 use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use ship::{
-    ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_SPEC,
+    ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_CAR_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC,
+    BUZZ_CAR_SPEC, BUZZ_SPEC, BUZZ_SUBMARINE_SPEC,
     COWBOYB_CAR_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC,
     MCQUEEN_CAR_SPEC, MCQUEEN_SPEC, MCQUEEN_SUBMARINE_SPEC, Projectile, Ship, ShipController,
     ShipInput, ShipSpec,
@@ -42,9 +43,9 @@ const COLLISION_MARGIN: f32 = 4.0;
 const AVOIDANCE_DISTANCE: f32 = 52.0;
 const ORBIT_LIMIT_RADIUS: f32 = 60.0;
 const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
-const WATER_LEVEL_LENGTH: f32 = 175.0;
-const WATER_LEVEL_HALF_WIDTH: f32 = 7.6;
-const WATER_LEVEL_SOFT_BORDER: f32 = 6.2;
+const WATER_LEVEL_LENGTH: f32 = 525.0;
+const WATER_LEVEL_HALF_WIDTH: f32 = 10.0;
+const WATER_LEVEL_SOFT_BORDER: f32 = 8.4;
 const WATER_LEVEL_BORDER_STRENGTH: f32 = 26.0;
 const WATER_LEVEL_MIN_HEIGHT: f32 = 2.4;
 const WATER_LEVEL_MAX_HEIGHT: f32 = 11.5;
@@ -440,10 +441,10 @@ impl BubbleEmitter {
 
 impl WaterLevelState {
     fn new() -> Self {
-        let enemies = (0..12)
+        let enemies = (0..30)
             .map(|index| WaterEnemy {
                 kind: index % 3,
-                progress: 18.0 + index as f32 * 13.0,
+                progress: 18.0 + index as f32 * 16.0,
                 lateral: [-3.5, 2.6, -1.0, 3.4, 0.7, -2.9][index % 6],
                 height: [3.0, 5.5, 8.5, 4.0, 10.0, 7.0][index % 6],
                 phase: index as f32 * 1.37,
@@ -539,7 +540,11 @@ fn extract_model_group(model: &Model, group_name: &str) -> Result<Model, String>
     let mut vertices = Vec::new();
     let mut faces = Vec::new();
 
-    for face in model.faces.iter().filter(|face| face.group == group_name) {
+    for face in model
+        .faces
+        .iter()
+        .filter(|face| face.group.starts_with(group_name))
+    {
         let mut indices = [0_usize; 3];
         for (target, source) in indices.iter_mut().zip(face.indices) {
             *target = *index_map.entry(source).or_insert_with(|| {
@@ -548,11 +553,13 @@ fn extract_model_group(model: &Model, group_name: &str) -> Result<Model, String>
                 index
             });
         }
-        faces.push(Face::new(
+        let mut extracted_face = Face::new(
             indices,
             face.material.clone(),
             face.group.clone(),
-        ));
+        );
+        extracted_face.smooth = face.smooth;
+        faces.push(extracted_face);
     }
 
     if faces.is_empty() {
@@ -563,7 +570,11 @@ fn extract_model_group(model: &Model, group_name: &str) -> Result<Model, String>
 
 fn stretch_model_group_height(model: &mut Model, group_name: &str, base: f32, factor: f32) {
     let mut affected = vec![false; model.vertices.len()];
-    for face in model.faces.iter().filter(|face| face.group == group_name) {
+    for face in model
+        .faces
+        .iter()
+        .filter(|face| face.group.starts_with(group_name))
+    {
         for index in face.indices {
             affected[index] = true;
         }
@@ -574,6 +585,7 @@ fn stretch_model_group_height(model: &mut Model, group_name: &str, base: f32, fa
         }
     }
     model.recalculate_bounds();
+    model.recalculate_normals();
 }
 
 fn build_level_colliders(model: &Model) -> Vec<LevelCollider> {
@@ -843,16 +855,22 @@ fn procedural_surface_color(
             let direction = point.normalize();
             let wave_a = (direction.x * 19.0 + direction.z * 7.0 + time * 1.8).sin();
             let wave_b = (direction.z * 25.0 - direction.y * 9.0 - time * 1.35).sin();
-            let wave = (wave_a + wave_b) * 0.5;
+            let current = (direction.x.atan2(direction.z) * 7.0
+                + direction.y * 16.0
+                + time * 0.55)
+                .sin();
+            let fine_wave = (direction.x * 52.0 - direction.z * 47.0 + time * 2.7).sin();
+            let wave = wave_a * 0.34 + wave_b * 0.28 + current * 0.24 + fine_wave * 0.14;
+            let foam = (wave * 0.5 + current * 0.5 - 0.58).max(0.0).powf(2.0) * 2.8;
             let sparkle = (x as f32 * 0.07 + y as f32 * 0.04 + time * 3.2)
                 .sin()
                 .max(0.0)
                 .powf(18.0);
             (
-                5.0 + fresnel * 32.0 + sparkle * 115.0,
-                72.0 + wave * 18.0 + fresnel * 80.0 + sparkle * 95.0,
-                142.0 + wave * 22.0 + fresnel * 105.0 + sparkle * 70.0,
-                0.88 + wave * 0.12,
+                3.0 + wave * 4.0 + fresnel * 38.0 + sparkle * 120.0 + foam * 74.0,
+                58.0 + wave * 22.0 + fresnel * 92.0 + sparkle * 102.0 + foam * 92.0,
+                132.0 + wave * 32.0 + fresnel * 118.0 + sparkle * 76.0 + foam * 80.0,
+                0.82 + wave * 0.12 + fresnel * 0.16,
             )
         }
         SurfaceShader::Waterfall => {
@@ -925,6 +943,148 @@ fn procedural_surface_color(
             (245.0, 190.0, 28.0, pulse)
         }
         SurfaceShader::WhiteMark => (255.0, 250.0, 220.0, 1.15),
+        SurfaceShader::ArwingHull => (
+            238.0 + fresnel * 17.0,
+            243.0 + fresnel * 12.0,
+            248.0 + fresnel * 7.0,
+            0.88 + fresnel * 0.28,
+        ),
+        SurfaceShader::ArwingMetal => (
+            91.0 + fresnel * 70.0,
+            105.0 + fresnel * 74.0,
+            119.0 + fresnel * 80.0,
+            0.78 + fresnel * 0.42,
+        ),
+        SurfaceShader::ArwingBlue => (
+            30.0 + fresnel * 32.0,
+            78.0 + fresnel * 58.0,
+            190.0 + fresnel * 65.0,
+            0.84 + fresnel * 0.35,
+        ),
+        SurfaceShader::ArwingGlass => (
+            15.0 + fresnel * 52.0,
+            47.0 + fresnel * 86.0,
+            74.0 + fresnel * 115.0,
+            0.72 + fresnel * 0.58,
+        ),
+        SurfaceShader::ArwingDarkMetal => (
+            25.0 + fresnel * 48.0,
+            31.0 + fresnel * 53.0,
+            42.0 + fresnel * 60.0,
+            0.72 + fresnel * 0.44,
+        ),
+        SurfaceShader::ArwingEmission => {
+            let pulse = 0.96 + (time * 8.0 + point.x * 0.7).sin() * 0.04;
+            (40.0 * pulse, 225.0 * pulse, 242.0 * pulse, 1.0 / brightness.max(0.01))
+        }
+        SurfaceShader::ArwingYellow => (
+            250.0,
+            194.0 + fresnel * 38.0,
+            34.0 + fresnel * 28.0,
+            0.88 + fresnel * 0.28,
+        ),
+        SurfaceShader::AstraCobalt => (
+            28.0 + fresnel * 34.0,
+            92.0 + fresnel * 58.0,
+            224.0 + fresnel * 31.0,
+            0.82 + fresnel * 0.36,
+        ),
+        SurfaceShader::AstraDeepBlue => (
+            14.0 + fresnel * 28.0,
+            38.0 + fresnel * 45.0,
+            105.0 + fresnel * 72.0,
+            0.76 + fresnel * 0.42,
+        ),
+        SurfaceShader::AstraRedEmission => {
+            let pulse = 0.96 + (time * 7.0 + point.z).sin() * 0.04;
+            (
+                255.0 * pulse,
+                35.0 * pulse,
+                42.0 * pulse,
+                1.0 / brightness.max(0.01),
+            )
+        }
+        SurfaceShader::CowboyYellowPaint => (
+            170.0 + fresnel * 82.0,
+            91.0 + fresnel * 76.0,
+            8.0 + fresnel * 56.0,
+            0.78 + fresnel * 0.62,
+        ),
+        SurfaceShader::CowboyRedPaint => (
+            145.0 + fresnel * 104.0,
+            12.0 + fresnel * 42.0,
+            9.0 + fresnel * 34.0,
+            0.76 + fresnel * 0.66,
+        ),
+        SurfaceShader::CowboyOrangeEmission => {
+            let pulse = 0.94 + (time * 8.0 + point.z * 1.7).sin() * 0.06;
+            (
+                255.0 * pulse,
+                72.0 * pulse,
+                12.0 * pulse,
+                1.0 / brightness.max(0.01),
+            )
+        }
+        SurfaceShader::BuzzWhiteMetal => (
+            188.0 + fresnel * 66.0,
+            198.0 + fresnel * 56.0,
+            208.0 + fresnel * 46.0,
+            0.82 + fresnel * 0.52,
+        ),
+        SurfaceShader::BuzzGreenMetal => (
+            72.0 + fresnel * 72.0,
+            164.0 + fresnel * 82.0,
+            18.0 + fresnel * 52.0,
+            0.80 + fresnel * 0.56,
+        ),
+        SurfaceShader::BuzzPurpleMetal => (
+            76.0 + fresnel * 72.0,
+            28.0 + fresnel * 48.0,
+            142.0 + fresnel * 104.0,
+            0.78 + fresnel * 0.58,
+        ),
+        SurfaceShader::BuzzRedMetal => (
+            184.0 + fresnel * 66.0,
+            18.0 + fresnel * 38.0,
+            30.0 + fresnel * 42.0,
+            0.80 + fresnel * 0.52,
+        ),
+        SurfaceShader::BuzzEmission => {
+            let pulse = 0.94 + (time * 8.5 + point.x * 0.8).sin() * 0.06;
+            (
+                128.0 * pulse,
+                255.0 * pulse,
+                30.0 * pulse,
+                1.0 / brightness.max(0.01),
+            )
+        }
+        SurfaceShader::McQueenRedMetal => (
+            174.0 + fresnel * 78.0,
+            12.0 + fresnel * 38.0,
+            18.0 + fresnel * 42.0,
+            0.76 + fresnel * 0.68,
+        ),
+        SurfaceShader::McQueenYellowMetal => (
+            210.0 + fresnel * 44.0,
+            132.0 + fresnel * 74.0,
+            12.0 + fresnel * 46.0,
+            0.80 + fresnel * 0.58,
+        ),
+        SurfaceShader::McQueenWhiteMetal => (
+            202.0 + fresnel * 52.0,
+            208.0 + fresnel * 46.0,
+            216.0 + fresnel * 38.0,
+            0.84 + fresnel * 0.48,
+        ),
+        SurfaceShader::McQueenEmission => {
+            let pulse = 0.93 + (time * 9.0 + point.z * 1.4).sin() * 0.07;
+            (
+                255.0 * pulse,
+                82.0 * pulse,
+                14.0 * pulse,
+                1.0 / brightness.max(0.01),
+            )
+        }
         SurfaceShader::Flat => (220.0, 230.0, 238.0, 1.0),
     };
 
@@ -932,6 +1092,49 @@ fn procedural_surface_color(
     ((red * scale).clamp(0.0, 255.0) as u32) << 16
         | ((green * scale).clamp(0.0, 255.0) as u32) << 8
         | (blue * scale).clamp(0.0, 255.0) as u32
+}
+
+fn refract_water_color(
+    surface: u32,
+    background: &[u32],
+    width: usize,
+    height: usize,
+    x: i32,
+    y: i32,
+    point: Vec3,
+    time: f32,
+    fresnel: f32,
+) -> u32 {
+    let distortion_strength = (1.0 - fresnel).clamp(0.12, 1.0) * 5.5;
+    let offset_x = ((point.y * 23.0 + point.z * 17.0 + time * 1.9).sin()
+        + (point.x * 41.0 - time * 2.4).sin() * 0.45)
+        * distortion_strength;
+    let offset_y = ((point.x * 19.0 - point.z * 29.0 - time * 1.5).cos()
+        + (point.y * 37.0 + time * 2.1).sin() * 0.38)
+        * distortion_strength
+        * 0.65;
+    let sample_x = (x as f32 + offset_x).round().clamp(0.0, width.saturating_sub(1) as f32)
+        as usize;
+    let sample_y = (y as f32 + offset_y)
+        .round()
+        .clamp(0.0, height.saturating_sub(1) as f32) as usize;
+    let refracted = background[sample_y * width + sample_x];
+
+    let surface_r = ((surface >> 16) & 0xff) as f32;
+    let surface_g = ((surface >> 8) & 0xff) as f32;
+    let surface_b = (surface & 0xff) as f32;
+    let refracted_r = ((refracted >> 16) & 0xff) as f32;
+    let refracted_g = ((refracted >> 8) & 0xff) as f32;
+    let refracted_b = (refracted & 0xff) as f32;
+    let transmission = (0.66 * (1.0 - fresnel) + 0.10).clamp(0.18, 0.72);
+    let reflection = 1.0 - transmission;
+    let depth_tint = 0.82 + fresnel * 0.18;
+    let red = (refracted_r * transmission * 0.38 + surface_r * reflection).min(255.0);
+    let green =
+        (refracted_g * transmission * 0.72 + surface_g * reflection + 8.0).min(255.0);
+    let blue = (refracted_b * transmission * depth_tint + surface_b * reflection + 18.0)
+        .min(255.0);
+    ((red as u32) << 16) | ((green as u32) << 8) | blue as u32
 }
 
 fn hash(mut value: u32) -> u32 {
@@ -983,6 +1186,64 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32) {
                     framebuffer.pixels[py as usize * framebuffer.width + px as usize] = color;
                 }
             }
+        }
+    }
+}
+
+fn draw_water_planet_atmosphere(
+    framebuffer: &mut Framebuffer,
+    camera: &Camera,
+    planet_position: Vec3,
+    planet_radius: f32,
+    time: f32,
+) {
+    let relative = planet_position.sub(camera.position);
+    let camera_x = relative.dot(camera.right);
+    let camera_y = relative.dot(camera.up);
+    let camera_z = relative.dot(camera.forward);
+    if camera_z <= NEAR_PLANE {
+        return;
+    }
+
+    let focal = framebuffer.height as f32 / (VERTICAL_FOV * 0.5).tan() * 0.5;
+    let center_x = framebuffer.width as f32 * 0.5 + camera_x * focal / camera_z;
+    let center_y = framebuffer.height as f32 * 0.5 - camera_y * focal / camera_z;
+    let radius = (planet_radius * focal / camera_z).max(1.0);
+    let inner = radius * 0.94;
+    let outer = radius * 1.32;
+    let min_x = (center_x - outer).floor().max(0.0) as usize;
+    let max_x = (center_x + outer)
+        .ceil()
+        .min((framebuffer.width.saturating_sub(1)) as f32) as usize;
+    let min_y = (center_y - outer).floor().max(0.0) as usize;
+    let max_y = (center_y + outer)
+        .ceil()
+        .min((framebuffer.height.saturating_sub(1)) as f32) as usize;
+    if min_x > max_x || min_y > max_y {
+        return;
+    }
+
+    let pulse = 0.92 + (time * 0.8).sin() * 0.08;
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            let dx = x as f32 + 0.5 - center_x;
+            let dy = y as f32 + 0.5 - center_y;
+            let distance = (dx * dx + dy * dy).sqrt();
+            if distance < inner || distance > outer {
+                continue;
+            }
+            let edge = ((outer - distance) / (outer - inner)).clamp(0.0, 1.0);
+            let rim = (1.0 - ((distance - radius) / (outer - radius)).abs()).clamp(0.0, 1.0);
+            let strength = (edge * edge * 0.34 + rim.powf(3.0) * 0.42) * pulse;
+            let index = y * framebuffer.width + x;
+            let old = framebuffer.pixels[index];
+            let old_r = ((old >> 16) & 0xff) as f32;
+            let old_g = ((old >> 8) & 0xff) as f32;
+            let old_b = (old & 0xff) as f32;
+            let red = (old_r + 18.0 * strength).min(255.0) as u32;
+            let green = (old_g + 126.0 * strength).min(255.0) as u32;
+            let blue = (old_b + 220.0 * strength).min(255.0) as u32;
+            framebuffer.pixels[index] = (red << 16) | (green << 8) | blue;
         }
     }
 }
@@ -1405,6 +1666,10 @@ fn move_around_planet(
 
 enum TriangleStyle {
     Flat(u32),
+    Smooth {
+        color: [u8; 3],
+        brightness: [f32; 3],
+    },
     Procedural {
         shader: SurfaceShader,
         points: [Vec3; 3],
@@ -1454,6 +1719,19 @@ impl TriangleBatch {
         let worker_count = worker_count.clamp(1, height.max(1));
         let tile_height = height.div_ceil(worker_count).div_ceil(32) * 32;
         let commands = &self.commands;
+        let refractive_background = commands
+            .iter()
+            .any(|command| {
+                matches!(
+                    &command.style,
+                    TriangleStyle::Procedural {
+                        shader: SurfaceShader::Ocean,
+                        ..
+                    }
+                )
+            })
+            .then(|| framebuffer.pixels.clone());
+        let refractive_background = refractive_background.as_deref();
         let (pixels, depth) = framebuffer.buffers_mut();
         thread::scope(|scope| {
             for (tile_index, (tile_pixels, tile_depth)) in pixels
@@ -1477,6 +1755,26 @@ impl TriangleBatch {
                                 c,
                                 |_, _, _, _, _| *color,
                             ),
+                            TriangleStyle::Smooth { color, brightness } => {
+                                draw_triangle_shaded_region(
+                                    tile_pixels,
+                                    tile_depth,
+                                    width,
+                                    height,
+                                    region_y,
+                                    a,
+                                    b,
+                                    c,
+                                    |w0, w1, w2, _, _| {
+                                        pack(
+                                            *color,
+                                            brightness[0] * w0
+                                                + brightness[1] * w1
+                                                + brightness[2] * w2,
+                                        )
+                                    },
+                                )
+                            }
                             TriangleStyle::Procedural {
                                 shader,
                                 points,
@@ -1497,7 +1795,7 @@ impl TriangleBatch {
                                         .mul(w0)
                                         .add(points[1].mul(w1))
                                         .add(points[2].mul(w2));
-                                    procedural_surface_color(
+                                    let surface = procedural_surface_color(
                                         *shader,
                                         point,
                                         x,
@@ -1505,7 +1803,26 @@ impl TriangleBatch {
                                         *time,
                                         *brightness,
                                         *fresnel,
-                                    )
+                                    );
+                                    if *shader == SurfaceShader::Ocean {
+                                        if let Some(background) = refractive_background {
+                                            refract_water_color(
+                                                surface,
+                                                background,
+                                                width,
+                                                height,
+                                                x,
+                                                y,
+                                                point,
+                                                *time,
+                                                *fresnel,
+                                            )
+                                        } else {
+                                            surface
+                                        }
+                                    } else {
+                                        surface
+                                    }
                                 },
                             ),
                         }
@@ -1642,6 +1959,23 @@ fn queue_model_with_scratch<F>(
         camera_vertices.reserve(model.vertices.len());
         camera_vertices.extend(model.vertices.iter().map(transform_vertex));
     }
+    let camera_normals: Vec<Vec3> = if model.faces.iter().any(|face| face.smooth) {
+        model
+            .vertex_normals
+            .iter()
+            .map(|normal| {
+                let world_direction = transform(local_center.add(*normal)).sub(world_center);
+                Vec3::new(
+                    world_direction.dot(camera.right),
+                    world_direction.dot(camera.up),
+                    world_direction.dot(camera.forward),
+                )
+                .normalize()
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let focal = batch.viewport_height as f32 / tan_half_vertical * 0.5;
     let light = Vec3::new(-0.3, 0.8, -0.5).normalize();
     for face in &model.faces {
@@ -1698,6 +2032,17 @@ fn queue_model_with_scratch<F>(
                     time,
                     brightness,
                     fresnel,
+                },
+            });
+        } else if face.smooth {
+            let brightness = [i0, i1, i2].map(|index| {
+                0.34 + camera_normals[index].dot(light).abs() * 0.66
+            });
+            batch.commands.push(TriangleCommand {
+                vertices: [a, b, c],
+                style: TriangleStyle::Smooth {
+                    color: flat_color,
+                    brightness,
                 },
             });
         } else {
@@ -1762,6 +2107,14 @@ fn render_scene(
     let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let planet_position = water_planet_position(world_time);
     let planet_rotation = world_time * 0.25;
+
+    draw_water_planet_atmosphere(
+        framebuffer,
+        &camera,
+        planet_position,
+        WATER_PLANET_RADIUS,
+        world_time,
+    );
 
     queue_model(
         sun,
@@ -2545,24 +2898,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
-    let arwing_path = "assets/vehicles/arwing.obj";
-    let kirby_path = "assets/vehicles/kirby.obj";
-    let astra_car_path = "assets/vehicles/astra_carro.obj";
-    let cowboyb_car_path = "assets/vehicles/cb_carro.obj";
-    let astra_submarine_path = "assets/vehicles/astra_submarino.obj";
-    let cowboyb_submarine_path = "assets/vehicles/cb_submarino.obj";
-    let arwing_submarine_path = "assets/vehicles/arwingsub.obj";
-    let kirby_submarine_path = "assets/vehicles/kirbysub.obj";
+    let arwing_path = "assets/vehicles/arwing/arwing2.obj";
+    let kirby_path = "assets/vehicles/kirby/kirby_detallado.obj";
+    let astra_path = "assets/vehicles/Astra.obj";
+    let astra_car_path = "assets/vehicles/astra/astra_carro_detallado.obj";
+    let cowboyb_path = "assets/vehicles/Swordfish II.obj";
+    let cowboyb_car_path = "assets/vehicles/cowboy/cb_carro_detallado.obj";
+    let astra_submarine_path = "assets/vehicles/astra/astra_submarino_detallado.obj";
+    let cowboyb_submarine_path = "assets/vehicles/cowboy/cb_submarino_detallado.obj";
+    let arwing_submarine_path = "assets/vehicles/arwing/arwing2_submarino.obj";
+    let kirby_submarine_path = "assets/vehicles/kirby/kirbysub_detallado.obj";
     let arwing_model =
         load_obj(arwing_path).map_err(|error| format!("Error al cargar {arwing_path}: {error}"))?;
     let kirby_model =
         load_obj(kirby_path).map_err(|error| format!("Error al cargar {kirby_path}: {error}"))?;
-    let astra_path = "assets/vehicles/Astra.obj";
     let astra_model =
         load_obj(astra_path).map_err(|error| format!("Error al cargar {astra_path}: {error}"))?;
     let astra_car_model = load_obj(astra_car_path)
         .map_err(|error| format!("Error al cargar {astra_car_path}: {error}"))?;
-    let cowboyb_path = "assets/vehicles/Swordfish II.obj";
     let cowboyb_model = load_obj(cowboyb_path)
         .map_err(|error| format!("Error al cargar {cowboyb_path}: {error}"))?;
     let mut cowboyb_car_model = load_obj(cowboyb_car_path)
@@ -2581,13 +2934,14 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut window = create_window(fullscreen)?;
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     let buzz_variants = [
-        load_obj("assets/vehicles/buzz_nave.obj")?,
-        load_obj("assets/vehicles/buzz_carro.obj")?,
-        load_obj("assets/vehicles/buzz_submarino.obj")?,
+        load_obj("assets/vehicles/buzz/buzz_nave_detallada.obj")?,
+        load_obj("assets/vehicles/buzz/buzz_carro_detallado.obj")?,
+        load_obj("assets/vehicles/buzz/buzz_submarino_detallado.obj")?,
     ];
-    let mcqueen_model = load_obj("assets/vehicles/mcqueen_nave.obj")?;
-    let mcqueen_car_model = load_obj("assets/vehicles/mcqueen_carro.obj")?;
-    let mcqueen_submarine_model = load_obj("assets/vehicles/mcqueen_submarino.obj")?;
+    let mcqueen_model = load_obj("assets/vehicles/mcqueen/mcqueen_nave_detallada.obj")?;
+    let mcqueen_car_model = load_obj("assets/vehicles/mcqueen/mcqueen_carro_detallado.obj")?;
+    let mcqueen_submarine_model =
+        load_obj("assets/vehicles/mcqueen/mcqueen_submarino_detallado.obj")?;
     let mcqueen_car_center = model_center(&mcqueen_car_model);
     let choices = [
         (&arwing_model, &ARWING_SPEC),
@@ -2608,7 +2962,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         ],
         vec![
             (&astra_model, &ASTRA_SPEC, "MODO ESPACIAL"),
-            (&astra_car_model, &ASTRA_SPEC, "MODO CARRO"),
+            (&astra_car_model, &ASTRA_CAR_SPEC, "MODO CARRO"),
             (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC, "SUBMARINO"),
         ],
         vec![
@@ -2618,8 +2972,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         ],
         vec![
             (&buzz_variants[0], &BUZZ_SPEC, "MODO ESPACIAL"),
-            (&buzz_variants[1], &BUZZ_SPEC, "MODO CARRO"),
-            (&buzz_variants[2], &BUZZ_SPEC, "SUBMARINO"),
+            (&buzz_variants[1], &BUZZ_CAR_SPEC, "MODO CARRO"),
+            (&buzz_variants[2], &BUZZ_SUBMARINE_SPEC, "SUBMARINO"),
         ],
         vec![
             (&mcqueen_model, &MCQUEEN_SPEC, "MODO ESPACIAL"),
@@ -2658,7 +3012,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         1 => (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC),
         2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
         3 => (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC),
-        4 => (&buzz_variants[2], &BUZZ_SPEC),
+        4 => (&buzz_variants[2], &BUZZ_SUBMARINE_SPEC),
         5 => (&mcqueen_submarine_model, &MCQUEEN_SUBMARINE_SPEC),
         _ => unreachable!(),
     };
@@ -2671,13 +3025,13 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let spiky_planet_path = "assets/planets/planeta_espinas.obj";
     let spiky_planet = load_obj(spiky_planet_path)
         .map_err(|error| format!("Error al cargar {spiky_planet_path}: {error}"))?;
-    let water_level_path = "assets/levels/waterlevel.obj";
+    let water_level_path = "assets/levels/waterlevel_extendido.obj";
     let mut water_level = load_obj(water_level_path)
         .map_err(|error| format!("Error al cargar {water_level_path}: {error}"))?;
     water_level
         .faces
-        .retain(|face| face.group != "CAVES_AND_ARCHES");
-    stretch_model_group_height(&mut water_level, "TERRAIN_WALLS", -5.0, 2.4);
+        .retain(|face| !face.group.starts_with("CAVES_AND_ARCHES"));
+    stretch_model_group_height(&mut water_level, "TERRAIN_WALLS", -5.0, 3.6);
     let enemy_path = "assets/enemies/acuaticenemies.obj";
     let enemy_source =
         load_obj(enemy_path).map_err(|error| format!("Error al cargar {enemy_path}: {error}"))?;
@@ -2769,7 +3123,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             1 => (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC),
                             2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
                             3 => (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC),
-                            4 => (&buzz_variants[2], &BUZZ_SPEC),
+                            4 => (&buzz_variants[2], &BUZZ_SUBMARINE_SPEC),
                             5 => (&mcqueen_submarine_model, &MCQUEEN_SUBMARINE_SPEC),
                             _ => unreachable!(),
                         };
@@ -3099,7 +3453,8 @@ mod tests {
     #[test]
     fn mcqueen_submarine_has_aquatic_parts_and_renders_from_multiple_angles() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let model = load_obj(root.join("assets/vehicles/mcqueen_submarino.obj")).unwrap();
+        let model =
+            load_obj(root.join("assets/vehicles/mcqueen/mcqueen_submarino_detallado.obj")).unwrap();
         assert!(
             model
                 .vertices
@@ -3192,8 +3547,10 @@ mod tests {
     #[test]
     fn mcqueen_car_has_four_exposed_wheels_and_renders_from_multiple_angles() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let model = load_obj(root.join("assets/vehicles/mcqueen_carro.obj")).unwrap();
-        let spaceship = load_obj(root.join("assets/vehicles/mcqueen_nave.obj")).unwrap();
+        let model =
+            load_obj(root.join("assets/vehicles/mcqueen/mcqueen_carro_detallado.obj")).unwrap();
+        let spaceship =
+            load_obj(root.join("assets/vehicles/mcqueen/mcqueen_nave_detallada.obj")).unwrap();
         assert_ne!(model.faces.len(), spaceship.faces.len());
         assert!(
             model
@@ -3277,7 +3634,8 @@ mod tests {
     #[test]
     fn mcqueen_spaceship_loads_and_renders_from_multiple_angles() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let model = load_obj(root.join("assets/vehicles/mcqueen_nave.obj")).unwrap();
+        let model =
+            load_obj(root.join("assets/vehicles/mcqueen/mcqueen_nave_detallada.obj")).unwrap();
         assert!(
             model
                 .vertices
@@ -3350,6 +3708,80 @@ mod tests {
         }
     }
 
+    #[test]
+    fn detailed_mcqueen_assets_have_metallic_materials_and_aligned_thrusters() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let variants = [
+            (
+                load_obj(root.join("assets/vehicles/mcqueen/mcqueen_nave_detallada.obj")).unwrap(),
+                "McQueen_Ship_Core_L",
+                "McQueen_Ship_Guard_L",
+                &MCQUEEN_SPEC,
+                (9_000, 15_400),
+            ),
+            (
+                load_obj(root.join("assets/vehicles/mcqueen/mcqueen_carro_detallado.obj")).unwrap(),
+                "McQueen_Car_Core_L",
+                "McQueen_Car_Rim_Front_L",
+                &MCQUEEN_CAR_SPEC,
+                (8_900, 15_200),
+            ),
+            (
+                load_obj(root.join("assets/vehicles/mcqueen/mcqueen_submarino_detallado.obj")).unwrap(),
+                "McQueen_Sub_Core_L",
+                "McQueen_Sub_Guard_L",
+                &MCQUEEN_SUBMARINE_SPEC,
+                (9_500, 16_300),
+            ),
+        ];
+
+        for (model, core_group, detail_group, spec, minimum) in variants {
+            assert!(model.vertices.len() > minimum.0 && model.faces.len() > minimum.1);
+            assert!(model.faces.iter().any(|face| face.smooth));
+            assert!(model.faces.iter().any(|face| face.group == detail_group));
+            assert!(model.faces.iter().any(|face| {
+                face.material == "mcqueen_red" && face.shader == SurfaceShader::McQueenRedMetal
+            }));
+            assert!(model.faces.iter().any(|face| {
+                face.material == "mcqueen_emission"
+                    && face.shader == SurfaceShader::McQueenEmission
+                    && face.color == MaterialColor::Fixed([255, 82, 14])
+            }));
+            assert!(model.faces.iter().any(|face| {
+                face.group.contains("Ojo") || face.group.contains("Iris")
+            }));
+            assert!(model.faces.iter().any(|face| {
+                face.group == "Pupila" && face.material == "mcqueen_dark"
+            }));
+            for glass_group in ["Cabina_azul", "Parabrisas", "Cupula"] {
+                assert!(!model.faces.iter().any(|face| {
+                    face.group == glass_group && face.material == "mcqueen_glass"
+                }));
+            }
+
+            let mut points = model
+                .faces
+                .iter()
+                .filter(|face| face.group == core_group)
+                .flat_map(|face| face.indices)
+                .map(|index| model.vertices[index]);
+            let first = points.next().expect("missing McQueen emitter geometry");
+            let (mut min, mut max) = (first, first);
+            for point in points {
+                min.x = min.x.min(point.x);
+                min.y = min.y.min(point.y);
+                min.z = min.z.min(point.z);
+                max.x = max.x.max(point.x);
+                max.y = max.y.max(point.y);
+                max.z = max.z.max(point.z);
+            }
+            let core = min.add(max).mul(0.5).sub(model_center(&model));
+            assert!((-core.z * spec.model_scale - spec.turbo_back).abs() < 0.002);
+            assert!((core.x.abs() * spec.model_scale - spec.turbo_side).abs() < 0.002);
+            assert!((-core.y * spec.model_scale - spec.turbo_down).abs() < 0.002);
+        }
+    }
+
     fn test_camera() -> Camera {
         Camera {
             position: Vec3::default(),
@@ -3357,6 +3789,54 @@ mod tests {
             right: Vec3::new(1.0, 0.0, 0.0),
             up: Vec3::new(0.0, 1.0, 0.0),
         }
+    }
+
+    #[test]
+    fn water_planet_atmosphere_draws_a_halo_without_covering_the_center() {
+        let mut framebuffer = Framebuffer::new(320, 200);
+        framebuffer.clear(0x030718);
+        draw_water_planet_atmosphere(
+            &mut framebuffer,
+            &test_camera(),
+            Vec3::new(0.0, 0.0, 100.0),
+            WATER_PLANET_RADIUS,
+            1.5,
+        );
+        assert_eq!(framebuffer.pixels[100 * 320 + 160], 0x030718);
+        assert!(framebuffer.pixels.iter().any(|&pixel| pixel != 0x030718));
+        assert!(framebuffer.pixels.iter().any(|&pixel| {
+            let green = (pixel >> 8) & 0xff;
+            let blue = pixel & 0xff;
+            pixel != 0x030718 && blue > green
+        }));
+    }
+
+    #[test]
+    fn refractive_water_distorts_and_tints_the_background() {
+        let width = 16;
+        let height = 16;
+        let background: Vec<u32> = (0..width * height)
+            .map(|index| {
+                let x = (index % width) as u32;
+                let y = (index / width) as u32;
+                (x * 12 << 16) | (y * 10 << 8) | 0x24
+            })
+            .collect();
+        let surface = 0x168dcc;
+        let refracted = refract_water_color(
+            surface,
+            &background,
+            width,
+            height,
+            8,
+            8,
+            Vec3::new(0.3, -0.2, 0.7),
+            1.25,
+            0.18,
+        );
+        assert_ne!(refracted, surface);
+        assert_ne!(refracted, background[8 * width + 8]);
+        assert!((refracted & 0xff) > ((refracted >> 16) & 0xff));
     }
 
     fn test_triangle(z: f32) -> Model {
@@ -3531,6 +4011,71 @@ mod tests {
     }
 
     #[test]
+    fn extended_water_level_is_long_chunked_and_has_collision_gates() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut level =
+            load_obj(root.join("assets/levels/waterlevel_extendido.obj")).unwrap();
+        assert!(level.vertices.len() > 35_000);
+        assert!(level.faces.len() > 50_000);
+        let min_x = level
+            .vertices
+            .iter()
+            .map(|vertex| vertex.x)
+            .fold(f32::INFINITY, f32::min);
+        let max_x = level
+            .vertices
+            .iter()
+            .map(|vertex| vertex.x)
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(max_x - min_x >= 540.0);
+        let min_y = level
+            .vertices
+            .iter()
+            .map(|vertex| vertex.y)
+            .fold(f32::INFINITY, f32::min);
+        let max_y = level
+            .vertices
+            .iter()
+            .map(|vertex| vertex.y)
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(max_y - min_y >= 34.0);
+        assert!(!level.faces.iter().any(|face| {
+            face.group.starts_with("CAVES_AND_ARCHES")
+                || face.group.starts_with("obstacle_arch_top")
+        }));
+        for sector in 1..=3 {
+            assert!(level.faces.iter().any(|face| {
+                face.group == format!("TERRAIN_MAIN_SECTOR_{sector}")
+            }));
+        }
+        assert!(level.faces.iter().any(|face| {
+            face.group.starts_with("LONG_LEVEL_CRYSTAL_")
+                && face.material == "Crystal_Cyan"
+        }));
+
+        stretch_model_group_height(&mut level, "TERRAIN_WALLS", -5.0, 3.6);
+        let wall_top = level
+            .faces
+            .iter()
+            .filter(|face| face.group.starts_with("TERRAIN_WALLS"))
+            .flat_map(|face| face.indices)
+            .map(|index| level.vertices[index].z)
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(wall_top > 13.0);
+
+        let colliders = build_level_colliders(&level);
+        assert!(colliders.len() >= 7);
+        let spatial = LevelSpatialIndex::new(&level, colliders);
+        assert!(spatial.render_chunks.len() >= 17);
+        assert!(!spatial.nearby_colliders(70.0).is_empty());
+        assert!(!spatial.nearby_colliders(510.0).is_empty());
+
+        let state = WaterLevelState::new();
+        assert_eq!(state.enemies.len(), 30);
+        assert!(state.enemies.last().unwrap().progress < WATER_LEVEL_LENGTH);
+    }
+
+    #[test]
     fn spatial_collision_index_covers_chunk_boundaries() {
         let model = test_triangle(5.0);
         let collider = LevelCollider {
@@ -3593,8 +4138,31 @@ mod tests {
     fn buzz_assets_load_with_valid_geometry_and_recognized_materials() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let mut sizes = Vec::new();
-        for form in ["nave", "carro", "submarino"] {
-            let model = load_obj(root.join(format!("assets/vehicles/buzz_{form}.obj"))).unwrap();
+        for (form, filename, minimum, core_group, spec) in [
+            (
+                "nave",
+                "buzz_nave_detallada.obj",
+                (5_700, 9_700),
+                "Buzz_Ship_Core_L",
+                &BUZZ_SPEC,
+            ),
+            (
+                "carro",
+                "buzz_carro_detallado.obj",
+                (9_700, 17_100),
+                "Buzz_Car_Core_L",
+                &BUZZ_CAR_SPEC,
+            ),
+            (
+                "submarino",
+                "buzz_submarino_detallado.obj",
+                (7_100, 12_100),
+                "Buzz_Sub_Core_L",
+                &BUZZ_SUBMARINE_SPEC,
+            ),
+        ] {
+            let model = load_obj(root.join("assets/vehicles/buzz").join(filename)).unwrap();
+            assert!(model.vertices.len() > minimum.0 && model.faces.len() > minimum.1);
             assert!(
                 model
                     .vertices
@@ -3613,17 +4181,48 @@ mod tests {
                 "buzz_purple",
                 "buzz_red",
                 "buzz_glass",
+                "buzz_emission",
             ] {
                 assert!(
                     model.faces.iter().any(|f| f.material == material),
                     "{form}: {material}"
                 );
             }
-            let radius = model_radius(&model, model_center(&model)) * BUZZ_SPEC.model_scale;
+            assert!(model.faces.iter().any(|face| {
+                face.material == "buzz_green" && face.shader == SurfaceShader::BuzzGreenMetal
+            }));
+            assert!(model.faces.iter().any(|face| {
+                face.material == "buzz_emission"
+                    && face.shader == SurfaceShader::BuzzEmission
+                    && face.color == MaterialColor::Fixed([128, 255, 30])
+            }));
+            assert!(model.faces.iter().any(|face| face.smooth));
+            let radius = model_radius(&model, model_center(&model)) * spec.model_scale;
             assert!(
                 (1.0..3.0).contains(&radius),
                 "{form}: unexpected size {radius}"
             );
+
+            let mut points = model
+                .faces
+                .iter()
+                .filter(|face| face.group == core_group)
+                .flat_map(|face| face.indices)
+                .map(|index| model.vertices[index]);
+            let first = points.next().expect("missing Buzz emitter geometry");
+            let (mut min, mut max) = (first, first);
+            for point in points {
+                min.x = min.x.min(point.x);
+                min.y = min.y.min(point.y);
+                min.z = min.z.min(point.z);
+                max.x = max.x.max(point.x);
+                max.y = max.y.max(point.y);
+                max.z = max.z.max(point.z);
+            }
+            let core = min.add(max).mul(0.5).sub(model_center(&model));
+            assert!((-core.z * spec.model_scale - spec.turbo_back).abs() < 0.002);
+            assert!((core.x.abs() * spec.model_scale - spec.turbo_side).abs() < 0.002);
+            assert!((-core.y * spec.model_scale - spec.turbo_down).abs() < 0.002);
             sizes.push((model.vertices.len(), model.faces.len()));
         }
         assert_ne!(sizes[0], sizes[1]);
@@ -3634,9 +4233,9 @@ mod tests {
     #[test]
     fn detailed_arwing_asset_has_expected_scale_and_axes() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let model = load_obj(root.join("assets/vehicles/arwing.obj")).unwrap();
-        assert!(model.vertices.len() > 3_000);
-        assert!(model.faces.len() > 6_000);
+        let model = load_obj(root.join("assets/vehicles/arwing/arwing2.obj")).unwrap();
+        assert!(model.vertices.len() > 600);
+        assert!(model.faces.len() > 1_200);
         let radius = model_radius(&model, model_center(&model)) * ARWING_SPEC.model_scale;
         assert!((1.5..3.5).contains(&radius), "unexpected radius {radius}");
         assert!(model.faces.iter().any(|face| {
@@ -3650,16 +4249,51 @@ mod tests {
         let transformed = ARWING_SPEC.model_to_world(Vec3::new(1.0, 2.0, 3.0), forward, right, up);
         assert_eq!(
             (transformed.x, transformed.y, transformed.z),
-            (1.0, 3.0, 2.0)
+            (-1.0, 3.0, -2.0)
         );
+
+        let submarine =
+            load_obj(root.join("assets/vehicles/arwing/arwing2_submarino.obj")).unwrap();
+        assert!(submarine.vertices.len() > 4_000);
+        assert!(submarine.faces.len() > 8_000);
+        let submarine_radius =
+            model_radius(&submarine, model_center(&submarine)) * ARWING_SUBMARINE_SPEC.model_scale;
+        assert!(
+            (1.5..2.5).contains(&submarine_radius),
+            "unexpected submarine radius {submarine_radius}"
+        );
+        assert!(submarine.faces.iter().any(|face| {
+            face.group.contains("aro_helice") && face.material == "fin_blue"
+        }));
+        for candidate in [&model, &submarine] {
+            for material in [
+                "hull_white",
+                "wing_metal",
+                "fin_blue",
+                "cockpit_blue",
+                "dark_metal",
+                "engine_cyan",
+                "warning_yellow",
+            ] {
+                assert!(
+                    candidate.faces.iter().any(|face| face.material == material),
+                    "missing Arwing material {material}"
+                );
+            }
+        }
     }
 
     #[test]
     fn detailed_kirby_asset_has_expected_scale_axes_and_palette() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let model = load_obj(root.join("assets/vehicles/kirby.obj")).unwrap();
-        assert!(model.vertices.len() > 10_000);
-        assert!(model.faces.len() > 19_000);
+        let model = load_obj(root.join("assets/vehicles/kirby/kirby_detallado.obj")).unwrap();
+        assert!(model.vertices.len() > 14_000);
+        assert!(model.faces.len() > 29_000);
+        assert!(model.faces.iter().any(|face| face.smooth));
+        assert!(model
+            .vertex_normals
+            .iter()
+            .any(|normal| normal.dot(*normal) > 0.9));
         let radius = model_radius(&model, model_center(&model)) * KIRBY_SPEC.model_scale;
         assert!((1.5..2.0).contains(&radius), "unexpected radius {radius}");
 
@@ -3681,6 +4315,267 @@ mod tests {
                 .contains("kirby_smooth_pink")
                 && face.color == MaterialColor::Fixed([255, 158, 198])
         }));
+        assert!(model.faces.iter().any(|face| face.group == "Kirby_Star_Emblem"));
+        assert!(model.faces.iter().any(|face| face.group == "Thruster_Guard_L"));
+
+        let submarine =
+            load_obj(root.join("assets/vehicles/kirby/kirbysub_detallado.obj")).unwrap();
+        assert!(submarine.vertices.len() > 10_000);
+        assert!(submarine.faces.len() > 21_000);
+        assert!(submarine.faces.iter().any(|face| face.smooth));
+        assert!(submarine
+            .faces
+            .iter()
+            .any(|face| face.group == "Submarine_Star_Emblem"));
+        assert!(submarine
+            .faces
+            .iter()
+            .any(|face| face.group == "Sub_Propeller_Guard_L"));
+
+        let emitter_offset = |candidate: &Model, group: &str, scale: f32| {
+            let mut points = candidate
+                .faces
+                .iter()
+                .filter(|face| face.group == group)
+                .flat_map(|face| face.indices)
+                .map(|index| candidate.vertices[index]);
+            let first = points.next().expect("missing emitter geometry");
+            let (mut min, mut max) = (first, first);
+            for point in points {
+                min.x = min.x.min(point.x);
+                min.y = min.y.min(point.y);
+                min.z = min.z.min(point.z);
+                max.x = max.x.max(point.x);
+                max.y = max.y.max(point.y);
+                max.z = max.z.max(point.z);
+            }
+            let relative = min.add(max).mul(0.5).sub(model_center(candidate));
+            (relative.y * scale, relative.x.abs() * scale, -relative.z * scale)
+        };
+        let assert_emitter = |actual: (f32, f32, f32), spec: &ShipSpec| {
+            assert!((actual.0 - spec.turbo_back).abs() < 0.002);
+            assert!((actual.1 - spec.turbo_side).abs() < 0.002);
+            assert!((actual.2 - spec.turbo_down).abs() < 0.002);
+        };
+        assert_emitter(
+            emitter_offset(&model, "Rear_Core_L", KIRBY_SPEC.model_scale),
+            &KIRBY_SPEC,
+        );
+        assert_emitter(
+            emitter_offset(
+                &submarine,
+                "Sub_Propeller_Core_L",
+                KIRBY_SUBMARINE_SPEC.model_scale,
+            ),
+            &KIRBY_SUBMARINE_SPEC,
+        );
+    }
+
+    #[test]
+    fn detailed_astra_assets_have_geometry_materials_and_thrusters() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let ship = load_obj(root.join("assets/vehicles/astra/nave_astra_detallada.obj")).unwrap();
+        let car = load_obj(root.join("assets/vehicles/astra/astra_carro_detallado.obj")).unwrap();
+        let submarine =
+            load_obj(root.join("assets/vehicles/astra/astra_submarino_detallado.obj")).unwrap();
+
+        assert!(ship.vertices.len() > 2_300 && ship.faces.len() > 4_300);
+        assert!(car.vertices.len() > 2_700 && car.faces.len() > 5_100);
+        assert!(submarine.vertices.len() > 2_700 && submarine.faces.len() > 5_100);
+
+        for (name, model) in [("nave", &ship), ("carro", &car), ("submarino", &submarine)] {
+            assert!(model.faces.iter().any(|face| face.smooth), "{name}: missing smooth shading");
+            for material in [
+                "Casco_blanco",
+                "Azul_cobalto",
+                "Azul_profundo",
+                "Vidrio_oscuro",
+                "Luz_cian",
+                "Titanio",
+                "Grafito",
+            ] {
+                assert!(
+                    model.faces.iter().any(|face| face.material == material),
+                    "{name}: missing ASTRA material {material}"
+                );
+            }
+        }
+
+        for (model, groups) in [
+            (&ship, ["Astra_Engine_Core_L", "Astra_Wingtip_L"]),
+            (&car, ["Astra_Car_Core_L", "Astra_Rim_Front_L"]),
+            (&submarine, ["Astra_Sub_Core_L", "Astra_Sub_Guard_L"]),
+        ] {
+            for group in groups {
+                assert!(model.faces.iter().any(|face| face.group == group), "missing ASTRA group {group}");
+            }
+        }
+
+        let emitter_offset = |candidate: &Model, group: &str, scale: f32| {
+            let mut points = candidate
+                .faces
+                .iter()
+                .filter(|face| face.group == group)
+                .flat_map(|face| face.indices)
+                .map(|index| candidate.vertices[index]);
+            let first = points.next().expect("missing ASTRA emitter geometry");
+            let (mut min, mut max) = (first, first);
+            for point in points {
+                min.x = min.x.min(point.x);
+                min.y = min.y.min(point.y);
+                min.z = min.z.min(point.z);
+                max.x = max.x.max(point.x);
+                max.y = max.y.max(point.y);
+                max.z = max.z.max(point.z);
+            }
+            let relative = min.add(max).mul(0.5).sub(model_center(candidate));
+            (-relative.z * scale, relative.x.abs() * scale, -relative.y * scale)
+        };
+        let assert_emitter = |actual: (f32, f32, f32), spec: &ShipSpec| {
+            assert!((actual.0 - spec.turbo_back).abs() < 0.002);
+            assert!((actual.1 - spec.turbo_side).abs() < 0.002);
+            assert!((actual.2 - spec.turbo_down).abs() < 0.002);
+        };
+        assert_emitter(
+            emitter_offset(&ship, "Astra_Engine_Core_L", ASTRA_SPEC.model_scale),
+            &ASTRA_SPEC,
+        );
+        assert_emitter(
+            emitter_offset(&car, "Astra_Car_Core_L", ASTRA_CAR_SPEC.model_scale),
+            &ASTRA_CAR_SPEC,
+        );
+        assert_emitter(
+            emitter_offset(
+                &submarine,
+                "Astra_Sub_Core_L",
+                ASTRA_SUBMARINE_SPEC.model_scale,
+            ),
+            &ASTRA_SUBMARINE_SPEC,
+        );
+    }
+
+    #[test]
+    fn detailed_cowboy_assets_have_geometry_materials_and_aligned_thrusters() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let ship = load_obj(
+            root.join("assets/vehicles/cowboy/nave_cowboyb_detallada.obj"),
+        )
+        .unwrap();
+        let car = load_obj(root.join("assets/vehicles/cowboy/cb_carro_detallado.obj")).unwrap();
+        let submarine =
+            load_obj(root.join("assets/vehicles/cowboy/cb_submarino_detallado.obj")).unwrap();
+
+        assert!(ship.vertices.len() > 1_900 && ship.faces.len() > 2_700);
+        assert!(car.vertices.len() > 3_300 && car.faces.len() > 5_400);
+        assert!(submarine.vertices.len() > 3_100 && submarine.faces.len() > 5_000);
+
+        for (name, model) in [("nave", &ship), ("carro", &car), ("submarino", &submarine)] {
+            assert!(model.faces.iter().any(|face| face.smooth), "{name}: no smooth shading");
+            for material in [
+                "Cowboy_Metal",
+                "Cowboy_Graphite",
+                "Cowboy_Glass",
+                "Cowboy_OrangeGlow",
+                "Cowboy_Cream",
+            ] {
+                assert!(
+                    model.faces.iter().any(|face| face.material == material),
+                    "{name}: missing Cowboy material {material}"
+                );
+            }
+        }
+        for material in ["Cowboy_Yellow", "Cowboy_Red", "Cowboy_DarkRed"] {
+            assert!(
+                [&ship, &car, &submarine]
+                    .iter()
+                    .any(|model| model.faces.iter().any(|face| face.material == material)),
+                "missing Cowboy paint {material}"
+            );
+        }
+        assert!(ship.faces.iter().any(|face| {
+            face.material == "Cowboy_Yellow"
+                && face.shader == SurfaceShader::CowboyYellowPaint
+                && face.color == MaterialColor::Fixed([244, 158, 20])
+        }));
+        assert!(ship.faces.iter().any(|face| {
+            face.material == "Cowboy_OrangeGlow"
+                && face.shader == SurfaceShader::CowboyOrangeEmission
+                && face.color == MaterialColor::Fixed([255, 72, 12])
+        }));
+        for (material, shader) in [
+            ("Amarillo", SurfaceShader::CowboyYellowPaint),
+            ("Rojo", SurfaceShader::CowboyRedPaint),
+            ("Gris_oscuro", SurfaceShader::ArwingMetal),
+        ] {
+            assert!(
+                ship.faces
+                    .iter()
+                    .any(|face| face.material == material && face.shader == shader),
+                "main ship surface {material} is not metallic"
+            );
+        }
+
+        for (model, groups) in [
+            (&ship, ["Cowboy_Ship_Core_L", "Cowboy_Ship_Canopy"]),
+            (&car, ["Cowboy_Car_Core_L", "Cowboy_Car_Rim_Front_L"]),
+            (&submarine, ["Cowboy_Sub_Core_L", "Cowboy_Sub_Guard_L"]),
+        ] {
+            for group in groups {
+                assert!(model.faces.iter().any(|face| face.group == group), "missing {group}");
+            }
+        }
+
+        let group_center = |candidate: &Model, group: &str| {
+            let mut points = candidate
+                .faces
+                .iter()
+                .filter(|face| face.group == group)
+                .flat_map(|face| face.indices)
+                .map(|index| candidate.vertices[index]);
+            let first = points.next().expect("missing Cowboy emitter geometry");
+            let (mut min, mut max) = (first, first);
+            for point in points {
+                min.x = min.x.min(point.x);
+                min.y = min.y.min(point.y);
+                min.z = min.z.min(point.z);
+                max.x = max.x.max(point.x);
+                max.y = max.y.max(point.y);
+                max.z = max.z.max(point.z);
+            }
+            min.add(max).mul(0.5).sub(model_center(candidate))
+        };
+        let assert_emitter = |actual: (f32, f32, f32), spec: &ShipSpec| {
+            assert!((actual.0 - spec.turbo_back).abs() < 0.002);
+            assert!((actual.1 - spec.turbo_side).abs() < 0.002);
+            assert!((actual.2 - spec.turbo_down).abs() < 0.002);
+        };
+        let ship_core = group_center(&ship, "Cowboy_Ship_Core_L");
+        assert_emitter(
+            (
+                ship_core.y * COWBOYB_SPEC.model_scale,
+                ship_core.x.abs() * COWBOYB_SPEC.model_scale,
+                -ship_core.z * COWBOYB_SPEC.model_scale,
+            ),
+            &COWBOYB_SPEC,
+        );
+        for (model, group, spec) in [
+            (&car, "Cowboy_Car_Core_L", &COWBOYB_CAR_SPEC),
+            (
+                &submarine,
+                "Cowboy_Sub_Core_L",
+                &COWBOYB_SUBMARINE_SPEC,
+            ),
+        ] {
+            let core = group_center(model, group);
+            assert_emitter(
+                (
+                    -core.z * spec.model_scale,
+                    core.x.abs() * spec.model_scale,
+                    -core.y * spec.model_scale,
+                ),
+                spec,
+            );
+        }
     }
 
     #[test]

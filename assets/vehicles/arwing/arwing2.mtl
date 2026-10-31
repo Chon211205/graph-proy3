@@ -1,0 +1,46 @@
+# PBR-friendly materials for Arwing designs
+newmtl hull_white
+Kd 0.86 0.89 0.91
+Ks 0.40 0.44 0.48
+Ns 90
+illum 2
+
+newmtl wing_metal
+Kd 0.38 0.42 0.45
+Ks 0.35 0.38 0.42
+Ns 70
+illum 2
+
+newmtl fin_blue
+Kd 0.08 0.18 0.48
+Ks 0.30 0.40 0.70
+Ns 110
+illum 2
+
+newmtl cockpit_blue
+Kd 0.04 0.13 0.24
+Ks 0.55 0.72 0.85
+Ns 180
+d 0.82
+Ni 1.45
+illum 9
+
+newmtl dark_metal
+Kd 0.06 0.08 0.11
+Ks 0.25 0.28 0.33
+Ns 80
+illum 2
+
+newmtl engine_cyan
+Kd 0.05 0.75 0.95
+Ke 0.02 0.40 0.65
+Ks 0.25 0.85 1.00
+Ns 160
+illum 2
+
+newmtl warning_yellow
+Kd 0.92 0.70 0.04
+Ks 0.30 0.25 0.05
+Ns 60
+illum 2
+

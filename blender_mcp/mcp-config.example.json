@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "blender-modeler": {
+      "command": "C:\\Python313\\python.exe",
+      "args": [
+        "C:\\ruta\\al\\proyecto\\blender_mcp\\server.py"
+      ],
+      "env": {
+        "BLENDER_MCP_PROJECT": "C:\\ruta\\al\\proyecto",
+        "BLENDER_MCP_PORT": "9876"
+      }
+    }
+  }
+}
+

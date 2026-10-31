@@ -56,11 +56,10 @@ pub struct ShipSpec {
 }
 
 const DUAL_SIDES: &[f32] = &[-1.0, 1.0];
-const CENTER_SIDE: &[f32] = &[0.0];
 
 pub static ARWING_SPEC: ShipSpec = ShipSpec {
     name: "Arwing",
-    model_scale: 0.16,
+    model_scale: 0.22,
     model_axes: ModelAxes::Arwing,
     collision_radius: 2.0,
     min_speed: 4.0,
@@ -81,9 +80,9 @@ pub static ARWING_SPEC: ShipSpec = ShipSpec {
     chase_distance: 12.0,
     chase_height: 4.0,
     chase_look_ahead: 8.0,
-    turbo_back: 1.45,
-    turbo_side: 0.72,
-    turbo_down: 0.05,
+    turbo_back: 1.13,
+    turbo_side: 0.49,
+    turbo_down: 0.15,
     turbo_sides: DUAL_SIDES,
     turbo_color: [36, 142, 255],
     turbo_core_color: [220, 252, 255],
@@ -122,12 +121,12 @@ pub static KIRBY_SPEC: ShipSpec = ShipSpec {
     chase_distance: 12.0,
     chase_height: 4.0,
     chase_look_ahead: 8.0,
-    turbo_back: 1.45,
-    turbo_side: 0.0,
-    turbo_down: 0.2,
-    turbo_sides: CENTER_SIDE,
-    turbo_color: [255, 190, 18],
-    turbo_core_color: [255, 252, 180],
+    turbo_back: 1.2294,
+    turbo_side: 0.297,
+    turbo_down: 0.1973,
+    turbo_sides: DUAL_SIDES,
+    turbo_color: [40, 205, 255],
+    turbo_core_color: [220, 252, 255],
     laser_speed: 220.0,
     laser_lifetime: 3.0,
     max_charge_time: 1.4,
@@ -163,9 +162,9 @@ pub static ASTRA_SPEC: ShipSpec = ShipSpec {
     chase_distance: 12.0,
     chase_height: 4.0,
     chase_look_ahead: 8.0,
-    turbo_back: 1.18,
-    turbo_side: 0.72,
-    turbo_down: 0.05,
+    turbo_back: 1.2236,
+    turbo_side: 0.7199,
+    turbo_down: 0.1495,
     turbo_sides: DUAL_SIDES,
     turbo_color: [35, 145, 255],
     turbo_core_color: [120, 235, 255],
@@ -204,9 +203,9 @@ pub static COWBOYB_SPEC: ShipSpec = ShipSpec {
     chase_distance: 12.0,
     chase_height: 4.0,
     chase_look_ahead: 8.0,
-    turbo_back: 1.1,
-    turbo_side: 0.62,
-    turbo_down: 0.05,
+    turbo_back: 1.113,
+    turbo_side: 0.6216,
+    turbo_down: 0.1279,
     turbo_sides: DUAL_SIDES,
     turbo_color: [255, 105, 35],
     turbo_core_color: [255, 230, 155],
@@ -226,9 +225,9 @@ pub static MCQUEEN_SPEC: ShipSpec = ShipSpec {
     name: "Rayo McQueen",
     model_scale: 0.30,
     model_axes: ModelAxes::Astra,
-    turbo_back: 1.02,
+    turbo_back: 1.1655,
     turbo_side: 0.585,
-    turbo_down: 0.10,
+    turbo_down: 0.14775,
     turbo_color: [255, 116, 20],
     turbo_core_color: [255, 232, 135],
     muzzle_forward: 0.70,
@@ -241,9 +240,9 @@ pub static MCQUEEN_SPEC: ShipSpec = ShipSpec {
 
 pub static MCQUEEN_CAR_SPEC: ShipSpec = ShipSpec {
     model_scale: 0.38,
-    turbo_back: 1.36,
-    turbo_side: 0.34,
-    turbo_down: 0.32,
+    turbo_back: 1.54052,
+    turbo_side: 0.342,
+    turbo_down: 0.1957,
     muzzle_forward: 1.45,
     muzzle_side: 0.43,
     muzzle_down: 0.05,
@@ -252,9 +251,9 @@ pub static MCQUEEN_CAR_SPEC: ShipSpec = ShipSpec {
 
 pub static MCQUEEN_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     model_scale: 0.38,
-    turbo_back: 1.25,
-    turbo_side: 0.70,
-    turbo_down: 0.50,
+    turbo_back: 1.51768,
+    turbo_side: 0.779,
+    turbo_down: 0.38533,
     muzzle_forward: 1.10,
     muzzle_side: 0.36,
     muzzle_down: 0.55,
@@ -265,8 +264,9 @@ pub static BUZZ_SPEC: ShipSpec = ShipSpec {
     name: "Buzz Lightyear",
     model_scale: 0.27,
     model_axes: ModelAxes::Astra,
-    turbo_back: 1.55,
-    turbo_side: 0.72,
+    turbo_back: 1.0584,
+    turbo_side: 0.7344,
+    turbo_down: 0.13905,
     turbo_sides: DUAL_SIDES,
     turbo_color: [153, 226, 38],
     turbo_core_color: [238, 242, 248],
@@ -277,12 +277,44 @@ pub static BUZZ_SPEC: ShipSpec = ShipSpec {
     ..ASTRA_SPEC
 };
 
+pub static BUZZ_CAR_SPEC: ShipSpec = ShipSpec {
+    name: "Buzz Lightyear Carro",
+    turbo_back: 1.0298,
+    turbo_side: 0.2376,
+    turbo_down: 0.0756,
+    muzzle_forward: 1.05,
+    muzzle_side: 0.42,
+    ..BUZZ_SPEC
+};
+
+pub static BUZZ_SUBMARINE_SPEC: ShipSpec = ShipSpec {
+    name: "Buzz Lightyear Submarino",
+    turbo_back: 1.06755,
+    turbo_side: 0.6156,
+    turbo_down: 0.27649,
+    muzzle_forward: 1.10,
+    muzzle_side: 0.40,
+    ..BUZZ_SPEC
+};
+
+pub static ASTRA_CAR_SPEC: ShipSpec = ShipSpec {
+    name: "ASTRA Carro",
+    turbo_back: 0.713,
+    turbo_side: 0.1656,
+    turbo_down: 0.1127,
+    muzzle_forward: 0.72,
+    muzzle_side: 0.17,
+    muzzle_down: 0.03,
+    ..ASTRA_SPEC
+};
+
 pub static ASTRA_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     name: "ASTRA Submarino",
     model_scale: 0.34,
     model_axes: ModelAxes::Astra,
-    turbo_back: 1.35,
-    turbo_side: 0.52,
+    turbo_back: 1.3617,
+    turbo_side: 0.5202,
+    turbo_down: 0.2431,
     muzzle_forward: 1.85,
     muzzle_side: 0.78,
     ..ASTRA_SPEC
@@ -292,8 +324,9 @@ pub static COWBOYB_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     name: "Swordfish II Submarino",
     model_scale: 0.30,
     model_axes: ModelAxes::Astra,
-    turbo_back: 1.38,
-    turbo_side: 0.58,
+    turbo_back: 1.2687,
+    turbo_side: 0.51,
+    turbo_down: 0.249,
     muzzle_forward: 1.95,
     muzzle_side: 0.88,
     ..COWBOYB_SPEC
@@ -302,17 +335,21 @@ pub static COWBOYB_SUBMARINE_SPEC: ShipSpec = ShipSpec {
 pub static COWBOYB_CAR_SPEC: ShipSpec = ShipSpec {
     name: "Swordfish II",
     model_axes: ModelAxes::Astra,
+    turbo_back: 0.896,
+    turbo_side: 0.1848,
+    turbo_down: 0.1484,
     ..COWBOYB_SPEC
 };
 
 pub static ARWING_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     name: "Arwing Submarino",
-    model_scale: 0.07,
+    model_scale: 0.30,
     model_axes: ModelAxes::ArwingSubmarine,
-    turbo_back: 1.55,
-    turbo_side: 0.62,
-    muzzle_forward: 1.9,
-    muzzle_side: 0.9,
+    turbo_back: 1.58,
+    turbo_side: 0.47,
+    turbo_down: 0.10,
+    muzzle_forward: 1.72,
+    muzzle_side: 0.18,
     ..ARWING_SPEC
 };
 
@@ -320,9 +357,10 @@ pub static KIRBY_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     name: "Kirby Submarino",
     model_scale: 0.22,
     model_axes: ModelAxes::Kirby,
-    turbo_back: 1.45,
-    turbo_side: 0.0,
-    turbo_sides: CENTER_SIDE,
+    turbo_back: 1.551,
+    turbo_side: 0.473,
+    turbo_down: 0.2005,
+    turbo_sides: DUAL_SIDES,
     muzzle_forward: 1.8,
     muzzle_side: 0.75,
     ..KIRBY_SPEC
@@ -332,8 +370,8 @@ impl ShipSpec {
     pub fn model_to_world(&self, local: Vec3, forward: Vec3, right: Vec3, up: Vec3) -> Vec3 {
         match self.model_axes {
             ModelAxes::Arwing => forward
-                .mul(local.x)
-                .add(right.mul(local.y))
+                .mul(-local.x)
+                .add(right.mul(-local.y))
                 .add(up.mul(local.z)),
             ModelAxes::ArwingSubmarine => forward
                 .mul(-local.x)

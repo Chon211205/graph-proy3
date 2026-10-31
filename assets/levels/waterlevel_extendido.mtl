@@ -1,0 +1,25 @@
+# Extended underwater level materials
+newmtl Underwater_Sand
+Kd 0.54 0.47 0.25
+newmtl Underwater_Rock
+Kd 0.20 0.34 0.39
+newmtl Deep_Cave_Rock
+Kd 0.08 0.14 0.19
+newmtl Blue_Stone
+Kd 0.15 0.36 0.52
+newmtl Seaweed_Green
+Kd 0.04 0.34 0.20
+newmtl Bright_Seaweed
+Kd 0.10 0.62 0.32
+newmtl Pink_Coral
+Kd 0.90 0.24 0.56
+newmtl Orange_Coral
+Kd 0.94 0.34 0.10
+newmtl Purple_Coral
+Kd 0.48 0.18 0.72
+newmtl Cyan_Coral
+Kd 0.08 0.78 0.82
+newmtl Crystal_Cyan
+Kd 0.08 0.86 0.94
+Ke 0.02 0.48 0.62
+illum 2

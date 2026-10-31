@@ -64,6 +64,28 @@ pub enum SurfaceShader {
     Leaves,
     YellowBlock,
     WhiteMark,
+    ArwingHull,
+    ArwingMetal,
+    ArwingBlue,
+    ArwingGlass,
+    ArwingDarkMetal,
+    ArwingEmission,
+    ArwingYellow,
+    AstraCobalt,
+    AstraDeepBlue,
+    AstraRedEmission,
+    CowboyYellowPaint,
+    CowboyRedPaint,
+    CowboyOrangeEmission,
+    BuzzWhiteMetal,
+    BuzzGreenMetal,
+    BuzzPurpleMetal,
+    BuzzRedMetal,
+    BuzzEmission,
+    McQueenRedMetal,
+    McQueenYellowMetal,
+    McQueenWhiteMetal,
+    McQueenEmission,
     Flat,
 }
 
@@ -82,6 +104,7 @@ pub struct Face {
     pub group: String,
     pub shader: SurfaceShader,
     pub color: MaterialColor,
+    pub smooth: bool,
 }
 
 impl Face {
@@ -94,6 +117,7 @@ impl Face {
             group: group.into(),
             shader: classify_surface(&normalized),
             color: classify_color(&normalized),
+            smooth: false,
         }
     }
 }
@@ -101,6 +125,7 @@ impl Face {
 pub struct Model {
     pub vertices: Vec<Vec3>,
     pub faces: Vec<Face>,
+    pub vertex_normals: Vec<Vec3>,
     bounds_center: Vec3,
     bounds_radius: f32,
 }
@@ -110,10 +135,12 @@ impl Model {
         let mut model = Self {
             vertices,
             faces,
+            vertex_normals: Vec::new(),
             bounds_center: Vec3::default(),
             bounds_radius: 0.0,
         };
         model.recalculate_bounds();
+        model.recalculate_normals();
         model
     }
 
@@ -149,10 +176,100 @@ impl Model {
             .fold(0.0, f32::max)
             .sqrt();
     }
+
+    pub fn recalculate_normals(&mut self) {
+        self.vertex_normals.clear();
+        self.vertex_normals.resize(self.vertices.len(), Vec3::default());
+        for face in &self.faces {
+            if !face.smooth {
+                continue;
+            }
+            let [i0, i1, i2] = face.indices;
+            let normal = self.vertices[i1]
+                .sub(self.vertices[i0])
+                .cross(self.vertices[i2].sub(self.vertices[i0]));
+            for index in face.indices {
+                self.vertex_normals[index] = self.vertex_normals[index].add(normal);
+            }
+        }
+        for normal in &mut self.vertex_normals {
+            *normal = normal.normalize();
+        }
+    }
 }
 
 fn classify_surface(name: &str) -> SurfaceShader {
-    if name.contains("oceano") {
+    if name == "casco_blanco" {
+        SurfaceShader::ArwingHull
+    } else if name == "titanio" {
+        SurfaceShader::ArwingMetal
+    } else if name == "grafito" {
+        SurfaceShader::ArwingDarkMetal
+    } else if name == "azul_cobalto" {
+        SurfaceShader::AstraCobalt
+    } else if name == "azul_profundo" {
+        SurfaceShader::AstraDeepBlue
+    } else if name == "vidrio_oscuro" {
+        SurfaceShader::ArwingGlass
+    } else if name == "luz_cian" {
+        SurfaceShader::ArwingEmission
+    } else if name == "luz_roja" {
+        SurfaceShader::AstraRedEmission
+    } else if name == "amarillo" || name == "cowboy_yellow" || name == "cowboy_cream" {
+        SurfaceShader::CowboyYellowPaint
+    } else if name == "rojo" || name == "cowboy_red" || name == "cowboy_darkred" {
+        SurfaceShader::CowboyRedPaint
+    } else if name == "cowboy_orangeglow" {
+        SurfaceShader::CowboyOrangeEmission
+    } else if name == "gris_oscuro" || name == "cowboy_metal" {
+        SurfaceShader::ArwingMetal
+    } else if name == "cowboy_graphite" {
+        SurfaceShader::ArwingDarkMetal
+    } else if name == "cowboy_glass" {
+        SurfaceShader::ArwingGlass
+    } else if name == "mcqueen_red" || name == "mcqueen_darkred" {
+        SurfaceShader::McQueenRedMetal
+    } else if name == "mcqueen_yellow" {
+        SurfaceShader::McQueenYellowMetal
+    } else if name == "mcqueen_white" {
+        SurfaceShader::McQueenWhiteMetal
+    } else if name == "mcqueen_emission" || name == "mcqueen_orange" {
+        SurfaceShader::McQueenEmission
+    } else if name == "mcqueen_glass" {
+        SurfaceShader::ArwingGlass
+    } else if name == "mcqueen_dark" {
+        SurfaceShader::ArwingDarkMetal
+    } else if name == "mcqueen_blue" {
+        SurfaceShader::AstraCobalt
+    } else if name == "buzz_white" || name == "buzz_gold" {
+        SurfaceShader::BuzzWhiteMetal
+    } else if name == "buzz_green" || name == "buzz_blue" {
+        SurfaceShader::BuzzGreenMetal
+    } else if name == "buzz_purple" {
+        SurfaceShader::BuzzPurpleMetal
+    } else if name == "buzz_red" {
+        SurfaceShader::BuzzRedMetal
+    } else if name == "buzz_emission" {
+        SurfaceShader::BuzzEmission
+    } else if name == "buzz_glass" {
+        SurfaceShader::ArwingGlass
+    } else if name == "buzz_dark" {
+        SurfaceShader::ArwingDarkMetal
+    } else if name == "hull_white" {
+        SurfaceShader::ArwingHull
+    } else if name == "wing_metal" {
+        SurfaceShader::ArwingMetal
+    } else if name == "fin_blue" {
+        SurfaceShader::ArwingBlue
+    } else if name == "cockpit_blue" {
+        SurfaceShader::ArwingGlass
+    } else if name == "dark_metal" {
+        SurfaceShader::ArwingDarkMetal
+    } else if name == "engine_cyan" {
+        SurfaceShader::ArwingEmission
+    } else if name == "warning_yellow" {
+        SurfaceShader::ArwingYellow
+    } else if name.contains("oceano") {
         SurfaceShader::Ocean
     } else if name.contains("cascada") {
         SurfaceShader::Waterfall
@@ -193,6 +310,7 @@ fn classify_color(name: &str) -> MaterialColor {
             "mcqueen_glass" => [73, 156, 211],
             "mcqueen_blue" => [32, 105, 220],
             "mcqueen_dark" => [26, 29, 38],
+            "mcqueen_emission" => [255, 82, 14],
             _ => [225, 26, 35],
         }
     } else if name.starts_with("buzz_") {
@@ -205,6 +323,7 @@ fn classify_color(name: &str) -> MaterialColor {
             "buzz_dark" => [29, 36, 54],
             "buzz_blue" => [45, 132, 240],
             "buzz_gold" => [245, 190, 42],
+            "buzz_emission" => [128, 255, 30],
             _ => [238, 242, 248],
         }
     } else if name == "casco_blanco" {
@@ -235,6 +354,100 @@ fn classify_color(name: &str) -> MaterialColor {
         [247, 76, 70]
     } else if name == "rojo_oscuro" {
         [116, 22, 29]
+    } else if matches!(
+        name,
+        "hull_white"
+            | "wing_metal"
+            | "fin_blue"
+            | "cockpit_blue"
+            | "dark_metal"
+            | "engine_cyan"
+            | "warning_yellow"
+    ) {
+        match name {
+            "hull_white" => [238, 243, 248],
+            "wing_metal" => [91, 105, 119],
+            "fin_blue" => [30, 78, 190],
+            "cockpit_blue" => [15, 47, 74],
+            "dark_metal" => [25, 31, 42],
+            "engine_cyan" => [40, 225, 242],
+            "warning_yellow" => [250, 194, 34],
+            _ => unreachable!(),
+        }
+    } else if matches!(
+        name,
+        "amarillo"
+            | "rojo"
+            | "gris_oscuro"
+            | "cowboy_yellow"
+            | "cowboy_red"
+            | "cowboy_darkred"
+            | "cowboy_metal"
+            | "cowboy_graphite"
+            | "cowboy_glass"
+            | "cowboy_orangeglow"
+            | "cowboy_cream"
+    ) {
+        match name {
+            "amarillo" => [238, 145, 12],
+            "rojo" => [190, 22, 18],
+            "gris_oscuro" => [56, 64, 76],
+            "cowboy_yellow" => [244, 158, 20],
+            "cowboy_red" => [205, 28, 22],
+            "cowboy_darkred" => [78, 16, 14],
+            "cowboy_metal" => [112, 124, 134],
+            "cowboy_graphite" => [26, 31, 40],
+            "cowboy_glass" => [22, 73, 94],
+            "cowboy_orangeglow" => [255, 72, 12],
+            "cowboy_cream" => [246, 214, 150],
+            _ => unreachable!(),
+        }
+    } else if matches!(
+        name,
+        "casco_blanco"
+            | "azul_cobalto"
+            | "azul_profundo"
+            | "vidrio_oscuro"
+            | "luz_cian"
+            | "luz_roja"
+            | "titanio"
+            | "grafito"
+    ) {
+        match name {
+            "casco_blanco" => [238, 244, 250],
+            "azul_cobalto" => [28, 92, 224],
+            "azul_profundo" => [14, 38, 105],
+            "vidrio_oscuro" => [22, 70, 94],
+            "luz_cian" => [40, 205, 255],
+            "luz_roja" => [255, 35, 42],
+            "titanio" => [104, 124, 148],
+            "grafito" => [28, 35, 48],
+            _ => unreachable!(),
+        }
+    } else if name.contains("cyan_lights") {
+        [40, 205, 255]
+    } else if name.contains("kirby_white_highlights") {
+        [250, 252, 255]
+    } else if name.contains("kirby_blue_highlights") {
+        [72, 142, 242]
+    } else if name.contains("kirby_burgundy_eyes") {
+        [92, 22, 48]
+    } else if name.contains("kirby_dark_eyes") {
+        [35, 22, 48]
+    } else if name.contains("kirby_red_feet") {
+        [220, 42, 72]
+    } else if name.contains("mechanical_dark") {
+        [28, 35, 50]
+    } else if name.contains("engine_metal") {
+        [92, 112, 132]
+    } else if name.contains("submarine_glass") {
+        [45, 132, 168]
+    } else if name.contains("ufo_gold_highlights") {
+        [255, 218, 92]
+    } else if name.contains("ufo_gold_shadow") {
+        [112, 76, 26]
+    } else if name.contains("ufo_metallic_gold") {
+        [196, 146, 42]
     } else if name.contains("cyan_coral") || name.contains("crystal_cyan") {
         [38, 220, 226]
     } else if name.contains("orange_coral") {
@@ -387,6 +600,7 @@ pub fn load_obj(path: impl AsRef<Path>) -> Result<Model, String> {
 
     let mut material = "Hull White".to_string();
     let mut group = "default".to_string();
+    let mut smooth = false;
 
     for (line_no, line) in BufReader::new(file).lines().enumerate() {
         let line = line.map_err(|e| e.to_string())?;
@@ -409,6 +623,10 @@ pub fn load_obj(path: impl AsRef<Path>) -> Result<Model, String> {
                 material = parts.collect::<Vec<_>>().join(" ");
             }
 
+            Some("s") => {
+                smooth = !matches!(parts.next(), Some("0") | Some("off") | None);
+            }
+
             Some("g") | Some("o") => {
                 group = parts.collect::<Vec<_>>().join(" ");
             }
@@ -419,11 +637,13 @@ pub fn load_obj(path: impl AsRef<Path>) -> Result<Model, String> {
                     .collect::<Result<Vec<_>, _>>()?;
 
                 for i in 1..ids.len().saturating_sub(1) {
-                    model.faces.push(Face::new(
+                    let mut face = Face::new(
                         [ids[0], ids[i], ids[i + 1]],
                         material.clone(),
                         group.clone(),
-                    ));
+                    );
+                    face.smooth = smooth;
+                    model.faces.push(face);
                 }
             }
 
@@ -436,6 +656,7 @@ pub fn load_obj(path: impl AsRef<Path>) -> Result<Model, String> {
     }
 
     model.recalculate_bounds();
+    model.recalculate_normals();
 
     Ok(model)
 }
@@ -457,5 +678,69 @@ mod tests {
         let turbo = Face::new([0, 1, 2], "turbo_glow", "effect");
         assert_eq!(laser.color, MaterialColor::LaserCore);
         assert_eq!(turbo.color, MaterialColor::Turbo);
+    }
+
+    #[test]
+    fn arwing_materials_have_dedicated_colors_and_shaders() {
+        let cases = [
+            ("hull_white", [238, 243, 248], SurfaceShader::ArwingHull),
+            ("wing_metal", [91, 105, 119], SurfaceShader::ArwingMetal),
+            ("fin_blue", [30, 78, 190], SurfaceShader::ArwingBlue),
+            ("cockpit_blue", [15, 47, 74], SurfaceShader::ArwingGlass),
+            ("dark_metal", [25, 31, 42], SurfaceShader::ArwingDarkMetal),
+            ("engine_cyan", [40, 225, 242], SurfaceShader::ArwingEmission),
+            ("warning_yellow", [250, 194, 34], SurfaceShader::ArwingYellow),
+        ];
+
+        for (name, color, shader) in cases {
+            let face = Face::new([0, 1, 2], name, "arwing");
+            assert_eq!(face.color, MaterialColor::Fixed(color));
+            assert_eq!(face.shader, shader);
+        }
+    }
+
+    #[test]
+    fn kirby_vehicle_palette_covers_space_and_submarine_materials() {
+        let cases = [
+            ("Cyan_Lights.006", [40, 205, 255]),
+            ("Kirby_White_Highlights.005", [250, 252, 255]),
+            ("Kirby_Blue_Highlights.005", [72, 142, 242]),
+            ("Kirby_Burgundy_Eyes.005", [92, 22, 48]),
+            ("Kirby_Dark_Eyes", [35, 22, 48]),
+            ("Kirby_Red_Feet", [220, 42, 72]),
+            ("Mechanical_Dark.003", [28, 35, 50]),
+            ("Engine_Metal.006", [92, 112, 132]),
+            ("Submarine_Glass.005", [45, 132, 168]),
+            ("UFO_Gold_Highlights.005", [255, 218, 92]),
+            ("UFO_Gold_Shadow.005", [112, 76, 26]),
+            ("UFO_Metallic_Gold.005", [196, 146, 42]),
+        ];
+
+        for (name, color) in cases {
+            assert_eq!(
+                Face::new([0, 1, 2], name, "kirby").color,
+                MaterialColor::Fixed(color),
+                "unexpected color for {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn astra_materials_have_dedicated_colors_and_shaders() {
+        let cases = [
+            ("Casco_blanco", [238, 244, 250], SurfaceShader::ArwingHull),
+            ("Azul_cobalto", [28, 92, 224], SurfaceShader::AstraCobalt),
+            ("Azul_profundo", [14, 38, 105], SurfaceShader::AstraDeepBlue),
+            ("Vidrio_oscuro", [22, 70, 94], SurfaceShader::ArwingGlass),
+            ("Luz_cian", [40, 205, 255], SurfaceShader::ArwingEmission),
+            ("Luz_roja", [255, 35, 42], SurfaceShader::AstraRedEmission),
+            ("Titanio", [104, 124, 148], SurfaceShader::ArwingMetal),
+            ("Grafito", [28, 35, 48], SurfaceShader::ArwingDarkMetal),
+        ];
+        for (name, color, shader) in cases {
+            let face = Face::new([0, 1, 2], name, "astra");
+            assert_eq!(face.color, MaterialColor::Fixed(color));
+            assert_eq!(face.shader, shader);
+        }
     }
 }
