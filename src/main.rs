@@ -1367,13 +1367,6 @@ fn make_wormhole_ring(major_radius: f32, tube_radius: f32) -> Model {
     Model::new(vertices, faces)
 }
 
-fn wormhole_position(galaxy: Galaxy) -> Vec3 {
-    match galaxy {
-        Galaxy::Home => Vec3::new(150.0, 42.0, 0.0),
-        Galaxy::Vesper => Vec3::new(-150.0, 42.0, 0.0),
-    }
-}
-
 fn rotate_x_axis(point: Vec3, angle: f32) -> Vec3 {
     let (sin, cos) = angle.sin_cos();
     Vec3::new(
@@ -3278,6 +3271,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         GameMode::FreeWorld
     };
     let mut active_galaxy = Galaxy::Home;
+    let mut galaxy_transition: Option<GalaxyTransit> = None;
     if start_underwater {
         window.set_title("Nivel submarino | Backspace: volver al sistema solar");
     }
@@ -3366,6 +3360,31 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         let delta_time = frame_time.min(0.05);
         previous = now;
         world_time += delta_time;
+
+        if let Some(transit) = &mut galaxy_transition {
+            transit.elapsed += delta_time;
+            if !transit.switched && transit.elapsed < 0.82 {
+                let t = (transit.elapsed / 0.82).clamp(0.0, 1.0);
+                let eased = t * t * (3.0 - 2.0 * t);
+                let destination = wormhole_position(active_galaxy);
+                let offset = destination.sub(transit.start_position);
+                ship_controller.ship.position = transit.start_position.add(offset.mul(eased));
+            }
+            if !transit.switched && transit.elapsed >= 0.82 {
+                active_galaxy = transit.destination;
+                let portal = wormhole_position(active_galaxy);
+                ship_controller.ship.position = portal.add(Vec3::new(0.0, 0.0, -68.0));
+                ship_controller.ship.yaw = std::f32::consts::FRAC_PI_2;
+                ship_controller.ship.pitch = 0.0;
+                ship_controller.ship.planet_locked = false;
+                ship_controller.ship.spiky_planet_locked = false;
+                ship_controller.ship.orbit_plane_normal = None;
+                ship_controller.ship.orbit_center = None;
+                ship_controller.ship.orbit_camera_blend = 0.0;
+                ship_controller.ship.orbit_release_active = false;
+                transit.switched = true;
+            }
+        }
 
         let resolution_changed = dynamic_resolution.update(frame_time);
         let toggled_resolution = if crate::input::pressed(Key::F2) {
@@ -3475,7 +3494,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         };
         match game_mode {
             GameMode::FreeWorld => {
-                ship_controller.update(&input, delta_time);
+                if galaxy_transition.is_none() {
+                    ship_controller.update(&input, delta_time);
+                }
                 let light_speed =
                     window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
                 let active_speed = if light_speed {
@@ -3484,7 +3505,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     ship_controller.ship.speed
                 };
                 let turbo_power = ship_controller.turbo_power(active_speed);
-                let movement = active_speed * delta_time;
+                let movement = if galaxy_transition.is_none() {
+                    active_speed * delta_time
+                } else {
+                    0.0
+                };
                 let ship = &mut ship_controller.ship;
 
                 if crate::input::pressed(Key::Backspace) && ship.planet_locked {
@@ -3495,39 +3520,48 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     println!("Orbita liberada");
                 }
 
-                let empty_colliders: [ObjectCollider; 0] = [];
-                let water_center = water_planet_position(world_time);
-                let spiky_center = spiky_planet_position(world_time);
-                if !ship.planet_locked {
-                    ship.spiky_planet_locked =
-                        spiky_planet_is_closer(ship.position, water_center, spiky_center);
-                }
-                let (orbit_center, orbit_radius, orbit_rotation, orbit_colliders) =
-                    if ship.spiky_planet_locked {
-                        (
-                            spiky_center,
-                            SPIKY_PLANET_RADIUS,
-                            world_time * SPIKY_PLANET_ROTATION_SPEED,
-                            empty_colliders.as_slice(),
-                        )
+                if galaxy_transition.is_none() {
+                    if active_galaxy == Galaxy::Home {
+                        let empty_colliders: [ObjectCollider; 0] = [];
+                        let water_center = water_planet_position(world_time);
+                        let spiky_center = spiky_planet_position(world_time);
+                        if !ship.planet_locked {
+                            ship.spiky_planet_locked =
+                                spiky_planet_is_closer(ship.position, water_center, spiky_center);
+                        }
+                        let (orbit_center, orbit_radius, orbit_rotation, orbit_colliders) =
+                            if ship.spiky_planet_locked {
+                                (
+                                    spiky_center,
+                                    SPIKY_PLANET_RADIUS,
+                                    world_time * SPIKY_PLANET_ROTATION_SPEED,
+                                    empty_colliders.as_slice(),
+                                )
+                            } else {
+                                (
+                                    water_center,
+                                    planet_surface_radius,
+                                    world_time * 0.25,
+                                    object_colliders.as_slice(),
+                                )
+                            };
+                        move_around_planet(
+                            ship,
+                            movement,
+                            orbit_center,
+                            orbit_radius,
+                            orbit_rotation,
+                            orbit_colliders,
+                            yaw_input,
+                            pitch_input,
+                        );
                     } else {
-                        (
-                            water_center,
-                            planet_surface_radius,
-                            world_time * 0.25,
-                            object_colliders.as_slice(),
-                        )
-                    };
-                move_around_planet(
-                    ship,
-                    movement,
-                    orbit_center,
-                    orbit_radius,
-                    orbit_rotation,
-                    orbit_colliders,
-                    yaw_input,
-                    pitch_input,
-                );
+                        let (forward, _, _) = ship.movement_basis();
+                        ship.position = ship.position.add(forward.mul(movement));
+                        ship.planet_locked = false;
+                        ship.spiky_planet_locked = false;
+                    }
+                }
                 let camera_target = if ship.orbit_plane_normal.is_some() { 1.0 } else { 0.0 };
                 let camera_response = 1.0 - (-2.4 * delta_time).exp();
                 ship.orbit_camera_blend +=
@@ -3538,7 +3572,26 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 }
                 distance += movement;
 
-                if ship.planet_locked {
+                let portal_offset = ship.position.sub(wormhole_position(active_galaxy));
+                let near_wormhole = portal_offset.dot(portal_offset) < 38.0 * 38.0;
+                if galaxy_transition.is_none()
+                    && near_wormhole
+                    && !ship.planet_locked
+                {
+                    galaxy_transition = Some(GalaxyTransit {
+                        elapsed: 0.0,
+                        start_position: ship.position,
+                        destination: if active_galaxy == Galaxy::Home { Galaxy::Vesper } else { Galaxy::Home },
+                        switched: false,
+                    });
+                    window.set_title("Agujero de gusano | Entrando en hipervelocidad");
+                }
+
+                if galaxy_transition.is_some() {
+                    window.set_title("Atravesando el agujero | Hipervelocidad");
+                } else if near_wormhole {
+                    window.set_title("Agujero de gusano | Atravesalo para viajar");
+                } else if ship.planet_locked {
                     if ship.spiky_planet_locked {
                         window.set_title(
                             "Planeta rosado | Enter: Guardián del Núcleo | Backspace: salir",
@@ -3549,7 +3602,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         );
                     }
                 } else {
-                    window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
+                    window.set_title(if active_galaxy == Galaxy::Home {
+                        "Sistema solar | Vuelo libre 3D | F11: fullscreen"
+                    } else {
+                        "Espacio profundo | Vuelo libre 3D | F11: fullscreen"
+                    });
                 }
                 render_scene(
                     active_model,
@@ -3576,6 +3633,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     turbo_power,
                     ship_controller.charge_ratio(),
                 );
+                if let Some(transit) = &galaxy_transition {
+                    draw_hyperspace_transition(&mut scene_framebuffer, transit.elapsed);
+                }
             }
             GameMode::WaterLevel => {
                 ship_controller.update(&input, delta_time);
@@ -3660,6 +3720,18 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     ship_controller.ship.spec,
                 );
             }
+        }
+
+        if galaxy_transition
+            .as_ref()
+            .is_some_and(|transit| transit.elapsed >= 2.15)
+        {
+            galaxy_transition = None;
+            window.set_title(if active_galaxy == Galaxy::Home {
+                "Sistema solar | Vuelo libre 3D | F11: fullscreen"
+            } else {
+                "Espacio profundo | Vuelo libre 3D | F11: fullscreen"
+            });
         }
 
         upscale_scene(&scene_framebuffer, &mut framebuffer);
