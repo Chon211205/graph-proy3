@@ -17,6 +17,8 @@ static GUARDIAN_CRYSTALS: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_SPINES: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_OBSTACLE_MODELS: [OnceLock<Model>; 3] =
     [OnceLock::new(), OnceLock::new(), OnceLock::new()];
+static GUARDIAN_PLAYER_BOLT: OnceLock<Model> = OnceLock::new();
+static GUARDIAN_ENEMY_SEED: OnceLock<Model> = OnceLock::new();
 
 impl CoreGuardian {
     pub fn render_scene(
@@ -43,12 +45,7 @@ impl CoreGuardian {
             draw_shell_plate_3d(framebuffer, (boss_x, boss_y), index, opening, warning);
         }
         draw_obstacles(framebuffer, &self.obstacles, self.elapsed);
-        for shot in self.player_shots.iter().filter(|shot| shot.alive) {
-            circle(framebuffer, shot.x * width, shot.y * height, 4.0, 0xfff0a8);
-        }
-        for seed in self.seeds.iter().filter(|seed| seed.alive) {
-            circle(framebuffer, seed.x * width, seed.y * height, 10.0, 0xffbb2e);
-        }
+        draw_projectiles_3d(framebuffer, &self.player_shots, &self.seeds, self.elapsed);
         let (_, boss_y) = self.boss_center();
         draw_reticle(framebuffer, (self.player_x * width, boss_y * height));
         draw_selected_ship(
@@ -380,6 +377,113 @@ fn draw_obstacles(framebuffer: &mut Framebuffer, obstacles: &[super::Obstacle], 
             None,
         );
     }
+}
+
+fn draw_projectiles_3d(
+    framebuffer: &mut Framebuffer,
+    shots: &[super::PlayerShot],
+    seeds: &[super::Seed],
+    elapsed: f32,
+) {
+    let camera = scene_camera();
+    let bolt = GUARDIAN_PLAYER_BOLT.get_or_init(player_bolt_model);
+    for shot in shots.iter().filter(|shot| shot.alive) {
+        let depth = (17.6 - 11.7 * shot.y).clamp(4.0, 24.0);
+        let position = scene_position(framebuffer, (shot.x, shot.y), depth);
+        render_model(
+            bolt,
+            framebuffer,
+            &camera,
+            |vertex| position.add(vertex),
+            None,
+            None,
+        );
+    }
+
+    let seed_model = GUARDIAN_ENEMY_SEED.get_or_init(enemy_seed_model);
+    for (index, seed) in seeds.iter().filter(|seed| seed.alive).enumerate() {
+        let depth = (17.6 - 11.7 * seed.y).clamp(4.0, 24.0);
+        let position = scene_position(framebuffer, (seed.x, seed.y), depth);
+        let spin = elapsed * 1.4 + index as f32;
+        render_model(
+            seed_model,
+            framebuffer,
+            &camera,
+            |vertex| position.add(rotate_y(rotate_x(vertex, spin * 0.7), spin)),
+            None,
+            None,
+        );
+    }
+}
+
+fn player_bolt_model() -> Model {
+    let vertices = vec![
+        Vec3::new(0.0, 0.0, -0.24),
+        Vec3::new(0.0, 0.0, 0.25),
+        Vec3::new(-0.065, 0.0, 0.0),
+        Vec3::new(0.0, -0.065, 0.0),
+        Vec3::new(0.065, 0.0, 0.0),
+        Vec3::new(0.0, 0.065, 0.0),
+    ];
+    let indices = [
+        [0, 2, 3],
+        [0, 3, 4],
+        [0, 4, 5],
+        [0, 5, 2],
+        [1, 3, 2],
+        [1, 4, 3],
+        [1, 5, 4],
+        [1, 2, 5],
+    ];
+    let faces = indices
+        .into_iter()
+        .enumerate()
+        .map(|(index, indices)| {
+            let mut face = Face::new(indices, "guardian_laser", "player_bolt");
+            face.color = MaterialColor::Fixed(if index % 2 == 0 {
+                [255, 238, 154]
+            } else {
+                [255, 190, 54]
+            });
+            face
+        })
+        .collect();
+    Model::new(vertices, faces)
+}
+
+fn enemy_seed_model() -> Model {
+    let body = sphere_model(0.18, [255, 193, 50]);
+    let mut vertices = body.vertices;
+    let mut faces: Vec<Face> = body
+        .faces
+        .into_iter()
+        .map(|source| {
+            let mut face = Face::new(source.indices, source.material, source.group);
+            face.color = source.color;
+            face.shader = source.shader;
+            face.smooth = source.smooth;
+            face
+        })
+        .collect();
+    for direction in [
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec3::new(-1.0, 0.0, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+        Vec3::new(0.0, -1.0, 0.0),
+        Vec3::new(0.0, 0.0, 1.0),
+        Vec3::new(0.0, 0.0, -1.0),
+    ] {
+        append_spine_segment(
+            &mut vertices,
+            &mut faces,
+            direction.mul(0.12),
+            direction.mul(0.40),
+            0.09,
+            0.008,
+            [229, 132, 31],
+        );
+    }
+    Model::new(vertices, faces)
 }
 
 fn obstacle_model(variant: usize) -> Model {
