@@ -1467,6 +1467,12 @@ fn spiky_planet_position(world_time: f32) -> Vec3 {
     ))
 }
 
+fn spiky_planet_is_closer(ship_position: Vec3, water_center: Vec3, spiky_center: Vec3) -> bool {
+    let water_offset = ship_position.sub(water_center);
+    let spiky_offset = ship_position.sub(spiky_center);
+    spiky_offset.dot(spiky_offset) < water_offset.dot(water_offset)
+}
+
 fn place_ship_near_water_planet(controller: &mut ShipController, world_time: f32) {
     controller.reset();
     let ship = &mut controller.ship;
@@ -3321,17 +3327,23 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 }
 
                 let empty_colliders: [ObjectCollider; 0] = [];
+                let water_center = water_planet_position(world_time);
+                let spiky_center = spiky_planet_position(world_time);
+                if !ship.planet_locked {
+                    ship.spiky_planet_locked =
+                        spiky_planet_is_closer(ship.position, water_center, spiky_center);
+                }
                 let (orbit_center, orbit_radius, orbit_rotation, orbit_colliders) =
                     if ship.spiky_planet_locked {
                         (
-                            spiky_planet_position(world_time),
+                            spiky_center,
                             SPIKY_PLANET_RADIUS,
                             world_time * SPIKY_PLANET_ROTATION_SPEED,
                             empty_colliders.as_slice(),
                         )
                     } else {
                         (
-                            water_planet_position(world_time),
+                            water_center,
                             planet_surface_radius,
                             world_time * 0.25,
                             object_colliders.as_slice(),
@@ -3565,6 +3577,15 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn free_flight_selects_the_nearest_planet_for_orbit_collision() {
+        let ship = Vec3::new(95.0, 0.0, 0.0);
+        let water = Vec3::new(0.0, 0.0, 0.0);
+        let spiky = Vec3::new(100.0, 0.0, 0.0);
+        assert!(spiky_planet_is_closer(ship, water, spiky));
+        assert!(!spiky_planet_is_closer(ship, spiky, water));
+    }
 
     #[test]
     fn mcqueen_submarine_has_aquatic_parts_and_renders_from_multiple_angles() {
