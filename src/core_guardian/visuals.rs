@@ -151,6 +151,62 @@ fn draw_cavern(framebuffer: &mut Framebuffer, elapsed: f32) {
             0x783052,
         );
     }
+
+    draw_crystal_cluster(
+        framebuffer,
+        width * 0.075,
+        height * 0.79,
+        height * 0.13,
+        elapsed,
+    );
+    draw_crystal_cluster(
+        framebuffer,
+        width * 0.925,
+        height * 0.55,
+        height * 0.095,
+        elapsed + 1.7,
+    );
+    draw_crystal_cluster(
+        framebuffer,
+        width * 0.17,
+        height * 0.43,
+        height * 0.07,
+        elapsed + 3.1,
+    );
+}
+
+fn draw_crystal_cluster(framebuffer: &mut Framebuffer, x: f32, y: f32, size: f32, time: f32) {
+    let shimmer = ((time * 1.6).sin() * 8.0) as i32;
+    let gold = (255u32 << 16) | (((176 + shimmer).clamp(0, 255) as u32) << 8) | 57;
+    let pale = 0xffe8a0;
+    let dark = 0xb66737;
+    for (offset_x, scale, color) in [
+        (-0.48, 0.64, dark),
+        (-0.18, 0.92, gold),
+        (0.18, 0.72, pale),
+        (0.46, 0.55, gold),
+    ] {
+        let base_x = x + offset_x * size;
+        let crystal_h = size * scale;
+        polygon(
+            framebuffer,
+            &[
+                (base_x - size * 0.13, y),
+                (base_x - size * 0.08, y - crystal_h * 0.76),
+                (base_x + size * 0.02, y - crystal_h),
+                (base_x + size * 0.11, y - crystal_h * 0.38),
+                (base_x + size * 0.13, y),
+            ],
+            color,
+        );
+        line(
+            framebuffer,
+            (base_x - size * 0.04, y - crystal_h * 0.18),
+            (base_x + size * 0.02, y - crystal_h * 0.88),
+            2.0,
+            0xfff2c2,
+        );
+    }
 }
 
 fn polygon(framebuffer: &mut Framebuffer, points: &[(f32, f32)], color: u32) {
