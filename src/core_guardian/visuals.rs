@@ -36,6 +36,7 @@ impl CoreGuardian {
         draw_boss_spheres(
             framebuffer,
             (boss_x, boss_y),
+            self.elapsed,
             self.phase == Phase::Exposed,
             self.hit_flash > 0.0,
         );
@@ -212,6 +213,7 @@ fn draw_reticle(framebuffer: &mut Framebuffer, center: (f32, f32)) {
 fn draw_boss_spheres(
     framebuffer: &mut Framebuffer,
     screen_center: (f32, f32),
+    elapsed: f32,
     exposed: bool,
     hit_flash: bool,
 ) {
@@ -231,15 +233,16 @@ fn draw_boss_spheres(
         body,
         framebuffer,
         &camera,
-        |vertex| vertex.add(body_center),
+        |vertex| vertex.mul(1.0 + (elapsed * 1.7).sin() * 0.035).add(body_center),
         None,
         None,
     );
+    let core_pulse = 1.0 + (elapsed * 4.2).sin() * 0.12;
     render_model(
         core,
         framebuffer,
         &camera,
-        |vertex| vertex.add(core_center),
+        |vertex| vertex.mul(core_pulse).add(core_center),
         None,
         None,
     );
@@ -257,9 +260,10 @@ fn draw_boss_tentacles(framebuffer: &mut Framebuffer, screen_center: (f32, f32),
             let radial = (vertex.x * vertex.x + vertex.y * vertex.y).sqrt();
             let azimuth = vertex.y.atan2(vertex.x);
             let reach = ((radial - 1.5) / 3.5).clamp(0.0, 1.0);
-            let bend = (elapsed * 1.35 + azimuth * 2.4).sin() * 0.075 * reach;
+            let wave_phase = elapsed * 2.1 + azimuth * 2.4 + radial * 0.85;
+            let bend = wave_phase.sin() * 0.22 * reach;
             let mut animated = rotate_z(vertex, bend);
-            animated.z += (elapsed * 1.8 + azimuth * 2.4).sin() * 0.10 * reach;
+            animated.z += (wave_phase * 0.82).sin() * 0.28 * reach;
             center.add(animated)
         },
         None,
