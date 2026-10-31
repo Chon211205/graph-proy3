@@ -415,13 +415,30 @@ impl CoreGuardian {
     }
 
     fn spawn_obstacle(&mut self) {
-        let lanes = [0.24, 0.76, 0.34, 0.66];
+        let lanes = [0.22, 0.78, 0.36, 0.64];
         let choice = (self.next_random() as usize) % lanes.len();
+        let active = self.obstacles.iter().filter(|item| item.alive).count();
+        let free_slots = MAX_OBSTACLES.saturating_sub(active);
+        let paired_wave = self.next_random() % 3 == 0 && free_slots >= 2;
+        self.spawn_obstacle_at(lanes[choice], -0.08);
+
+        if paired_wave {
+            let opposite_lane = match choice {
+                0 => lanes[1],
+                1 => lanes[0],
+                2 => lanes[3],
+                _ => lanes[2],
+            };
+            self.spawn_obstacle_at(opposite_lane, -0.24);
+        }
+    }
+
+    fn spawn_obstacle_at(&mut self, x: f32, y: f32) {
         let obstacle = Obstacle {
-            x: lanes[choice],
-            y: -0.08,
-            previous_x: lanes[choice],
-            previous_y: -0.08,
+            x,
+            y,
+            previous_x: x,
+            previous_y: y,
             radius: 0.48 + (self.next_random() % 30) as f32 / 100.0,
             variant: (self.next_random() % 3) as usize,
             alive: true,
