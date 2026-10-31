@@ -8,6 +8,8 @@ const WARNING_DURATION: f32 = 0.55;
 const EXPOSED_DURATION: f32 = 1.8;
 const CLOSING_DURATION: f32 = 0.45;
 const PLAYER_SPEED: f32 = 0.98;
+const PLAYER_VERTICAL_SPEED: f32 = 1.35;
+const PLAYER_VERTICAL_SCREEN_SCALE: f32 = 0.20;
 const PLAYER_SHOT_INTERVAL: f32 = 0.12;
 const PLAYER_SHOT_SPEED: f32 = 1.7;
 const SEED_SPEED: f32 = 0.42;
@@ -171,9 +173,9 @@ impl CoreGuardian {
         let horizontal = input.horizontal.clamp(-1.0, 1.0);
         let vertical = input.vertical.clamp(-1.0, 1.0);
         self.velocity_x += (horizontal * PLAYER_SPEED - self.velocity_x) * response;
-        self.velocity_y += (vertical * PLAYER_SPEED - self.velocity_y) * response;
+        self.velocity_y += (vertical * PLAYER_SPEED * PLAYER_VERTICAL_SPEED - self.velocity_y) * response;
         self.player_x = (self.player_x + self.velocity_x * dt).clamp(0.12, 0.88);
-        self.player_y = (self.player_y + self.velocity_y * dt).clamp(-0.72, 0.68);
+        self.player_y = (self.player_y + self.velocity_y * dt).clamp(-0.72, 0.48);
         self.roll += ((-horizontal * 0.22) - self.roll) * (1.0 - (-7.0 * dt).exp());
 
         match self.phase {
@@ -231,7 +233,7 @@ impl CoreGuardian {
         let seed_x = (boss_x + lane * 0.04).clamp(0.18, 0.82);
         let seed_y = boss_y + 0.055;
         let target_x = self.player_x;
-        let target_y = 0.82 + self.player_y * 0.10;
+        let target_y = player_screen_y(self.player_y);
         let dx = (target_x - seed_x) * width as f32;
         let dy = (target_y - seed_y) * height as f32;
         let length = (dx * dx + dy * dy).sqrt().max(1.0);
@@ -270,9 +272,9 @@ impl CoreGuardian {
         if fire && self.fire_timer <= 0.0 {
             let shot = PlayerShot {
                 x: self.player_x,
-                y: 0.82 + self.player_y * 0.10,
+                y: player_screen_y(self.player_y),
                 previous_x: self.player_x,
-                previous_y: 0.82 + self.player_y * 0.10,
+                previous_y: player_screen_y(self.player_y),
                 alive: true,
             };
             if let Some(slot) = self.player_shots.iter_mut().find(|item| !item.alive) {
@@ -377,9 +379,9 @@ impl CoreGuardian {
         }
 
         let player_x = self.player_x;
-        let player_y = 0.82 + self.player_y * 0.10;
+        let player_y = player_screen_y(self.player_y);
         let previous_player_x = self.previous_player_x;
-        let previous_player_y = 0.82 + self.previous_player_y * 0.10;
+        let previous_player_y = player_screen_y(self.previous_player_y);
         let mut lost = false;
         for obstacle in self.obstacles.iter_mut().filter(|obstacle| obstacle.alive) {
             obstacle.previous_x = obstacle.x;
@@ -464,9 +466,9 @@ impl CoreGuardian {
 
     fn update_seeds(&mut self, dt: f32, width: usize, height: usize) {
         let player_x = self.player_x;
-        let player_y = 0.82 + self.player_y * 0.10;
+        let player_y = player_screen_y(self.player_y);
         let previous_player_x = self.previous_player_x;
-        let previous_player_y = 0.82 + self.previous_player_y * 0.10;
+        let previous_player_y = player_screen_y(self.previous_player_y);
         let mut lost = false;
         for seed in self.seeds.iter_mut().filter(|seed| seed.alive) {
             seed.previous_x = seed.x;
@@ -503,7 +505,7 @@ impl CoreGuardian {
 
     fn update_drops(&mut self, dt: f32, width: usize, height: usize) {
         let player_x = self.player_x;
-        let player_y = 0.82 + self.player_y * 0.10;
+        let player_y = player_screen_y(self.player_y);
         for drop in self.shield_drops.iter_mut().filter(|drop| drop.alive) {
             drop.y += 0.16 * dt;
             let dx = (drop.x - player_x) * width as f32;
@@ -544,6 +546,14 @@ impl CoreGuardian {
     pub fn is_exposed(&self) -> bool {
         self.phase == Phase::Exposed
     }
+
+    pub fn player_screen_position(&self) -> (f32, f32) {
+        (self.player_x, player_screen_y(self.player_y))
+    }
+}
+
+fn player_screen_y(offset: f32) -> f32 {
+    0.82 + offset * PLAYER_VERTICAL_SCREEN_SCALE
 }
 
 fn swept_distance(a0: (f32, f32), a1: (f32, f32), b0: (f32, f32), b1: (f32, f32)) -> f32 {

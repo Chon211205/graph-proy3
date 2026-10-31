@@ -49,13 +49,14 @@ impl CoreGuardian {
         draw_projectiles_3d(framebuffer, &self.player_shots, &self.seeds, self.elapsed);
         let (_, boss_y) = self.boss_center();
         draw_reticle(framebuffer, (self.player_x * width, boss_y * height));
+        let (player_x, player_y) = self.player_screen_position();
         draw_selected_ship(
             framebuffer,
             ship_model,
             ship_center,
             ship_spec,
-            self.player_x,
-            0.82 + self.player_y * 0.10,
+            player_x,
+            player_y,
             self.roll,
         );
     }
