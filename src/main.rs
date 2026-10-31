@@ -806,7 +806,7 @@ fn create_window(fullscreen: bool) -> Result<Window, minifb::Error> {
         WindowOptions {
             borderless: fullscreen,
             resize: !fullscreen,
-            scale_mode: ScaleMode::AspectRatioStretch,
+            scale_mode: ScaleMode::Stretch,
             ..WindowOptions::default()
         },
     )?;
