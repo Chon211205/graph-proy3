@@ -2,9 +2,14 @@ mod visuals;
 
 const STARTING_SHIELDS: u8 = 3;
 const BOSS_HEALTH: u32 = 42;
-const PLAYER_SPEED: f32 = 0.82;
+const ARRIVAL_DURATION: f32 = 1.0;
+const CLOSED_DURATION: f32 = 3.3;
+const WARNING_DURATION: f32 = 0.55;
+const EXPOSED_DURATION: f32 = 1.8;
+const CLOSING_DURATION: f32 = 0.45;
+const PLAYER_SPEED: f32 = 0.98;
 const PLAYER_SHOT_INTERVAL: f32 = 0.12;
-const PLAYER_SHOT_SPEED: f32 = 1.35;
+const PLAYER_SHOT_SPEED: f32 = 1.7;
 const SEED_SPEED: f32 = 0.42;
 const OBSTACLE_SPEED: f32 = 0.22;
 const OBSTACLE_SPAWN_INTERVAL: f32 = 2.8;
@@ -160,7 +165,7 @@ impl CoreGuardian {
             return GuardianAction::Stay;
         }
 
-        let response = 1.0 - (-10.0 * dt).exp();
+        let response = 1.0 - (-14.0 * dt).exp();
         self.previous_player_x = self.player_x;
         self.previous_player_y = self.player_y;
         let horizontal = input.horizontal.clamp(-1.0, 1.0);
@@ -172,7 +177,7 @@ impl CoreGuardian {
         self.roll += ((-horizontal * 0.22) - self.roll) * (1.0 - (-7.0 * dt).exp());
 
         match self.phase {
-            Phase::Arrival if self.phase_time >= 1.6 => self.set_phase(Phase::Closed),
+            Phase::Arrival if self.phase_time >= ARRIVAL_DURATION => self.set_phase(Phase::Closed),
             Phase::Closed => {
                 self.attack_timer -= dt;
                 let interval = if self.boss_health * 2 <= BOSS_HEALTH {
@@ -184,14 +189,14 @@ impl CoreGuardian {
                     self.spawn_seed(width, height);
                     self.attack_timer += interval;
                 }
-                if self.phase_time >= 4.1 {
+                if self.phase_time >= CLOSED_DURATION {
                     self.open_plate = self.cycle as usize % 3;
                     self.set_phase(Phase::Warning);
                 }
             }
-            Phase::Warning if self.phase_time >= 0.85 => self.set_phase(Phase::Exposed),
-            Phase::Exposed if self.phase_time >= 2.35 => self.set_phase(Phase::Closing),
-            Phase::Closing if self.phase_time >= 0.65 => {
+            Phase::Warning if self.phase_time >= WARNING_DURATION => self.set_phase(Phase::Exposed),
+            Phase::Exposed if self.phase_time >= EXPOSED_DURATION => self.set_phase(Phase::Closing),
+            Phase::Closing if self.phase_time >= CLOSING_DURATION => {
                 self.cycle = self.cycle.wrapping_add(1);
                 self.set_phase(Phase::Closed);
             }
@@ -500,9 +505,9 @@ impl CoreGuardian {
             return 0.0;
         }
         match self.phase {
-            Phase::Warning => (self.phase_time / 0.85).clamp(0.0, 1.0) * 0.22,
+            Phase::Warning => (self.phase_time / WARNING_DURATION).clamp(0.0, 1.0) * 0.22,
             Phase::Exposed => 1.0,
-            Phase::Closing => (1.0 - self.phase_time / 0.65).clamp(0.0, 1.0),
+            Phase::Closing => (1.0 - self.phase_time / CLOSING_DURATION).clamp(0.0, 1.0),
             _ => 0.0,
         }
     }
