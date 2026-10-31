@@ -7,6 +7,7 @@ const CLOSED_DURATION: f32 = 3.3;
 const WARNING_DURATION: f32 = 0.55;
 const EXPOSED_DURATION: f32 = 1.8;
 const CLOSING_DURATION: f32 = 0.45;
+const VICTORY_EXPLOSION_DURATION: f32 = 2.2;
 const PLAYER_SPEED: f32 = 0.98;
 const PLAYER_VERTICAL_SPEED: f32 = 1.35;
 const PLAYER_VERTICAL_SCREEN_SCALE: f32 = 0.20;
@@ -159,10 +160,11 @@ impl CoreGuardian {
             return GuardianAction::Exit;
         }
         if matches!(self.phase, Phase::Won | Phase::Lost) {
+            if self.phase == Phase::Won && self.phase_time >= VICTORY_EXPLOSION_DURATION {
+                return GuardianAction::Exit;
+            }
             if input.confirm && self.phase == Phase::Lost {
                 *self = Self::new();
-            } else if input.confirm && self.phase == Phase::Won {
-                return GuardianAction::Exit;
             }
             return GuardianAction::Stay;
         }

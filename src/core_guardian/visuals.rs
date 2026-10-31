@@ -1,4 +1,4 @@
-use super::{CoreGuardian, Phase, STARTING_SHIELDS};
+use super::{CoreGuardian, Phase, STARTING_SHIELDS, VICTORY_EXPLOSION_DURATION};
 use crate::framebuffer::Framebuffer;
 use crate::obj_loader::{Face, MaterialColor, Model, Vec3};
 use crate::ship::ShipSpec;
@@ -19,6 +19,8 @@ static GUARDIAN_OBSTACLE_MODELS: [OnceLock<Model>; 3] =
     [OnceLock::new(), OnceLock::new(), OnceLock::new()];
 static GUARDIAN_PLAYER_BOLT: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_ENEMY_SEED: OnceLock<Model> = OnceLock::new();
+static GUARDIAN_EXPLOSION_SHARDS: [OnceLock<Model>; 3] =
+    [OnceLock::new(), OnceLock::new(), OnceLock::new()];
 
 impl CoreGuardian {
     pub fn render_scene(
@@ -32,18 +34,22 @@ impl CoreGuardian {
         let height = framebuffer.height as f32;
         draw_cavern(framebuffer, self.elapsed);
         let (boss_x, boss_y) = self.boss_center();
-        draw_boss_tentacles(framebuffer, (boss_x, boss_y), self.elapsed);
-        draw_boss_spheres(
-            framebuffer,
-            (boss_x, boss_y),
-            self.elapsed,
-            self.phase == Phase::Exposed,
-            self.hit_flash > 0.0,
-        );
-        for index in 0..3 {
-            let opening = self.opening_amount(index);
-            let warning = self.phase == Phase::Warning && index == self.open_plate;
-            draw_shell_plate_3d(framebuffer, (boss_x, boss_y), index, opening, warning);
+        if self.phase == Phase::Won {
+            draw_boss_explosion(framebuffer, (boss_x, boss_y), self.phase_time);
+        } else {
+            draw_boss_tentacles(framebuffer, (boss_x, boss_y), self.elapsed);
+            draw_boss_spheres(
+                framebuffer,
+                (boss_x, boss_y),
+                self.elapsed,
+                self.phase == Phase::Exposed,
+                self.hit_flash > 0.0,
+            );
+            for index in 0..3 {
+                let opening = self.opening_amount(index);
+                let warning = self.phase == Phase::Warning && index == self.open_plate;
+                draw_shell_plate_3d(framebuffer, (boss_x, boss_y), index, opening, warning);
+            }
         }
         draw_obstacles(framebuffer, &self.obstacles, self.elapsed);
         draw_projectiles_3d(framebuffer, &self.player_shots, &self.seeds, self.elapsed);
@@ -132,6 +138,67 @@ fn draw_damage_smoke(
         circle(framebuffer, x - radius * 0.12, y - radius * 0.12, radius * 0.68, 0x706a73);
         circle(framebuffer, x - radius * 0.18, y - radius * 0.2, radius * 0.34, 0xaaa2a8);
     }
+}
+
+fn draw_boss_explosion(
+    framebuffer: &mut Framebuffer,
+    screen_center: (f32, f32),
+    phase_time: f32,
+) {
+    let progress = (phase_time / VICTORY_EXPLOSION_DURATION).clamp(0.0, 1.0);
+    let origin = scene_position(framebuffer, screen_center, 14.0);
+    let camera = scene_camera();
+    let colors = [[255, 245, 173], [255, 153, 48], [239, 54, 77]];
+    let golden_angle = std::f32::consts::PI * (3.0 - 5.0_f32.sqrt());
+    for index in 0..18 {
+        let y = 1.0 - 2.0 * (index as f32 + 0.5) / 18.0;
+        let ring = (1.0 - y * y).sqrt();
+        let angle = index as f32 * golden_angle;
+        let direction = Vec3::new(ring * angle.cos(), y, ring * angle.sin());
+        let distance = progress * (3.8 + (index % 5) as f32 * 0.72);
+        let position = origin.add(direction.mul(distance));
+        let size = (1.0 - progress) * (0.34 + (index % 3) as f32 * 0.10) + 0.015;
+        let color_index = index % colors.len();
+        let shard = GUARDIAN_EXPLOSION_SHARDS[color_index]
+            .get_or_init(|| explosion_shard_model(colors[color_index]));
+        render_model(
+            shard,
+            framebuffer,
+            &camera,
+            |vertex| position.add(vertex.mul(size)),
+            None,
+            None,
+        );
+    }
+}
+
+fn explosion_shard_model(color: [u8; 3]) -> Model {
+    let vertices = vec![
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec3::new(-1.0, 0.0, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+        Vec3::new(0.0, -1.0, 0.0),
+        Vec3::new(0.0, 0.0, 1.0),
+        Vec3::new(0.0, 0.0, -1.0),
+    ];
+    let faces = [
+        [0, 2, 4],
+        [2, 1, 4],
+        [1, 3, 4],
+        [3, 0, 4],
+        [2, 0, 5],
+        [1, 2, 5],
+        [3, 1, 5],
+        [0, 3, 5],
+    ]
+    .into_iter()
+    .map(|indices| {
+        let mut face = Face::new(indices, "guardian_explosion", "explosion_shard");
+        face.color = MaterialColor::Fixed(color);
+        face
+    })
+    .collect();
+    Model::new(vertices, faces)
 }
 
 fn draw_shell_plate_3d(
