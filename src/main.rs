@@ -1,5 +1,6 @@
 mod core_guardian;
 mod framebuffer;
+mod galaxy;
 mod input;
 mod menu;
 mod obj_loader;
@@ -14,6 +15,7 @@ use std::time::Instant;
 
 use core_guardian::{CoreGuardian, GuardianAction, GuardianInput};
 use framebuffer::Framebuffer;
+use galaxy::{Galaxy, GalaxyTransit, draw_hyperspace_transition, wormhole_position};
 use minifb::{Key, ScaleMode, Window, WindowOptions};
 use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use ship::{
@@ -340,12 +342,6 @@ enum GameMode {
     FreeWorld,
     WaterLevel,
     CoreGuardian,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Galaxy {
-    Home,
-    Vesper,
 }
 
 struct WaterLevelState {
