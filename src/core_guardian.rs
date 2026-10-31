@@ -11,12 +11,12 @@ const PLAYER_SPEED: f32 = 0.98;
 const PLAYER_SHOT_INTERVAL: f32 = 0.12;
 const PLAYER_SHOT_SPEED: f32 = 1.7;
 const SEED_SPEED: f32 = 0.42;
-const OBSTACLE_SPEED: f32 = 0.22;
-const OBSTACLE_SPAWN_INTERVAL: f32 = 2.8;
+const OBSTACLE_SPEED: f32 = 0.30;
+const OBSTACLE_SPAWN_INTERVAL: f32 = 1.9;
 const INVULNERABILITY_TIME: f32 = 1.25;
 const MAX_PLAYER_SHOTS: usize = 28;
 const MAX_SEEDS: usize = 12;
-const MAX_OBSTACLES: usize = 8;
+const MAX_OBSTACLES: usize = 12;
 const MAX_DROPS: usize = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
