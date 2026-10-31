@@ -410,7 +410,7 @@ impl CoreGuardian {
     }
 
     fn spawn_obstacle(&mut self) {
-        let lanes = [0.28, 0.5, 0.72];
+        let lanes = [0.24, 0.76, 0.34, 0.66];
         let choice = (self.next_random() as usize) % lanes.len();
         let obstacle = Obstacle {
             x: lanes[choice],

@@ -14,6 +14,8 @@ static GUARDIAN_SHELL_WARNING: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_TUNNEL: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_CRYSTALS: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_SPINES: OnceLock<Model> = OnceLock::new();
+static GUARDIAN_OBSTACLE_MODELS: [OnceLock<Model>; 3] =
+    [OnceLock::new(), OnceLock::new(), OnceLock::new()];
 
 impl CoreGuardian {
     pub fn render_scene(
@@ -38,6 +40,7 @@ impl CoreGuardian {
             let warning = self.phase == Phase::Warning && index == self.open_plate;
             draw_shell_plate_3d(framebuffer, (boss_x, boss_y), index, opening, warning);
         }
+        draw_obstacles(framebuffer, &self.obstacles, self.elapsed);
         for shot in self.player_shots.iter().filter(|shot| shot.alive) {
             circle(framebuffer, shot.x * width, shot.y * height, 4.0, 0xfff0a8);
         }
@@ -297,6 +300,88 @@ fn scene_camera() -> Camera {
         right: Vec3::new(1.0, 0.0, 0.0),
         up: Vec3::new(0.0, 1.0, 0.0),
     }
+}
+
+fn draw_obstacles(framebuffer: &mut Framebuffer, obstacles: &[super::Obstacle], elapsed: f32) {
+    let camera = scene_camera();
+    for obstacle in obstacles.iter().filter(|obstacle| obstacle.alive) {
+        let variant = obstacle.variant % GUARDIAN_OBSTACLE_MODELS.len();
+        let model = GUARDIAN_OBSTACLE_MODELS[variant].get_or_init(|| obstacle_model(variant));
+        let depth = (17.6 - 11.7 * obstacle.y).clamp(4.0, 24.0);
+        let position = scene_position(framebuffer, (obstacle.x, obstacle.y), depth);
+        let spin = elapsed * (0.38 + variant as f32 * 0.09);
+        render_model(
+            model,
+            framebuffer,
+            &camera,
+            |vertex| {
+                position.add(rotate_y(rotate_x(vertex, spin * 0.73), spin).mul(obstacle.radius))
+            },
+            None,
+            None,
+        );
+    }
+}
+
+fn obstacle_model(variant: usize) -> Model {
+    let rings = 7;
+    let sectors = 12;
+    let mut vertices = Vec::with_capacity((rings + 1) * (sectors + 1));
+    for ring in 0..=rings {
+        let theta = std::f32::consts::PI * ring as f32 / rings as f32;
+        let (sin_theta, cos_theta) = theta.sin_cos();
+        for sector in 0..=sectors {
+            let phi = std::f32::consts::TAU * sector as f32 / sectors as f32;
+            let roughness = 1.0
+                + 0.13 * (phi * (3.0 + variant as f32) + theta * 4.0).sin()
+                + 0.07 * (theta * 7.0 - phi * 2.0).cos();
+            vertices.push(Vec3::new(
+                sin_theta * phi.cos() * roughness,
+                cos_theta * roughness,
+                sin_theta * phi.sin() * roughness,
+            ));
+        }
+    }
+    let palettes = [
+        [[91, 34, 65], [135, 47, 79], [173, 70, 93]],
+        [[105, 41, 60], [164, 66, 78], [204, 105, 105]],
+        [[101, 54, 43], [169, 91, 52], [214, 132, 67]],
+    ];
+    let palette = palettes[variant % palettes.len()];
+    let mut faces = Vec::with_capacity(rings * sectors * 2);
+    for ring in 0..rings {
+        for sector in 0..sectors {
+            let a = ring * (sectors + 1) + sector;
+            let b = a + 1;
+            let c = a + sectors + 1;
+            let d = c + 1;
+            let color = palette[(ring + sector) % palette.len()];
+            for indices in [[a, c, b], [b, c, d]] {
+                let mut face = Face::new(indices, "guardian_asteroid", "guardian_obstacle");
+                face.color = MaterialColor::Fixed(color);
+                faces.push(face);
+            }
+        }
+    }
+    Model::new(vertices, faces)
+}
+
+fn rotate_x(point: Vec3, angle: f32) -> Vec3 {
+    let (sin, cos) = angle.sin_cos();
+    Vec3::new(
+        point.x,
+        point.y * cos - point.z * sin,
+        point.y * sin + point.z * cos,
+    )
+}
+
+fn rotate_y(point: Vec3, angle: f32) -> Vec3 {
+    let (sin, cos) = angle.sin_cos();
+    Vec3::new(
+        point.x * cos + point.z * sin,
+        point.y,
+        -point.x * sin + point.z * cos,
+    )
 }
 
 fn draw_selected_ship(
