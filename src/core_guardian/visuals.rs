@@ -1,8 +1,14 @@
 use super::{CoreGuardian, Phase, STARTING_SHIELDS};
 use crate::framebuffer::Framebuffer;
-use crate::obj_loader::{Model, Vec3};
+use crate::obj_loader::{Face, MaterialColor, Model, Vec3};
 use crate::ship::ShipSpec;
 use crate::{Camera, render_model};
+use std::sync::OnceLock;
+
+static GUARDIAN_BODY: OnceLock<Model> = OnceLock::new();
+static GUARDIAN_CORE_CLOSED: OnceLock<Model> = OnceLock::new();
+static GUARDIAN_CORE_EXPOSED: OnceLock<Model> = OnceLock::new();
+static GUARDIAN_CORE_HIT: OnceLock<Model> = OnceLock::new();
 
 impl CoreGuardian {
     pub fn render_scene(
@@ -15,20 +21,15 @@ impl CoreGuardian {
         let width = framebuffer.width as f32;
         let height = framebuffer.height as f32;
         draw_cavern(framebuffer, self.elapsed);
-        let boss_x = width * (0.5 + (self.elapsed * 0.48).sin() * 0.035);
-        let boss_y = height * 0.34;
-        circle(framebuffer, boss_x, boss_y, height * 0.14, 0xb84967);
-        circle(
+        let (boss_x, boss_y) = self.boss_center();
+        draw_boss_spheres(
             framebuffer,
-            boss_x,
-            boss_y,
-            height * 0.055,
-            if self.phase == Phase::Exposed {
-                0xffc43c
-            } else {
-                0x8c4b3a
-            },
+            (boss_x, boss_y),
+            self.phase == Phase::Exposed,
+            self.hit_flash > 0.0,
         );
+        let boss_screen_x = boss_x * width;
+        let boss_screen_y = boss_y * height;
         let plate_angles = [
             -std::f32::consts::FRAC_PI_2,
             std::f32::consts::FRAC_PI_6,
@@ -39,7 +40,7 @@ impl CoreGuardian {
             let warning = self.phase == Phase::Warning && index == self.open_plate;
             draw_shell_plate(
                 framebuffer,
-                (boss_x, boss_y),
+                (boss_screen_x, boss_screen_y),
                 height * 0.125,
                 angle,
                 opening * if index == 0 { -1.0 } else { 1.0 },
@@ -149,6 +150,98 @@ fn draw_reticle(framebuffer: &mut Framebuffer, center: (f32, f32)) {
     circle(framebuffer, center.0, center.1, 3.0, outer);
 }
 
+fn draw_boss_spheres(
+    framebuffer: &mut Framebuffer,
+    screen_center: (f32, f32),
+    exposed: bool,
+    hit_flash: bool,
+) {
+    let body = GUARDIAN_BODY.get_or_init(|| sphere_model(2.25, [190, 79, 108]));
+    let core = if hit_flash {
+        GUARDIAN_CORE_HIT.get_or_init(|| sphere_model(0.82, [255, 247, 189]))
+    } else if exposed {
+        GUARDIAN_CORE_EXPOSED.get_or_init(|| sphere_model(0.82, [255, 190, 44]))
+    } else {
+        GUARDIAN_CORE_CLOSED.get_or_init(|| sphere_model(0.82, [156, 74, 46]))
+    };
+    let body_center = scene_position(framebuffer, screen_center, 14.0);
+    let core_center = body_center.add(Vec3::new(0.0, 0.0, -1.45));
+    let camera = scene_camera();
+    framebuffer.buffers_mut().1.fill(f32::NEG_INFINITY);
+    render_model(
+        body,
+        framebuffer,
+        &camera,
+        |vertex| vertex.add(body_center),
+        None,
+        None,
+    );
+    render_model(
+        core,
+        framebuffer,
+        &camera,
+        |vertex| vertex.add(core_center),
+        None,
+        None,
+    );
+}
+
+fn sphere_model(radius: f32, color: [u8; 3]) -> Model {
+    let rings = 12;
+    let sectors = 24;
+    let mut vertices = Vec::with_capacity((rings + 1) * (sectors + 1));
+    for ring in 0..=rings {
+        let theta = std::f32::consts::PI * ring as f32 / rings as f32;
+        let (sin_theta, cos_theta) = theta.sin_cos();
+        for sector in 0..=sectors {
+            let phi = std::f32::consts::TAU * sector as f32 / sectors as f32;
+            let (sin_phi, cos_phi) = phi.sin_cos();
+            vertices.push(Vec3::new(
+                radius * sin_theta * cos_phi,
+                radius * sin_theta * sin_phi,
+                radius * cos_theta,
+            ));
+        }
+    }
+    let mut faces = Vec::with_capacity(rings * sectors * 2);
+    for ring in 0..rings {
+        for sector in 0..sectors {
+            let a = ring * (sectors + 1) + sector;
+            let b = a + 1;
+            let c = a + sectors + 1;
+            let d = c + 1;
+            for indices in [[a, c, b], [b, c, d]] {
+                let mut face = Face::new(indices, "guardian", "guardian_sphere");
+                face.color = MaterialColor::Fixed(color);
+                face.smooth = true;
+                faces.push(face);
+            }
+        }
+    }
+    let mut model = Model::new(vertices, faces);
+    model.recalculate_normals();
+    model
+}
+
+fn scene_position(framebuffer: &Framebuffer, screen: (f32, f32), depth: f32) -> Vec3 {
+    let tan_half_fov = (60.0_f32.to_radians() * 0.5).tan();
+    let aspect = framebuffer.width as f32 / framebuffer.height.max(1) as f32;
+    Vec3::new(
+        (screen.0 - 0.5) * depth * 2.0 * tan_half_fov * aspect,
+        (0.5 - screen.1) * depth * 2.0 * tan_half_fov,
+        depth,
+    )
+}
+
+fn scene_camera() -> Camera {
+    Camera {
+        position: Vec3::default(),
+        forward: Vec3::new(0.0, 0.0, 1.0),
+        right: Vec3::new(1.0, 0.0, 0.0),
+        up: Vec3::new(0.0, 1.0, 0.0),
+    }
+}
+
 fn draw_selected_ship(
     framebuffer: &mut Framebuffer,
     model: &Model,
@@ -158,24 +251,12 @@ fn draw_selected_ship(
     screen_y: f32,
     roll: f32,
 ) {
-    let depth = 8.0;
-    let tan_half_fov = (60.0_f32.to_radians() * 0.5).tan();
-    let aspect = framebuffer.width as f32 / framebuffer.height.max(1) as f32;
-    let position = Vec3::new(
-        (screen_x - 0.5) * depth * 2.0 * tan_half_fov * aspect,
-        (0.5 - screen_y) * depth * 2.0 * tan_half_fov,
-        depth,
-    );
+    let position = scene_position(framebuffer, (screen_x, screen_y), 8.0);
     let (sin, cos) = roll.clamp(-0.28, 0.28).sin_cos();
     let forward = Vec3::new(0.0, 0.0, 1.0);
     let right = Vec3::new(cos, sin, 0.0);
     let up = Vec3::new(-sin, cos, 0.0);
-    let camera = Camera {
-        position: Vec3::default(),
-        forward,
-        right: Vec3::new(1.0, 0.0, 0.0),
-        up: Vec3::new(0.0, 1.0, 0.0),
-    };
+    let camera = scene_camera();
     framebuffer.buffers_mut().1.fill(f32::NEG_INFINITY);
     render_model(
         model,
