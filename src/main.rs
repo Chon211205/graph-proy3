@@ -1574,6 +1574,37 @@ fn move_around_planet(
         if ship.planet_locked {
             ship.orbit_axis = Some(normal);
             ship.orbit_center = Some(planet_center);
+
+            // Advance along the planet's surface instead of integrating a
+            // nearly tangential flight vector. Small radial errors otherwise
+            // accumulate and make the ship appear to fall away from the orbit.
+            let target_radius = safe_radius + ORBIT_FLIGHT_ALTITUDE;
+            let mut tangent = forward.sub(normal.mul(forward.dot(normal)));
+            if tangent.dot(tangent) < 0.0001 {
+                tangent = right.sub(normal.mul(right.dot(normal)));
+            }
+            if tangent.dot(tangent) < 0.0001 {
+                tangent = Vec3::new(0.0, 1.0, 0.0)
+                    .cross(normal);
+            }
+            tangent = tangent.normalize();
+
+            let angle = step_distance / target_radius;
+            let (sin_angle, cos_angle) = angle.sin_cos();
+            let next_normal = normal
+                .mul(cos_angle)
+                .add(tangent.mul(sin_angle))
+                .normalize();
+            let orbit_forward = tangent
+                .mul(cos_angle)
+                .sub(normal.mul(sin_angle))
+                .normalize();
+            ship.position = planet_center.add(next_normal.mul(target_radius));
+            ship.orbit_axis = Some(next_normal);
+            let (yaw, pitch) = direction_to_angles(orbit_forward);
+            ship.yaw = yaw;
+            ship.pitch = pitch.clamp(-1.25, 1.25);
+            continue;
         } else if distance > AVOIDANCE_DISTANCE + 8.0 || ship.orbit_release_active {
             ship.orbit_axis = None;
         }
