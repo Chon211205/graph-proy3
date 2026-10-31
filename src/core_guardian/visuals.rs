@@ -9,6 +9,8 @@ static GUARDIAN_BODY: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_CORE_CLOSED: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_CORE_EXPOSED: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_CORE_HIT: OnceLock<Model> = OnceLock::new();
+static GUARDIAN_SHELL: OnceLock<Model> = OnceLock::new();
+static GUARDIAN_SHELL_WARNING: OnceLock<Model> = OnceLock::new();
 
 impl CoreGuardian {
     pub fn render_scene(
@@ -28,24 +30,10 @@ impl CoreGuardian {
             self.phase == Phase::Exposed,
             self.hit_flash > 0.0,
         );
-        let boss_screen_x = boss_x * width;
-        let boss_screen_y = boss_y * height;
-        let plate_angles = [
-            -std::f32::consts::FRAC_PI_2,
-            std::f32::consts::FRAC_PI_6,
-            5.0 * std::f32::consts::FRAC_PI_6,
-        ];
-        for (index, angle) in plate_angles.into_iter().enumerate() {
+        for index in 0..3 {
             let opening = self.opening_amount(index);
             let warning = self.phase == Phase::Warning && index == self.open_plate;
-            draw_shell_plate(
-                framebuffer,
-                (boss_screen_x, boss_screen_y),
-                height * 0.125,
-                angle,
-                opening * if index == 0 { -1.0 } else { 1.0 },
-                if warning { 0xf19a75 } else { 0xce6a75 },
-            );
+            draw_shell_plate_3d(framebuffer, (boss_x, boss_y), index, opening, warning);
         }
         for shot in self.player_shots.iter().filter(|shot| shot.alive) {
             circle(framebuffer, shot.x * width, shot.y * height, 4.0, 0xfff0a8);
@@ -95,41 +83,107 @@ impl CoreGuardian {
     }
 }
 
-fn draw_shell_plate(
+fn draw_shell_plate_3d(
     framebuffer: &mut Framebuffer,
-    center: (f32, f32),
-    radius: f32,
-    angle: f32,
+    screen_center: (f32, f32),
+    index: usize,
     opening: f32,
-    color: u32,
+    warning: bool,
 ) {
-    let half_angle = std::f32::consts::FRAC_PI_3;
-    let (sin, cos) = angle.sin_cos();
-    let pivot = (center.0 + cos * radius, center.1 + sin * radius);
-    let rotation = opening * 0.92;
-    let (rotation_sin, rotation_cos) = rotation.sin_cos();
-    let mut panel = [center; 8];
-    for index in 0..=6 {
-        let spoke = angle - half_angle + (2.0 * half_angle * index as f32 / 6.0);
-        panel[index + 1] = (
-            center.0 + spoke.cos() * radius,
-            center.1 + spoke.sin() * radius,
-        );
-    }
-    let transformed = panel.map(|point| {
-        let x = point.0 - pivot.0;
-        let y = point.1 - pivot.1;
-        (
-            pivot.0 + x * rotation_cos - y * rotation_sin,
-            pivot.1 + x * rotation_sin + y * rotation_cos,
-        )
-    });
-    polygon(framebuffer, &transformed, color);
+    let model = if warning {
+        GUARDIAN_SHELL_WARNING.get_or_init(|| shell_model([237, 130, 143], [255, 184, 167]))
+    } else {
+        GUARDIAN_SHELL.get_or_init(|| shell_model([190, 79, 108], [213, 103, 125]))
+    };
+    let sector_angle = index as f32 * std::f32::consts::TAU / 3.0;
+    let hinge_azimuth = std::f32::consts::FRAC_PI_3;
+    let hinge_theta: f32 = 1.25;
+    let shell_radius = 2.34;
+    let pivot_local = Vec3::new(
+        shell_radius * hinge_theta.sin() * hinge_azimuth.cos(),
+        shell_radius * hinge_theta.sin() * hinge_azimuth.sin(),
+        -shell_radius * hinge_theta.cos(),
+    );
+    let pivot = rotate_z(pivot_local, sector_angle);
+    let axis = rotate_z(
+        Vec3::new(-hinge_azimuth.sin(), hinge_azimuth.cos(), 0.0),
+        sector_angle,
+    );
+    let direction = if index == 1 { -1.0 } else { 1.0 };
+    let angle = opening * direction * 0.95;
+    let boss_center = scene_position(framebuffer, screen_center, 14.0);
+    let camera = scene_camera();
+    render_model(
+        model,
+        framebuffer,
+        &camera,
+        |vertex| {
+            let rotated = rotate_z(vertex, sector_angle);
+            boss_center.add(rotate_around_axis(rotated, pivot, axis, angle))
+        },
+        None,
+        None,
+    );
+}
 
-    let highlight = transformed[2];
-    let edge = transformed[3];
-    line(framebuffer, highlight, edge, 3.0, 0xf4a2a0);
-    circle(framebuffer, pivot.0, pivot.1, radius * 0.07, 0x833953);
+fn shell_model(inner_color: [u8; 3], facet_color: [u8; 3]) -> Model {
+    let rings = 8;
+    let sectors = 10;
+    let radius = 2.34;
+    let theta_max = 1.32;
+    let half_azimuth = std::f32::consts::FRAC_PI_3;
+    let mut vertices = Vec::with_capacity((rings + 1) * (sectors + 1));
+    for ring in 0..=rings {
+        let theta = theta_max * ring as f32 / rings as f32;
+        for sector in 0..=sectors {
+            let phi = -half_azimuth + 2.0 * half_azimuth * sector as f32 / sectors as f32;
+            vertices.push(Vec3::new(
+                radius * theta.sin() * phi.cos(),
+                radius * theta.sin() * phi.sin(),
+                -radius * theta.cos(),
+            ));
+        }
+    }
+    let mut faces = Vec::with_capacity(rings * sectors * 2);
+    for ring in 0..rings {
+        for sector in 0..sectors {
+            let a = ring * (sectors + 1) + sector;
+            let b = a + 1;
+            let c = a + sectors + 1;
+            let d = c + 1;
+            for indices in [[a, b, c], [b, d, c]] {
+                let mut face = Face::new(indices, "guardian_shell", "guardian_shell_plate");
+                face.color = MaterialColor::Fixed(if (ring + sector) % 3 == 0 {
+                    facet_color
+                } else {
+                    inner_color
+                });
+                face.smooth = true;
+                faces.push(face);
+            }
+        }
+    }
+    let mut model = Model::new(vertices, faces);
+    model.recalculate_normals();
+    model
+}
+
+fn rotate_z(point: Vec3, angle: f32) -> Vec3 {
+    let (sin, cos) = angle.sin_cos();
+    Vec3::new(
+        point.x * cos - point.y * sin,
+        point.x * sin + point.y * cos,
+        point.z,
+    )
+}
+
+fn rotate_around_axis(point: Vec3, pivot: Vec3, axis: Vec3, angle: f32) -> Vec3 {
+    let offset = point.sub(pivot);
+    let (sin, cos) = angle.sin_cos();
+    pivot
+        .add(offset.mul(cos))
+        .add(axis.cross(offset).mul(sin))
+        .add(axis.mul(axis.dot(offset) * (1.0 - cos)))
 }
 
 fn draw_reticle(framebuffer: &mut Framebuffer, center: (f32, f32)) {
