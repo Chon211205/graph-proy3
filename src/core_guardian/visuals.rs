@@ -12,6 +12,7 @@ static GUARDIAN_CORE_HIT: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_SHELL: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_SHELL_WARNING: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_TUNNEL: OnceLock<Model> = OnceLock::new();
+static GUARDIAN_CRYSTALS: OnceLock<Model> = OnceLock::new();
 
 impl CoreGuardian {
     pub fn render_scene(
@@ -327,8 +328,6 @@ fn draw_selected_ship(
 }
 
 fn draw_cavern(framebuffer: &mut Framebuffer, elapsed: f32) {
-    let width = framebuffer.width as f32;
-    let height = framebuffer.height as f32;
     if framebuffer.width == 0 || framebuffer.height == 0 {
         return;
     }
@@ -345,29 +344,16 @@ fn draw_cavern(framebuffer: &mut Framebuffer, elapsed: f32) {
             None,
             None,
         );
+        let crystals = GUARDIAN_CRYSTALS.get_or_init(crystal_cluster_model);
+        render_model(
+            crystals,
+            framebuffer,
+            &camera,
+            |vertex| vertex.add(Vec3::new(0.0, 0.0, offset)),
+            None,
+            None,
+        );
     }
-
-    draw_crystal_cluster(
-        framebuffer,
-        width * 0.075,
-        height * 0.79,
-        height * 0.13,
-        elapsed,
-    );
-    draw_crystal_cluster(
-        framebuffer,
-        width * 0.925,
-        height * 0.55,
-        height * 0.095,
-        elapsed + 1.7,
-    );
-    draw_crystal_cluster(
-        framebuffer,
-        width * 0.17,
-        height * 0.43,
-        height * 0.07,
-        elapsed + 3.1,
-    );
     draw_cave_spines(framebuffer, elapsed);
 }
 
@@ -412,38 +398,59 @@ fn cavern_tunnel_model() -> Model {
     Model::new(vertices, faces)
 }
 
-fn draw_crystal_cluster(framebuffer: &mut Framebuffer, x: f32, y: f32, size: f32, time: f32) {
-    let shimmer = ((time * 1.6).sin() * 8.0) as i32;
-    let gold = (255u32 << 16) | (((176 + shimmer).clamp(0, 255) as u32) << 8) | 57;
-    let pale = 0xffe8a0;
-    let dark = 0xb66737;
-    for (offset_x, scale, color) in [
-        (-0.48, 0.64, dark),
-        (-0.18, 0.92, gold),
-        (0.18, 0.72, pale),
-        (0.46, 0.55, gold),
+fn crystal_cluster_model() -> Model {
+    let mut vertices = Vec::new();
+    let mut faces = Vec::new();
+    for (center, height, width, color) in [
+        (Vec3::new(14.2, -1.8, 18.0), 2.2, 0.7, [255, 185, 64]),
+        (Vec3::new(-14.1, 2.2, 29.0), 2.8, 0.85, [255, 224, 139]),
+        (Vec3::new(13.8, 1.4, 43.0), 2.0, 0.68, [242, 155, 54]),
+        (Vec3::new(-14.0, -2.0, 57.0), 2.6, 0.82, [255, 197, 74]),
+        (Vec3::new(14.0, 0.0, 70.0), 2.3, 0.72, [255, 231, 162]),
     ] {
-        let base_x = x + offset_x * size;
-        let crystal_h = size * scale;
-        polygon(
-            framebuffer,
-            &[
-                (base_x - size * 0.13, y),
-                (base_x - size * 0.08, y - crystal_h * 0.76),
-                (base_x + size * 0.02, y - crystal_h),
-                (base_x + size * 0.11, y - crystal_h * 0.38),
-                (base_x + size * 0.13, y),
-            ],
-            color,
-        );
-        line(
-            framebuffer,
-            (base_x - size * 0.04, y - crystal_h * 0.18),
-            (base_x + size * 0.02, y - crystal_h * 0.88),
-            2.0,
-            0xfff2c2,
-        );
+        append_crystal(&mut vertices, &mut faces, center, height, width, color);
     }
+    Model::new(vertices, faces)
+}
+
+fn append_crystal(
+    vertices: &mut Vec<Vec3>,
+    faces: &mut Vec<Face>,
+    center: Vec3,
+    height: f32,
+    width: f32,
+    color: [u8; 3],
+) {
+    let start = vertices.len();
+    for (x, z) in [(-1.0, -1.0), (-1.0, 1.0), (1.0, 1.0), (1.0, -1.0)] {
+        vertices.push(center.add(Vec3::new(x * width, 0.0, z * width)));
+    }
+    vertices.push(center.add(Vec3::new(0.0, height, 0.0)));
+    let apex = start + 4;
+    let tones = [color, [255, 235, 160], [224, 130, 44], [255, 205, 90]];
+    for side in 0..4 {
+        let mut face = Face::new(
+            [start + side, start + (side + 1) % 4, apex],
+            "crystal_gold",
+            "cave_crystal",
+        );
+        face.color = MaterialColor::Fixed(tones[side]);
+        faces.push(face);
+    }
+    let mut bottom = Face::new(
+        [start, start + 2, start + 1],
+        "crystal_gold",
+        "cave_crystal_base",
+    );
+    bottom.color = MaterialColor::Fixed([152, 76, 42]);
+    faces.push(bottom);
+    let mut bottom = Face::new(
+        [start, start + 3, start + 2],
+        "crystal_gold",
+        "cave_crystal_base",
+    );
+    bottom.color = MaterialColor::Fixed([152, 76, 42]);
+    faces.push(bottom);
 }
 
 fn draw_cave_spines(framebuffer: &mut Framebuffer, elapsed: f32) {
@@ -479,21 +486,6 @@ fn draw_cave_spines(framebuffer: &mut Framebuffer, elapsed: f32) {
             0xd94379,
         );
         circle(framebuffer, joint.0, joint.1, outer * 0.38, 0x781a43);
-    }
-}
-
-fn polygon(framebuffer: &mut Framebuffer, points: &[(f32, f32)], color: u32) {
-    if points.len() < 3 {
-        return;
-    }
-    for index in 1..points.len() - 1 {
-        triangle(
-            framebuffer,
-            points[0],
-            points[index],
-            points[index + 1],
-            color,
-        );
     }
 }
 
@@ -539,42 +531,6 @@ fn circle(framebuffer: &mut Framebuffer, cx: f32, cy: f32, radius: f32, color: u
             let dx = x as f32 + 0.5 - cx;
             let dy = y as f32 + 0.5 - cy;
             if dx * dx + dy * dy <= r2 {
-                framebuffer.pixels[y as usize * framebuffer.width + x as usize] = color;
-            }
-        }
-    }
-}
-
-fn triangle(
-    framebuffer: &mut Framebuffer,
-    a: (f32, f32),
-    b: (f32, f32),
-    c: (f32, f32),
-    color: u32,
-) {
-    let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
-    if area.abs() < 0.01 {
-        return;
-    }
-    let left = a.0.min(b.0).min(c.0).floor().max(0.0) as i32;
-    let right =
-        a.0.max(b.0)
-            .max(c.0)
-            .ceil()
-            .min(framebuffer.width as f32 - 1.0) as i32;
-    let top = a.1.min(b.1).min(c.1).floor().max(0.0) as i32;
-    let bottom =
-        a.1.max(b.1)
-            .max(c.1)
-            .ceil()
-            .min(framebuffer.height as f32 - 1.0) as i32;
-    for y in top..=bottom {
-        for x in left..=right {
-            let p = (x as f32 + 0.5, y as f32 + 0.5);
-            let e0 = (b.0 - a.0) * (p.1 - a.1) - (b.1 - a.1) * (p.0 - a.0);
-            let e1 = (c.0 - b.0) * (p.1 - b.1) - (c.1 - b.1) * (p.0 - b.0);
-            let e2 = (a.0 - c.0) * (p.1 - c.1) - (a.1 - c.1) * (p.0 - c.0);
-            if (e0 >= 0.0 && e1 >= 0.0 && e2 >= 0.0) || (e0 <= 0.0 && e1 <= 0.0 && e2 <= 0.0) {
                 framebuffer.pixels[y as usize * framebuffer.width + x as usize] = color;
             }
         }
