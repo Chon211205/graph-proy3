@@ -52,6 +52,8 @@ impl CoreGuardian {
         for seed in self.seeds.iter().filter(|seed| seed.alive) {
             circle(framebuffer, seed.x * width, seed.y * height, 10.0, 0xffbb2e);
         }
+        let (_, boss_y) = self.boss_center();
+        draw_reticle(framebuffer, (self.player_x * width, boss_y * height));
         draw_selected_ship(
             framebuffer,
             ship_model,
@@ -127,6 +129,24 @@ fn draw_shell_plate(
     let edge = transformed[3];
     line(framebuffer, highlight, edge, 3.0, 0xf4a2a0);
     circle(framebuffer, pivot.0, pivot.1, radius * 0.07, 0x833953);
+}
+
+fn draw_reticle(framebuffer: &mut Framebuffer, center: (f32, f32)) {
+    let arm = 18.0;
+    let gap = 7.0;
+    let outer = 0xfff4ec;
+    let shadow = 0x54213f;
+    let segments = [
+        ((center.0 - arm, center.1), (center.0 - gap, center.1)),
+        ((center.0 + gap, center.1), (center.0 + arm, center.1)),
+        ((center.0, center.1 - arm), (center.0, center.1 - gap)),
+        ((center.0, center.1 + gap), (center.0, center.1 + arm)),
+    ];
+    for (from, to) in segments {
+        line(framebuffer, from, to, 4.0, shadow);
+        line(framebuffer, from, to, 2.0, outer);
+    }
+    circle(framebuffer, center.0, center.1, 3.0, outer);
 }
 
 fn draw_selected_ship(
