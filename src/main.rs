@@ -342,6 +342,12 @@ enum GameMode {
     CoreGuardian,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Galaxy {
+    Home,
+    Vesper,
+}
+
 struct WaterLevelState {
     progress: f32,
     lateral: f32,
@@ -1145,15 +1151,44 @@ fn hash(mut value: u32) -> u32 {
     value ^ (value >> 16)
 }
 
-fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32) {
+fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
+    let (base, horizon_glow, star_tint) = match galaxy {
+        Galaxy::Home => ([4.0, 7.0, 20.0], [8.0, 11.0, 24.0], None),
+        Galaxy::Vesper => ([7.0, 3.0, 25.0], [18.0, 11.0, 48.0], Some([130, 198, 255])),
+    };
     for y in 0..framebuffer.height {
         let t = y as f32 / framebuffer.height as f32;
         let horizon = (1.0 - (t - 0.48).abs() * 2.0).max(0.0);
-        let color = (((4.0 + horizon * 8.0) as u32) << 16)
-            | (((7.0 + horizon * 11.0) as u32) << 8)
-            | (20.0 + horizon * 24.0) as u32;
+        let color = (((base[0] + horizon * horizon_glow[0]) as u32) << 16)
+            | (((base[1] + horizon * horizon_glow[1]) as u32) << 8)
+            | (base[2] + horizon * horizon_glow[2]) as u32;
         let start = y * framebuffer.width;
         framebuffer.pixels[start..start + framebuffer.width].fill(color);
+    }
+
+    if galaxy == Galaxy::Vesper {
+        let cx = framebuffer.width as f32 * 0.58;
+        let cy = framebuffer.height as f32 * 0.44;
+        let scale = framebuffer.width.min(framebuffer.height) as f32;
+        for y in 0..framebuffer.height {
+            for x in 0..framebuffer.width {
+                let dx = (x as f32 - cx) / (scale * 0.43);
+                let dy = (y as f32 - cy) / (scale * 0.28);
+                let radius = (dx * dx + dy * dy).sqrt();
+                if radius > 1.0 { continue; }
+                let angle = dy.atan2(dx);
+                let arm = ((angle - radius * 5.0).sin() * 0.5 + 0.5).powf(5.0);
+                let glow = ((1.0 - radius) * 0.18 + arm * (1.0 - radius) * 0.26).clamp(0.0, 0.38);
+                let index = y * framebuffer.width + x;
+                let old = framebuffer.pixels[index];
+                let red = ((old >> 16) & 255) as f32;
+                let green = ((old >> 8) & 255) as f32;
+                let blue = (old & 255) as f32;
+                framebuffer.pixels[index] = (((red + 80.0 * glow) as u32) << 16)
+                    | (((green + 30.0 * glow) as u32) << 8)
+                    | (blue + 130.0 * glow) as u32;
+            }
+        }
     }
 
     let center_x = framebuffer.width as f32 * 0.5;
@@ -1170,7 +1205,14 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32) {
             continue;
         }
         let brightness = (125.0 + (1.0 - z) * 130.0) as u32;
-        let color = (brightness << 16) | (brightness << 8) | (brightness + 18).min(255);
+        let color = star_tint.map_or_else(
+            || (brightness << 16) | (brightness << 8) | (brightness + 18).min(255),
+            |tint| {
+                ((tint[0] as u32 * brightness / 255) << 16)
+                    | ((tint[1] as u32 * brightness / 255) << 8)
+                    | (tint[2] as u32 * brightness / 255)
+            },
+        );
         let size = if z < 0.16 {
             3
         } else if z < 0.34 {
@@ -1329,8 +1371,11 @@ fn make_wormhole_ring(major_radius: f32, tube_radius: f32) -> Model {
     Model::new(vertices, faces)
 }
 
-fn wormhole_position() -> Vec3 {
-    Vec3::new(150.0, 42.0, 0.0)
+fn wormhole_position(galaxy: Galaxy) -> Vec3 {
+    match galaxy {
+        Galaxy::Home => Vec3::new(150.0, 42.0, 0.0),
+        Galaxy::Vesper => Vec3::new(-150.0, 42.0, 0.0),
+    }
 }
 
 fn rotate_x_axis(point: Vec3, angle: f32) -> Vec3 {
@@ -2211,6 +2256,7 @@ fn render_scene(
     wormhole: &Model,
     wormhole_ring: &Model,
     wormhole_center: Vec3,
+    galaxy: Galaxy,
     framebuffer: &mut Framebuffer,
     batch: &mut TriangleBatch,
     ship: &Ship,
@@ -2220,13 +2266,14 @@ fn render_scene(
     fire_charge: f32,
 ) {
     framebuffer.clear(0);
-    draw_skybox(framebuffer, travel);
+    draw_skybox(framebuffer, travel, galaxy);
     let camera = chase_camera(ship);
     debug_assert!(batch.commands.is_empty());
     let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let planet_position = water_planet_position(world_time);
     let planet_rotation = world_time * 0.25;
 
+    if galaxy == Galaxy::Home {
     draw_water_planet_atmosphere(
         framebuffer,
         &camera,
@@ -2279,6 +2326,7 @@ fn render_scene(
         None,
         None,
     );
+    }
 
     queue_model(
         wormhole_ring,
@@ -3233,6 +3281,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     } else {
         GameMode::FreeWorld
     };
+    let mut active_galaxy = Galaxy::Home;
     if start_underwater {
         window.set_title("Nivel submarino | Backspace: volver al sistema solar");
     }
@@ -3521,7 +3570,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &sun,
                     &wormhole,
                     &wormhole_ring,
-                    wormhole_position(),
+                    wormhole_position(active_galaxy),
+                    active_galaxy,
                     &mut scene_framebuffer,
                     &mut triangle_batch,
                     &ship_controller.ship,
