@@ -2,16 +2,24 @@ mod visuals;
 
 const STARTING_SHIELDS: u8 = 3;
 const BOSS_HEALTH: u32 = 42;
-const PLAYER_SPEED: f32 = 0.82;
+const ARRIVAL_DURATION: f32 = 1.0;
+const CLOSED_DURATION: f32 = 3.3;
+const WARNING_DURATION: f32 = 0.55;
+const EXPOSED_DURATION: f32 = 1.8;
+const CLOSING_DURATION: f32 = 0.45;
+const VICTORY_EXPLOSION_DURATION: f32 = 2.2;
+const PLAYER_SPEED: f32 = 0.98;
+const PLAYER_VERTICAL_SPEED: f32 = 1.35;
+const PLAYER_VERTICAL_SCREEN_SCALE: f32 = 0.20;
 const PLAYER_SHOT_INTERVAL: f32 = 0.12;
-const PLAYER_SHOT_SPEED: f32 = 1.35;
+const PLAYER_SHOT_SPEED: f32 = 1.7;
 const SEED_SPEED: f32 = 0.42;
-const OBSTACLE_SPEED: f32 = 0.22;
-const OBSTACLE_SPAWN_INTERVAL: f32 = 2.8;
+const OBSTACLE_SPEED: f32 = 0.30;
+const OBSTACLE_SPAWN_INTERVAL: f32 = 1.9;
 const INVULNERABILITY_TIME: f32 = 1.25;
 const MAX_PLAYER_SHOTS: usize = 28;
 const MAX_SEEDS: usize = 12;
-const MAX_OBSTACLES: usize = 8;
+const MAX_OBSTACLES: usize = 12;
 const MAX_DROPS: usize = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -152,27 +160,28 @@ impl CoreGuardian {
             return GuardianAction::Exit;
         }
         if matches!(self.phase, Phase::Won | Phase::Lost) {
+            if self.phase == Phase::Won && self.phase_time >= VICTORY_EXPLOSION_DURATION {
+                return GuardianAction::Exit;
+            }
             if input.confirm && self.phase == Phase::Lost {
                 *self = Self::new();
-            } else if input.confirm && self.phase == Phase::Won {
-                return GuardianAction::Exit;
             }
             return GuardianAction::Stay;
         }
 
-        let response = 1.0 - (-10.0 * dt).exp();
+        let response = 1.0 - (-14.0 * dt).exp();
         self.previous_player_x = self.player_x;
         self.previous_player_y = self.player_y;
         let horizontal = input.horizontal.clamp(-1.0, 1.0);
         let vertical = input.vertical.clamp(-1.0, 1.0);
         self.velocity_x += (horizontal * PLAYER_SPEED - self.velocity_x) * response;
-        self.velocity_y += (vertical * PLAYER_SPEED - self.velocity_y) * response;
+        self.velocity_y += (vertical * PLAYER_SPEED * PLAYER_VERTICAL_SPEED - self.velocity_y) * response;
         self.player_x = (self.player_x + self.velocity_x * dt).clamp(0.12, 0.88);
-        self.player_y = (self.player_y + self.velocity_y * dt).clamp(-0.72, 0.68);
+        self.player_y = (self.player_y + self.velocity_y * dt).clamp(-0.72, 0.48);
         self.roll += ((-horizontal * 0.22) - self.roll) * (1.0 - (-7.0 * dt).exp());
 
         match self.phase {
-            Phase::Arrival if self.phase_time >= 1.6 => self.set_phase(Phase::Closed),
+            Phase::Arrival if self.phase_time >= ARRIVAL_DURATION => self.set_phase(Phase::Closed),
             Phase::Closed => {
                 self.attack_timer -= dt;
                 let interval = if self.boss_health * 2 <= BOSS_HEALTH {
@@ -184,14 +193,14 @@ impl CoreGuardian {
                     self.spawn_seed(width, height);
                     self.attack_timer += interval;
                 }
-                if self.phase_time >= 4.1 {
+                if self.phase_time >= CLOSED_DURATION {
                     self.open_plate = self.cycle as usize % 3;
                     self.set_phase(Phase::Warning);
                 }
             }
-            Phase::Warning if self.phase_time >= 0.85 => self.set_phase(Phase::Exposed),
-            Phase::Exposed if self.phase_time >= 2.35 => self.set_phase(Phase::Closing),
-            Phase::Closing if self.phase_time >= 0.65 => {
+            Phase::Warning if self.phase_time >= WARNING_DURATION => self.set_phase(Phase::Exposed),
+            Phase::Exposed if self.phase_time >= EXPOSED_DURATION => self.set_phase(Phase::Closing),
+            Phase::Closing if self.phase_time >= CLOSING_DURATION => {
                 self.cycle = self.cycle.wrapping_add(1);
                 self.set_phase(Phase::Closed);
             }
@@ -226,7 +235,7 @@ impl CoreGuardian {
         let seed_x = (boss_x + lane * 0.04).clamp(0.18, 0.82);
         let seed_y = boss_y + 0.055;
         let target_x = self.player_x;
-        let target_y = 0.82 + self.player_y * 0.10;
+        let target_y = player_screen_y(self.player_y);
         let dx = (target_x - seed_x) * width as f32;
         let dy = (target_y - seed_y) * height as f32;
         let length = (dx * dx + dy * dy).sqrt().max(1.0);
@@ -265,9 +274,9 @@ impl CoreGuardian {
         if fire && self.fire_timer <= 0.0 {
             let shot = PlayerShot {
                 x: self.player_x,
-                y: 0.82 + self.player_y * 0.10,
+                y: player_screen_y(self.player_y),
                 previous_x: self.player_x,
-                previous_y: 0.82 + self.player_y * 0.10,
+                previous_y: player_screen_y(self.player_y),
                 alive: true,
             };
             if let Some(slot) = self.player_shots.iter_mut().find(|item| !item.alive) {
@@ -372,9 +381,9 @@ impl CoreGuardian {
         }
 
         let player_x = self.player_x;
-        let player_y = 0.82 + self.player_y * 0.10;
+        let player_y = player_screen_y(self.player_y);
         let previous_player_x = self.previous_player_x;
-        let previous_player_y = 0.82 + self.previous_player_y * 0.10;
+        let previous_player_y = player_screen_y(self.previous_player_y);
         let mut lost = false;
         for obstacle in self.obstacles.iter_mut().filter(|obstacle| obstacle.alive) {
             obstacle.previous_x = obstacle.x;
@@ -410,13 +419,30 @@ impl CoreGuardian {
     }
 
     fn spawn_obstacle(&mut self) {
-        let lanes = [0.24, 0.76, 0.34, 0.66];
+        let lanes = [0.22, 0.78, 0.36, 0.64];
         let choice = (self.next_random() as usize) % lanes.len();
+        let active = self.obstacles.iter().filter(|item| item.alive).count();
+        let free_slots = MAX_OBSTACLES.saturating_sub(active);
+        let paired_wave = self.next_random() % 3 == 0 && free_slots >= 2;
+        self.spawn_obstacle_at(lanes[choice], -0.08);
+
+        if paired_wave {
+            let opposite_lane = match choice {
+                0 => lanes[1],
+                1 => lanes[0],
+                2 => lanes[3],
+                _ => lanes[2],
+            };
+            self.spawn_obstacle_at(opposite_lane, -0.24);
+        }
+    }
+
+    fn spawn_obstacle_at(&mut self, x: f32, y: f32) {
         let obstacle = Obstacle {
-            x: lanes[choice],
-            y: -0.08,
-            previous_x: lanes[choice],
-            previous_y: -0.08,
+            x,
+            y,
+            previous_x: x,
+            previous_y: y,
             radius: 0.48 + (self.next_random() % 30) as f32 / 100.0,
             variant: (self.next_random() % 3) as usize,
             alive: true,
@@ -442,9 +468,9 @@ impl CoreGuardian {
 
     fn update_seeds(&mut self, dt: f32, width: usize, height: usize) {
         let player_x = self.player_x;
-        let player_y = 0.82 + self.player_y * 0.10;
+        let player_y = player_screen_y(self.player_y);
         let previous_player_x = self.previous_player_x;
-        let previous_player_y = 0.82 + self.previous_player_y * 0.10;
+        let previous_player_y = player_screen_y(self.previous_player_y);
         let mut lost = false;
         for seed in self.seeds.iter_mut().filter(|seed| seed.alive) {
             seed.previous_x = seed.x;
@@ -481,7 +507,7 @@ impl CoreGuardian {
 
     fn update_drops(&mut self, dt: f32, width: usize, height: usize) {
         let player_x = self.player_x;
-        let player_y = 0.82 + self.player_y * 0.10;
+        let player_y = player_screen_y(self.player_y);
         for drop in self.shield_drops.iter_mut().filter(|drop| drop.alive) {
             drop.y += 0.16 * dt;
             let dx = (drop.x - player_x) * width as f32;
@@ -500,9 +526,9 @@ impl CoreGuardian {
             return 0.0;
         }
         match self.phase {
-            Phase::Warning => (self.phase_time / 0.85).clamp(0.0, 1.0) * 0.22,
+            Phase::Warning => (self.phase_time / WARNING_DURATION).clamp(0.0, 1.0) * 0.22,
             Phase::Exposed => 1.0,
-            Phase::Closing => (1.0 - self.phase_time / 0.65).clamp(0.0, 1.0),
+            Phase::Closing => (1.0 - self.phase_time / CLOSING_DURATION).clamp(0.0, 1.0),
             _ => 0.0,
         }
     }
@@ -522,6 +548,14 @@ impl CoreGuardian {
     pub fn is_exposed(&self) -> bool {
         self.phase == Phase::Exposed
     }
+
+    pub fn player_screen_position(&self) -> (f32, f32) {
+        (self.player_x, player_screen_y(self.player_y))
+    }
+}
+
+fn player_screen_y(offset: f32) -> f32 {
+    0.82 + offset * PLAYER_VERTICAL_SCREEN_SCALE
 }
 
 fn swept_distance(a0: (f32, f32), a1: (f32, f32), b0: (f32, f32), b1: (f32, f32)) -> f32 {

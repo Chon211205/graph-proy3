@@ -1,5 +1,6 @@
 mod core_guardian;
 mod framebuffer;
+mod galaxy;
 mod input;
 mod menu;
 mod obj_loader;
@@ -14,6 +15,9 @@ use std::time::Instant;
 
 use core_guardian::{CoreGuardian, GuardianAction, GuardianInput};
 use framebuffer::Framebuffer;
+use galaxy::{
+    Galaxy, GalaxyTransit, crossed_wormhole, draw_hyperspace_transition, wormhole_position,
+};
 use minifb::{Key, ScaleMode, Window, WindowOptions};
 use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use ship::{
@@ -806,7 +810,7 @@ fn create_window(fullscreen: bool) -> Result<Window, minifb::Error> {
         WindowOptions {
             borderless: fullscreen,
             resize: !fullscreen,
-            scale_mode: ScaleMode::AspectRatioStretch,
+            scale_mode: ScaleMode::Stretch,
             ..WindowOptions::default()
         },
     )?;
@@ -1145,15 +1149,44 @@ fn hash(mut value: u32) -> u32 {
     value ^ (value >> 16)
 }
 
-fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32) {
+fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
+    let (base, horizon_glow, star_tint) = match galaxy {
+        Galaxy::Home => ([4.0, 7.0, 20.0], [8.0, 11.0, 24.0], None),
+        Galaxy::Vesper => ([7.0, 3.0, 25.0], [18.0, 11.0, 48.0], Some([130, 198, 255])),
+    };
     for y in 0..framebuffer.height {
         let t = y as f32 / framebuffer.height as f32;
         let horizon = (1.0 - (t - 0.48).abs() * 2.0).max(0.0);
-        let color = (((4.0 + horizon * 8.0) as u32) << 16)
-            | (((7.0 + horizon * 11.0) as u32) << 8)
-            | (20.0 + horizon * 24.0) as u32;
+        let color = (((base[0] + horizon * horizon_glow[0]) as u32) << 16)
+            | (((base[1] + horizon * horizon_glow[1]) as u32) << 8)
+            | (base[2] + horizon * horizon_glow[2]) as u32;
         let start = y * framebuffer.width;
         framebuffer.pixels[start..start + framebuffer.width].fill(color);
+    }
+
+    if galaxy == Galaxy::Vesper {
+        let cx = framebuffer.width as f32 * 0.58;
+        let cy = framebuffer.height as f32 * 0.44;
+        let scale = framebuffer.width.min(framebuffer.height) as f32;
+        for y in 0..framebuffer.height {
+            for x in 0..framebuffer.width {
+                let dx = (x as f32 - cx) / (scale * 0.43);
+                let dy = (y as f32 - cy) / (scale * 0.28);
+                let radius = (dx * dx + dy * dy).sqrt();
+                if radius > 1.0 { continue; }
+                let angle = dy.atan2(dx);
+                let arm = ((angle - radius * 5.0).sin() * 0.5 + 0.5).powf(5.0);
+                let glow = ((1.0 - radius) * 0.18 + arm * (1.0 - radius) * 0.26).clamp(0.0, 0.38);
+                let index = y * framebuffer.width + x;
+                let old = framebuffer.pixels[index];
+                let red = ((old >> 16) & 255) as f32;
+                let green = ((old >> 8) & 255) as f32;
+                let blue = (old & 255) as f32;
+                framebuffer.pixels[index] = (((red + 80.0 * glow) as u32) << 16)
+                    | (((green + 30.0 * glow) as u32) << 8)
+                    | (blue + 130.0 * glow) as u32;
+            }
+        }
     }
 
     let center_x = framebuffer.width as f32 * 0.5;
@@ -1170,7 +1203,14 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32) {
             continue;
         }
         let brightness = (125.0 + (1.0 - z) * 130.0) as u32;
-        let color = (brightness << 16) | (brightness << 8) | (brightness + 18).min(255);
+        let color = star_tint.map_or_else(
+            || (brightness << 16) | (brightness << 8) | (brightness + 18).min(255),
+            |tint| {
+                ((tint[0] as u32 * brightness / 255) << 16)
+                    | ((tint[1] as u32 * brightness / 255) << 8)
+                    | (tint[2] as u32 * brightness / 255)
+            },
+        );
         let size = if z < 0.16 {
             3
         } else if z < 0.34 {
@@ -1280,6 +1320,67 @@ fn make_sphere(radius: f32, stacks: usize, slices: usize, sun: bool) -> Model {
         }
     }
     Model::new(vertices, faces)
+}
+
+fn make_wormhole_sphere(radius: f32, stacks: usize, slices: usize) -> Model {
+    let mut model = make_sphere(radius, stacks, slices, false);
+    for face in &mut model.faces {
+        face.shader = SurfaceShader::Flat;
+        face.color = MaterialColor::Fixed([2, 1, 7]);
+    }
+    model
+}
+
+fn make_wormhole_ring(major_radius: f32, tube_radius: f32) -> Model {
+    let major_segments = 48;
+    let tube_segments = 8;
+    let mut vertices = Vec::with_capacity((major_segments + 1) * (tube_segments + 1));
+    for major in 0..=major_segments {
+        let u = TAU * major as f32 / major_segments as f32;
+        let (sin_u, cos_u) = u.sin_cos();
+        for tube in 0..=tube_segments {
+            let v = TAU * tube as f32 / tube_segments as f32;
+            let (sin_v, cos_v) = v.sin_cos();
+            let ring = major_radius + tube_radius * cos_v;
+            vertices.push(Vec3::new(ring * cos_u, ring * sin_u, tube_radius * sin_v));
+        }
+    }
+
+    let mut faces = Vec::with_capacity(major_segments * tube_segments * 2);
+    for major in 0..major_segments {
+        for tube in 0..tube_segments {
+            let a = major * (tube_segments + 1) + tube;
+            let b = a + tube_segments + 1;
+            let c = a + 1;
+            let d = b + 1;
+            let color = if major % 3 == 0 {
+                [102, 63, 255]
+            } else {
+                [48, 204, 255]
+            };
+            for indices in [[a, b, c], [c, b, d]] {
+                let mut face = Face::new(indices, "wormhole_glow", "wormhole_ring");
+                face.shader = SurfaceShader::Flat;
+                face.color = MaterialColor::Fixed(color);
+                faces.push(face);
+            }
+        }
+    }
+    Model::new(vertices, faces)
+}
+
+fn orient_wormhole_ring(point: Vec3, center: Vec3, observer: Vec3) -> Vec3 {
+    let normal = observer.sub(center).normalize();
+    let world_up = Vec3::new(0.0, 1.0, 0.0);
+    let mut right = world_up.cross(normal).normalize();
+    if right.dot(right) < 0.001 {
+        right = Vec3::new(1.0, 0.0, 0.0);
+    }
+    let up = normal.cross(right).normalize();
+    center
+        .add(right.mul(point.x))
+        .add(up.mul(point.y))
+        .add(normal.mul(point.z))
 }
 
 fn make_turbo_plume(segments: usize) -> Model {
@@ -1497,6 +1598,22 @@ fn place_ship_near_spiky_planet(controller: &mut ShipController, world_time: f32
     let (_, right, _) = ship.movement_basis();
     ship.orbit_plane_normal = Some(radial.cross(right).normalize());
     ship.orbit_camera_blend = 1.0;
+}
+
+fn launch_ship_after_guardian_victory(controller: &mut ShipController, world_time: f32) {
+    controller.reset();
+    let center = spiky_planet_position(world_time);
+    let radial = Vec3::new(1.0, 0.22, 0.0).normalize();
+    let ship = &mut controller.ship;
+    ship.position = center.add(radial.mul(SPIKY_PLANET_RADIUS + ORBIT_LIMIT_RADIUS + 20.0));
+    (ship.yaw, ship.pitch) = direction_to_angles(radial);
+    ship.speed = ship.spec.cruise_speed;
+    ship.planet_locked = false;
+    ship.spiky_planet_locked = false;
+    ship.orbit_center = None;
+    ship.orbit_plane_normal = None;
+    ship.orbit_camera_blend = 0.0;
+    ship.orbit_release_active = false;
 }
 
 fn direction_to_angles(direction: Vec3) -> (f32, f32) {
@@ -2132,6 +2249,10 @@ fn render_scene(
     spiky_planet_center: Vec3,
     spiky_planet_scale: f32,
     sun: &Model,
+    wormhole: &Model,
+    wormhole_ring: &Model,
+    wormhole_center: Vec3,
+    galaxy: Galaxy,
     framebuffer: &mut Framebuffer,
     batch: &mut TriangleBatch,
     ship: &Ship,
@@ -2141,13 +2262,14 @@ fn render_scene(
     fire_charge: f32,
 ) {
     framebuffer.clear(0);
-    draw_skybox(framebuffer, travel);
+    draw_skybox(framebuffer, travel, galaxy);
     let camera = chase_camera(ship);
     debug_assert!(batch.commands.is_empty());
     let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let planet_position = water_planet_position(world_time);
     let planet_rotation = world_time * 0.25;
 
+    if galaxy == Galaxy::Home {
     draw_water_planet_atmosphere(
         framebuffer,
         &camera,
@@ -2197,6 +2319,24 @@ fn render_scene(
             )
             .add(spiky_position)
         },
+        None,
+        None,
+    );
+    }
+
+    queue_model(
+        wormhole_ring,
+        batch,
+        &camera,
+        |vertex| orient_wormhole_ring(vertex, wormhole_center, ship.position),
+        None,
+        None,
+    );
+    queue_model(
+        wormhole,
+        batch,
+        &camera,
+        |vertex| vertex.add(wormhole_center),
         None,
         None,
     );
@@ -3105,6 +3245,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let planet_surface_radius = material_radius(&planet, planet_center, "Oceano") * planet_scale;
     let object_colliders = build_object_colliders(&planet, planet_center, planet_scale);
     let sun = make_sphere(55.0, 18, 28, true);
+    let wormhole = make_wormhole_sphere(22.0, 18, 28);
+    let wormhole_ring = make_wormhole_ring(30.0, 3.2);
     let turbo_plume = make_turbo_plume(12);
     let laser_bolt = make_laser_bolt();
     let bubble_model = make_bubble_model();
@@ -3135,6 +3277,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     } else {
         GameMode::FreeWorld
     };
+    let mut active_galaxy = Galaxy::Home;
+    let mut galaxy_transition: Option<GalaxyTransit> = None;
     if start_underwater {
         window.set_title("Nivel submarino | Backspace: volver al sistema solar");
     }
@@ -3224,6 +3368,39 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         previous = now;
         world_time += delta_time;
 
+        if let Some(transit) = &mut galaxy_transition {
+            transit.elapsed += delta_time;
+            if !transit.switched && transit.elapsed < 0.82 {
+                let t = (transit.elapsed / 0.82).clamp(0.0, 1.0);
+                let eased = t * t * (3.0 - 2.0 * t);
+                let destination = wormhole_position(active_galaxy);
+                let offset = destination.sub(transit.start_position);
+                ship_controller.ship.position = transit.start_position.add(offset.mul(eased));
+            }
+            if !transit.switched && transit.elapsed >= 0.82 {
+                active_galaxy = transit.destination;
+                let portal = wormhole_position(active_galaxy);
+                let (exit_offset, exit_yaw) = if active_galaxy == Galaxy::Vesper {
+                    // Keep the return portal visible ahead and to the right,
+                    // while leaving enough lateral clearance for free flight.
+                    (Vec3::new(-70.0, 0.0, 100.0), std::f32::consts::FRAC_PI_2)
+                } else {
+                    // Arrive beside the portal and fly away from it by default.
+                    (Vec3::new(150.0, 0.0, 80.0), 0.0)
+                };
+                ship_controller.ship.position = portal.add(exit_offset);
+                ship_controller.ship.yaw = exit_yaw;
+                ship_controller.ship.pitch = 0.0;
+                ship_controller.ship.planet_locked = false;
+                ship_controller.ship.spiky_planet_locked = false;
+                ship_controller.ship.orbit_plane_normal = None;
+                ship_controller.ship.orbit_center = None;
+                ship_controller.ship.orbit_camera_blend = 0.0;
+                ship_controller.ship.orbit_release_active = false;
+                transit.switched = true;
+            }
+        }
+
         let resolution_changed = dynamic_resolution.update(frame_time);
         let toggled_resolution = if crate::input::pressed(Key::F2) {
             dynamic_resolution.toggle()
@@ -3252,18 +3429,25 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
             distance = 0.0;
         }
-        if game_mode == GameMode::FreeWorld && crate::input::pressed(Key::Key1) {
+        if game_mode == GameMode::FreeWorld
+            && active_galaxy == Galaxy::Home
+            && crate::input::pressed(Key::Key1)
+        {
             place_ship_near_water_planet(&mut ship_controller, world_time);
             println!("Warp completado: planeta acuatico");
         }
-        if game_mode == GameMode::FreeWorld && crate::input::pressed(Key::Key2) {
+        if game_mode == GameMode::FreeWorld
+            && active_galaxy == Galaxy::Home
+            && crate::input::pressed(Key::Key2)
+        {
             place_ship_near_spiky_planet(&mut ship_controller, world_time);
             println!("Warp completado: planeta rosado | Enter: Guardián del Núcleo");
         }
 
         let pitch_input = (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8
             - (window.is_key_down(Key::S) || window.is_key_down(Key::Down)) as i8;
-        let yaw_input = window.is_key_down(Key::D) as i8 - window.is_key_down(Key::A) as i8;
+        let yaw_input = (window.is_key_down(Key::D) || window.is_key_down(Key::Right)) as i8
+            - (window.is_key_down(Key::A) || window.is_key_down(Key::Left)) as i8;
         let roll_input = window.is_key_down(Key::E) as i8 - window.is_key_down(Key::Q) as i8;
         let active_yaw_input = if game_mode == GameMode::WaterLevel {
             -yaw_input
@@ -3332,7 +3516,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         };
         match game_mode {
             GameMode::FreeWorld => {
-                ship_controller.update(&input, delta_time);
+                let portal_approach_active = galaxy_transition
+                    .as_ref()
+                    .is_some_and(|transit| !transit.switched);
+                if !portal_approach_active {
+                    ship_controller.update(&input, delta_time);
+                }
                 let light_speed =
                     window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
                 let active_speed = if light_speed {
@@ -3341,8 +3530,13 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     ship_controller.ship.speed
                 };
                 let turbo_power = ship_controller.turbo_power(active_speed);
-                let movement = active_speed * delta_time;
+                let movement = if !portal_approach_active {
+                    active_speed * delta_time
+                } else {
+                    0.0
+                };
                 let ship = &mut ship_controller.ship;
+                let previous_ship_position = ship.position;
 
                 if crate::input::pressed(Key::Backspace) && ship.planet_locked {
                     ship.planet_locked = false;
@@ -3352,39 +3546,48 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     println!("Orbita liberada");
                 }
 
-                let empty_colliders: [ObjectCollider; 0] = [];
-                let water_center = water_planet_position(world_time);
-                let spiky_center = spiky_planet_position(world_time);
-                if !ship.planet_locked {
-                    ship.spiky_planet_locked =
-                        spiky_planet_is_closer(ship.position, water_center, spiky_center);
-                }
-                let (orbit_center, orbit_radius, orbit_rotation, orbit_colliders) =
-                    if ship.spiky_planet_locked {
-                        (
-                            spiky_center,
-                            SPIKY_PLANET_RADIUS,
-                            world_time * SPIKY_PLANET_ROTATION_SPEED,
-                            empty_colliders.as_slice(),
-                        )
+                if !portal_approach_active {
+                    if active_galaxy == Galaxy::Home {
+                        let empty_colliders: [ObjectCollider; 0] = [];
+                        let water_center = water_planet_position(world_time);
+                        let spiky_center = spiky_planet_position(world_time);
+                        if !ship.planet_locked {
+                            ship.spiky_planet_locked =
+                                spiky_planet_is_closer(ship.position, water_center, spiky_center);
+                        }
+                        let (orbit_center, orbit_radius, orbit_rotation, orbit_colliders) =
+                            if ship.spiky_planet_locked {
+                                (
+                                    spiky_center,
+                                    SPIKY_PLANET_RADIUS,
+                                    world_time * SPIKY_PLANET_ROTATION_SPEED,
+                                    empty_colliders.as_slice(),
+                                )
+                            } else {
+                                (
+                                    water_center,
+                                    planet_surface_radius,
+                                    world_time * 0.25,
+                                    object_colliders.as_slice(),
+                                )
+                            };
+                        move_around_planet(
+                            ship,
+                            movement,
+                            orbit_center,
+                            orbit_radius,
+                            orbit_rotation,
+                            orbit_colliders,
+                            yaw_input,
+                            pitch_input,
+                        );
                     } else {
-                        (
-                            water_center,
-                            planet_surface_radius,
-                            world_time * 0.25,
-                            object_colliders.as_slice(),
-                        )
-                    };
-                move_around_planet(
-                    ship,
-                    movement,
-                    orbit_center,
-                    orbit_radius,
-                    orbit_rotation,
-                    orbit_colliders,
-                    yaw_input,
-                    pitch_input,
-                );
+                        let (forward, _, _) = ship.movement_basis();
+                        ship.position = ship.position.add(forward.mul(movement));
+                        ship.planet_locked = false;
+                        ship.spiky_planet_locked = false;
+                    }
+                }
                 let camera_target = if ship.orbit_plane_normal.is_some() { 1.0 } else { 0.0 };
                 let camera_response = 1.0 - (-2.4 * delta_time).exp();
                 ship.orbit_camera_blend +=
@@ -3395,7 +3598,31 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 }
                 distance += movement;
 
-                if ship.planet_locked {
+                let portal_center = wormhole_position(active_galaxy);
+                let near_wormhole = crossed_wormhole(
+                    previous_ship_position,
+                    ship.position,
+                    portal_center,
+                    42.0,
+                );
+                if galaxy_transition.is_none()
+                    && near_wormhole
+                    && !ship.planet_locked
+                {
+                    galaxy_transition = Some(GalaxyTransit {
+                        elapsed: 0.0,
+                        start_position: ship.position,
+                        destination: if active_galaxy == Galaxy::Home { Galaxy::Vesper } else { Galaxy::Home },
+                        switched: false,
+                    });
+                    window.set_title("Agujero de gusano | Entrando en hipervelocidad");
+                }
+
+                if galaxy_transition.is_some() {
+                    window.set_title("Atravesando el agujero | Hipervelocidad");
+                } else if near_wormhole {
+                    window.set_title("Agujero de gusano | Atravesalo para viajar");
+                } else if ship.planet_locked {
                     if ship.spiky_planet_locked {
                         window.set_title(
                             "Planeta rosado | Enter: Guardián del Núcleo | Backspace: salir",
@@ -3406,7 +3633,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         );
                     }
                 } else {
-                    window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
+                    window.set_title(if active_galaxy == Galaxy::Home {
+                        "Sistema solar | Vuelo libre 3D | F11: fullscreen"
+                    } else {
+                        "Espacio profundo | Vuelo libre 3D | F11: fullscreen"
+                    });
                 }
                 render_scene(
                     active_model,
@@ -3421,14 +3652,27 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     spiky_planet_center,
                     spiky_planet_scale,
                     &sun,
+                    &wormhole,
+                    &wormhole_ring,
+                    wormhole_position(active_galaxy),
+                    active_galaxy,
                     &mut scene_framebuffer,
                     &mut triangle_batch,
                     &ship_controller.ship,
                     world_time,
-                    (distance * 0.0025).rem_euclid(1.0),
+                    (distance
+                        * if active_galaxy == Galaxy::Home {
+                            0.0025
+                        } else {
+                            0.012
+                        })
+                        .rem_euclid(1.0),
                     turbo_power,
                     ship_controller.charge_ratio(),
                 );
+                if let Some(transit) = &galaxy_transition {
+                    draw_hyperspace_transition(&mut scene_framebuffer, transit.elapsed);
+                }
             }
             GameMode::WaterLevel => {
                 ship_controller.update(&input, delta_time);
@@ -3488,18 +3732,23 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     confirm: crate::input::pressed(Key::Enter),
                     exit: crate::input::pressed(Key::Backspace),
                 };
-                if guardian_fight.update(
+                let action = guardian_fight.update(
                     delta_time,
                     input,
                     scene_framebuffer.width,
                     scene_framebuffer.height,
-                ) == GuardianAction::Exit
-                {
+                );
+                if action == GuardianAction::Exit {
                     game_mode = GameMode::FreeWorld;
-                    place_ship_near_spiky_planet(&mut ship_controller, world_time);
-                    window.set_title(
-                        "Planeta rosado | Enter: Guardián del Núcleo | Backspace: salir",
-                    );
+                    if guardian_fight.is_victory() {
+                        launch_ship_after_guardian_victory(&mut ship_controller, world_time);
+                        window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
+                    } else {
+                        place_ship_near_spiky_planet(&mut ship_controller, world_time);
+                        window.set_title(
+                            "Planeta rosado | Enter: Guardián del Núcleo | Backspace: salir",
+                        );
+                    }
                 }
                 guardian_fight.render_scene(
                     &mut scene_framebuffer,
@@ -3510,13 +3759,25 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
         }
 
+        if galaxy_transition
+            .as_ref()
+            .is_some_and(|transit| transit.elapsed >= 2.15)
+        {
+            galaxy_transition = None;
+            window.set_title(if active_galaxy == Galaxy::Home {
+                "Sistema solar | Vuelo libre 3D | F11: fullscreen"
+            } else {
+                "Espacio profundo | Vuelo libre 3D | F11: fullscreen"
+            });
+        }
+
         upscale_scene(&scene_framebuffer, &mut framebuffer);
 
         if game_mode == GameMode::CoreGuardian {
             guardian_fight.draw_hud(&mut framebuffer);
             draw_selection_label(&mut framebuffer, "GUARDIAN DEL NUCLEO", 600, 8, 2, 0xffe2ed);
             let message = if guardian_fight.is_victory() {
-                "VICTORIA! ENTER PARA VOLVER"
+                "JEFE DESTRUIDO - SALIENDO AL ESPACIO"
             } else if guardian_fight.is_defeat() {
                 "DERROTA  R: REINTENTAR  BACKSPACE: SALIR"
             } else if guardian_fight.is_exposed() {
@@ -3588,6 +3849,16 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 2,
                 0xffffff,
             );
+            if active_galaxy == Galaxy::Vesper && game_mode == GameMode::FreeWorld {
+                draw_selection_label(
+                    &mut framebuffer,
+                    "VUELO LIBRE  W/S O ARRIBA/ABAJO: INCLINAR  A/D O IZQ/DER: GIRAR  SHIFT: TURBO  ATRAVIESA EL AGUJERO PARA VOLVER",
+                    600,
+                    738,
+                    1,
+                    0xa9d8ff,
+                );
+            }
             let resolution_label = if dynamic_resolution.enabled {
                 format!("F2: RES AUTO {}%", dynamic_resolution.percentage())
             } else {

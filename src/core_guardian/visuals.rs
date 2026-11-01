@@ -1,4 +1,4 @@
-use super::{CoreGuardian, Phase, STARTING_SHIELDS};
+use super::{CoreGuardian, Phase, STARTING_SHIELDS, VICTORY_EXPLOSION_DURATION};
 use crate::framebuffer::Framebuffer;
 use crate::obj_loader::{Face, MaterialColor, Model, Vec3};
 use crate::ship::ShipSpec;
@@ -19,6 +19,8 @@ static GUARDIAN_OBSTACLE_MODELS: [OnceLock<Model>; 3] =
     [OnceLock::new(), OnceLock::new(), OnceLock::new()];
 static GUARDIAN_PLAYER_BOLT: OnceLock<Model> = OnceLock::new();
 static GUARDIAN_ENEMY_SEED: OnceLock<Model> = OnceLock::new();
+static GUARDIAN_EXPLOSION_SHARDS: [OnceLock<Model>; 3] =
+    [OnceLock::new(), OnceLock::new(), OnceLock::new()];
 
 impl CoreGuardian {
     pub fn render_scene(
@@ -32,29 +34,42 @@ impl CoreGuardian {
         let height = framebuffer.height as f32;
         draw_cavern(framebuffer, self.elapsed);
         let (boss_x, boss_y) = self.boss_center();
-        draw_boss_tentacles(framebuffer, (boss_x, boss_y), self.elapsed);
-        draw_boss_spheres(
-            framebuffer,
-            (boss_x, boss_y),
-            self.phase == Phase::Exposed,
-            self.hit_flash > 0.0,
-        );
-        for index in 0..3 {
-            let opening = self.opening_amount(index);
-            let warning = self.phase == Phase::Warning && index == self.open_plate;
-            draw_shell_plate_3d(framebuffer, (boss_x, boss_y), index, opening, warning);
+        if self.phase == Phase::Won {
+            draw_boss_explosion(framebuffer, (boss_x, boss_y), self.phase_time);
+        } else {
+            draw_boss_tentacles(framebuffer, (boss_x, boss_y), self.elapsed);
+            draw_boss_spheres(
+                framebuffer,
+                (boss_x, boss_y),
+                self.elapsed,
+                self.phase == Phase::Exposed,
+                self.hit_flash > 0.0,
+            );
+            for index in 0..3 {
+                let opening = self.opening_amount(index);
+                let warning = self.phase == Phase::Warning && index == self.open_plate;
+                draw_shell_plate_3d(framebuffer, (boss_x, boss_y), index, opening, warning);
+            }
         }
         draw_obstacles(framebuffer, &self.obstacles, self.elapsed);
         draw_projectiles_3d(framebuffer, &self.player_shots, &self.seeds, self.elapsed);
         let (_, boss_y) = self.boss_center();
         draw_reticle(framebuffer, (self.player_x * width, boss_y * height));
+        let (player_x, player_y) = self.player_screen_position();
+        let damage = STARTING_SHIELDS - self.shields;
+        draw_damage_smoke(
+            framebuffer,
+            (player_x * width, player_y * height),
+            damage,
+            self.elapsed,
+        );
         draw_selected_ship(
             framebuffer,
             ship_model,
             ship_center,
             ship_spec,
-            self.player_x,
-            0.82 + self.player_y * 0.10,
+            player_x,
+            player_y,
             self.roll,
         );
     }
@@ -85,7 +100,105 @@ impl CoreGuardian {
                 },
             );
         }
+        let ship_health = self.shields as f32 / STARTING_SHIELDS as f32;
+        let ship_health_color = if self.shields <= 1 {
+            0xff594f
+        } else {
+            0x68e58e
+        };
+        rect(framebuffer, 16.0, 50.0, 116.0, 10.0, 0x350c20);
+        rect(
+            framebuffer,
+            18.0,
+            52.0,
+            112.0 * ship_health,
+            6.0,
+            ship_health_color,
+        );
     }
+}
+
+fn draw_damage_smoke(
+    framebuffer: &mut Framebuffer,
+    ship_center: (f32, f32),
+    damage: u8,
+    elapsed: f32,
+) {
+    let puff_count = damage as usize * 3;
+    for index in 0..puff_count {
+        let phase = (elapsed * (1.8 + damage as f32 * 0.2) + index as f32 * 0.37)
+            .rem_euclid(1.0);
+        let engine = if index % 2 == 0 { -1.0 } else { 1.0 };
+        let spread = 5.0 + phase * (10.0 + damage as f32 * 2.0);
+        let drift = (elapsed * 2.6 + index as f32 * 1.7).sin() * (3.0 + damage as f32);
+        let x = ship_center.0 + engine * spread + drift;
+        let y = ship_center.1 + 18.0 + phase * (24.0 + damage as f32 * 5.0);
+        let radius = 3.0 + phase * 4.0 + damage as f32 * 0.7;
+        circle(framebuffer, x, y, radius, 0x39333f);
+        circle(framebuffer, x - radius * 0.12, y - radius * 0.12, radius * 0.68, 0x706a73);
+        circle(framebuffer, x - radius * 0.18, y - radius * 0.2, radius * 0.34, 0xaaa2a8);
+    }
+}
+
+fn draw_boss_explosion(
+    framebuffer: &mut Framebuffer,
+    screen_center: (f32, f32),
+    phase_time: f32,
+) {
+    let progress = (phase_time / VICTORY_EXPLOSION_DURATION).clamp(0.0, 1.0);
+    let origin = scene_position(framebuffer, screen_center, 14.0);
+    let camera = scene_camera();
+    let colors = [[255, 245, 173], [255, 153, 48], [239, 54, 77]];
+    let golden_angle = std::f32::consts::PI * (3.0 - 5.0_f32.sqrt());
+    for index in 0..18 {
+        let y = 1.0 - 2.0 * (index as f32 + 0.5) / 18.0;
+        let ring = (1.0 - y * y).sqrt();
+        let angle = index as f32 * golden_angle;
+        let direction = Vec3::new(ring * angle.cos(), y, ring * angle.sin());
+        let distance = progress * (3.8 + (index % 5) as f32 * 0.72);
+        let position = origin.add(direction.mul(distance));
+        let size = (1.0 - progress) * (0.34 + (index % 3) as f32 * 0.10) + 0.015;
+        let color_index = index % colors.len();
+        let shard = GUARDIAN_EXPLOSION_SHARDS[color_index]
+            .get_or_init(|| explosion_shard_model(colors[color_index]));
+        render_model(
+            shard,
+            framebuffer,
+            &camera,
+            |vertex| position.add(vertex.mul(size)),
+            None,
+            None,
+        );
+    }
+}
+
+fn explosion_shard_model(color: [u8; 3]) -> Model {
+    let vertices = vec![
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec3::new(-1.0, 0.0, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+        Vec3::new(0.0, -1.0, 0.0),
+        Vec3::new(0.0, 0.0, 1.0),
+        Vec3::new(0.0, 0.0, -1.0),
+    ];
+    let faces = [
+        [0, 2, 4],
+        [2, 1, 4],
+        [1, 3, 4],
+        [3, 0, 4],
+        [2, 0, 5],
+        [1, 2, 5],
+        [3, 1, 5],
+        [0, 3, 5],
+    ]
+    .into_iter()
+    .map(|indices| {
+        let mut face = Face::new(indices, "guardian_explosion", "explosion_shard");
+        face.color = MaterialColor::Fixed(color);
+        face
+    })
+    .collect();
+    Model::new(vertices, faces)
 }
 
 fn draw_shell_plate_3d(
@@ -212,6 +325,7 @@ fn draw_reticle(framebuffer: &mut Framebuffer, center: (f32, f32)) {
 fn draw_boss_spheres(
     framebuffer: &mut Framebuffer,
     screen_center: (f32, f32),
+    elapsed: f32,
     exposed: bool,
     hit_flash: bool,
 ) {
@@ -231,15 +345,16 @@ fn draw_boss_spheres(
         body,
         framebuffer,
         &camera,
-        |vertex| vertex.add(body_center),
+        |vertex| vertex.mul(1.0 + (elapsed * 1.7).sin() * 0.035).add(body_center),
         None,
         None,
     );
+    let core_pulse = 1.0 + (elapsed * 4.2).sin() * 0.12;
     render_model(
         core,
         framebuffer,
         &camera,
-        |vertex| vertex.add(core_center),
+        |vertex| vertex.mul(core_pulse).add(core_center),
         None,
         None,
     );
@@ -257,9 +372,10 @@ fn draw_boss_tentacles(framebuffer: &mut Framebuffer, screen_center: (f32, f32),
             let radial = (vertex.x * vertex.x + vertex.y * vertex.y).sqrt();
             let azimuth = vertex.y.atan2(vertex.x);
             let reach = ((radial - 1.5) / 3.5).clamp(0.0, 1.0);
-            let bend = (elapsed * 1.35 + azimuth * 2.4).sin() * 0.075 * reach;
+            let wave_phase = elapsed * 2.1 + azimuth * 2.4 + radial * 0.85;
+            let bend = wave_phase.sin() * 0.22 * reach;
             let mut animated = rotate_z(vertex, bend);
-            animated.z += (elapsed * 1.8 + azimuth * 2.4).sin() * 0.10 * reach;
+            animated.z += (wave_phase * 0.82).sin() * 0.28 * reach;
             center.add(animated)
         },
         None,
@@ -615,20 +731,23 @@ fn draw_cavern(framebuffer: &mut Framebuffer, elapsed: f32) {
 }
 
 fn cavern_tunnel_model() -> Model {
-    let rings = 16;
-    let sectors = 32;
+    let rings = 24;
+    let sectors = 40;
     let length = 80.0;
     let mut vertices = Vec::with_capacity((rings + 1) * (sectors + 1));
     for ring in 0..=rings {
         let t = ring as f32 / rings as f32;
         let wave = (t * std::f32::consts::TAU).sin();
-        let radius_x = 17.0 + wave * 1.2;
-        let radius_y = 13.0 + wave * 0.8;
-        let center_x = wave * 0.45;
-        let center_y = (t * std::f32::consts::TAU).cos() * 0.35;
+        let radius_x = 16.2 + wave * 1.5 + (t * std::f32::consts::TAU * 2.0).sin() * 0.8;
+        let radius_y = 12.7 + wave * 1.1 + (t * std::f32::consts::TAU * 1.5).cos() * 0.7;
+        let center_x = (t * std::f32::consts::TAU * 1.3).sin() * 1.1;
+        let center_y = (t * std::f32::consts::TAU * 1.7 + 0.8).cos() * 0.65;
         for sector in 0..=sectors {
             let angle = std::f32::consts::TAU * sector as f32 / sectors as f32;
-            let roughness = 1.0 + (angle * 5.0 + t * 8.0).sin() * 0.06;
+            let roughness = 1.0
+                + (angle * 3.0 + t * 11.0).sin() * 0.09
+                + (angle * 7.0 - t * 17.0).cos() * 0.055
+                + (angle * 13.0 + t * 29.0).sin() * 0.025;
             vertices.push(Vec3::new(
                 center_x + radius_x * roughness * angle.cos(),
                 center_y + radius_y * roughness * angle.sin(),
@@ -644,7 +763,18 @@ fn cavern_tunnel_model() -> Model {
             let b = a + sectors + 1;
             let c = a + 1;
             let d = b + 1;
-            let color_index = ((sector / 3 + ring / 2) % palette.len()) as usize;
+            let mineral_band = (angle_from_sector(sector, sectors) * 2.2
+                + ring as f32 * 0.37)
+                .sin();
+            let color_index = if mineral_band > 0.48 {
+                3
+            } else if mineral_band > -0.05 {
+                2
+            } else if mineral_band > -0.58 {
+                1
+            } else {
+                0
+            };
             for indices in [[a, b, c], [b, d, c]] {
                 let mut face = Face::new(indices, "guardian_rock", "cavern_wall");
                 face.color = MaterialColor::Fixed(palette[color_index]);
@@ -653,6 +783,10 @@ fn cavern_tunnel_model() -> Model {
         }
     }
     Model::new(vertices, faces)
+}
+
+fn angle_from_sector(sector: usize, sectors: usize) -> f32 {
+    std::f32::consts::TAU * sector as f32 / sectors as f32
 }
 
 fn crystal_cluster_model() -> Model {
