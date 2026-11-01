@@ -17,9 +17,23 @@ pub(crate) fn wormhole_position(galaxy: Galaxy) -> Vec3 {
     match galaxy {
         // With the ship's default heading (-X), negative Z places the portal
         // on the right side of the view, opposite the pink planet.
-        Galaxy::Home => Vec3::new(0.0, 48.0, -180.0),
+        Galaxy::Home => Vec3::new(-180.0, 48.0, -85.0),
         Galaxy::Vesper => Vec3::new(0.0, 48.0, 0.0),
     }
+}
+
+pub(crate) fn crossed_wormhole(previous: Vec3, current: Vec3, center: Vec3, radius: f32) -> bool {
+    let movement = current.sub(previous);
+    let length_squared = movement.dot(movement);
+    let closest_t = if length_squared > 0.0001 {
+        center.sub(previous).dot(movement) / length_squared
+    } else {
+        0.0
+    }
+    .clamp(0.0, 1.0);
+    let closest = previous.add(movement.mul(closest_t));
+    let offset = closest.sub(center);
+    offset.dot(offset) < radius * radius
 }
 
 fn hash(mut value: u32) -> u32 {

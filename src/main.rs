@@ -15,7 +15,9 @@ use std::time::Instant;
 
 use core_guardian::{CoreGuardian, GuardianAction, GuardianInput};
 use framebuffer::Framebuffer;
-use galaxy::{Galaxy, GalaxyTransit, draw_hyperspace_transition, wormhole_position};
+use galaxy::{
+    Galaxy, GalaxyTransit, crossed_wormhole, draw_hyperspace_transition, wormhole_position,
+};
 use minifb::{Key, ScaleMode, Window, WindowOptions};
 use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use ship::{
@@ -1367,13 +1369,18 @@ fn make_wormhole_ring(major_radius: f32, tube_radius: f32) -> Model {
     Model::new(vertices, faces)
 }
 
-fn rotate_x_axis(point: Vec3, angle: f32) -> Vec3 {
-    let (sin, cos) = angle.sin_cos();
-    Vec3::new(
-        point.x,
-        point.y * cos - point.z * sin,
-        point.y * sin + point.z * cos,
-    )
+fn orient_wormhole_ring(point: Vec3, center: Vec3, observer: Vec3) -> Vec3 {
+    let normal = observer.sub(center).normalize();
+    let world_up = Vec3::new(0.0, 1.0, 0.0);
+    let mut right = world_up.cross(normal).normalize();
+    if right.dot(right) < 0.001 {
+        right = Vec3::new(1.0, 0.0, 0.0);
+    }
+    let up = normal.cross(right).normalize();
+    center
+        .add(right.mul(point.x))
+        .add(up.mul(point.y))
+        .add(normal.mul(point.z))
 }
 
 fn make_turbo_plume(segments: usize) -> Model {
@@ -2321,7 +2328,7 @@ fn render_scene(
         wormhole_ring,
         batch,
         &camera,
-        |vertex| rotate_x_axis(vertex, 0.52).add(wormhole_center),
+        |vertex| orient_wormhole_ring(vertex, wormhole_center, ship.position),
         None,
         None,
     );
@@ -3373,8 +3380,16 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             if !transit.switched && transit.elapsed >= 0.82 {
                 active_galaxy = transit.destination;
                 let portal = wormhole_position(active_galaxy);
-                ship_controller.ship.position = portal.add(Vec3::new(0.0, 0.0, -68.0));
-                ship_controller.ship.yaw = std::f32::consts::FRAC_PI_2;
+                let (exit_offset, exit_yaw) = if active_galaxy == Galaxy::Vesper {
+                    // Keep the return portal visible ahead and to the right,
+                    // while leaving enough lateral clearance for free flight.
+                    (Vec3::new(-48.0, 0.0, 68.0), std::f32::consts::FRAC_PI_2)
+                } else {
+                    // Arrive beside the portal and fly away from it by default.
+                    (Vec3::new(100.0, 0.0, 60.0), 0.0)
+                };
+                ship_controller.ship.position = portal.add(exit_offset);
+                ship_controller.ship.yaw = exit_yaw;
                 ship_controller.ship.pitch = 0.0;
                 ship_controller.ship.planet_locked = false;
                 ship_controller.ship.spiky_planet_locked = false;
@@ -3414,18 +3429,25 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
             distance = 0.0;
         }
-        if game_mode == GameMode::FreeWorld && crate::input::pressed(Key::Key1) {
+        if game_mode == GameMode::FreeWorld
+            && active_galaxy == Galaxy::Home
+            && crate::input::pressed(Key::Key1)
+        {
             place_ship_near_water_planet(&mut ship_controller, world_time);
             println!("Warp completado: planeta acuatico");
         }
-        if game_mode == GameMode::FreeWorld && crate::input::pressed(Key::Key2) {
+        if game_mode == GameMode::FreeWorld
+            && active_galaxy == Galaxy::Home
+            && crate::input::pressed(Key::Key2)
+        {
             place_ship_near_spiky_planet(&mut ship_controller, world_time);
             println!("Warp completado: planeta rosado | Enter: Guardián del Núcleo");
         }
 
         let pitch_input = (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8
             - (window.is_key_down(Key::S) || window.is_key_down(Key::Down)) as i8;
-        let yaw_input = window.is_key_down(Key::D) as i8 - window.is_key_down(Key::A) as i8;
+        let yaw_input = (window.is_key_down(Key::D) || window.is_key_down(Key::Right)) as i8
+            - (window.is_key_down(Key::A) || window.is_key_down(Key::Left)) as i8;
         let roll_input = window.is_key_down(Key::E) as i8 - window.is_key_down(Key::Q) as i8;
         let active_yaw_input = if game_mode == GameMode::WaterLevel {
             -yaw_input
@@ -3494,7 +3516,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         };
         match game_mode {
             GameMode::FreeWorld => {
-                if galaxy_transition.is_none() {
+                let portal_approach_active = galaxy_transition
+                    .as_ref()
+                    .is_some_and(|transit| !transit.switched);
+                if !portal_approach_active {
                     ship_controller.update(&input, delta_time);
                 }
                 let light_speed =
@@ -3505,12 +3530,13 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     ship_controller.ship.speed
                 };
                 let turbo_power = ship_controller.turbo_power(active_speed);
-                let movement = if galaxy_transition.is_none() {
+                let movement = if !portal_approach_active {
                     active_speed * delta_time
                 } else {
                     0.0
                 };
                 let ship = &mut ship_controller.ship;
+                let previous_ship_position = ship.position;
 
                 if crate::input::pressed(Key::Backspace) && ship.planet_locked {
                     ship.planet_locked = false;
@@ -3520,7 +3546,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     println!("Orbita liberada");
                 }
 
-                if galaxy_transition.is_none() {
+                if !portal_approach_active {
                     if active_galaxy == Galaxy::Home {
                         let empty_colliders: [ObjectCollider; 0] = [];
                         let water_center = water_planet_position(world_time);
@@ -3572,8 +3598,13 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 }
                 distance += movement;
 
-                let portal_offset = ship.position.sub(wormhole_position(active_galaxy));
-                let near_wormhole = portal_offset.dot(portal_offset) < 38.0 * 38.0;
+                let portal_center = wormhole_position(active_galaxy);
+                let near_wormhole = crossed_wormhole(
+                    previous_ship_position,
+                    ship.position,
+                    portal_center,
+                    42.0,
+                );
                 if galaxy_transition.is_none()
                     && near_wormhole
                     && !ship.planet_locked
@@ -3629,7 +3660,13 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &mut triangle_batch,
                     &ship_controller.ship,
                     world_time,
-                    (distance * 0.0025).rem_euclid(1.0),
+                    (distance
+                        * if active_galaxy == Galaxy::Home {
+                            0.0025
+                        } else {
+                            0.012
+                        })
+                        .rem_euclid(1.0),
                     turbo_power,
                     ship_controller.charge_ratio(),
                 );
@@ -3812,6 +3849,16 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 2,
                 0xffffff,
             );
+            if active_galaxy == Galaxy::Vesper && game_mode == GameMode::FreeWorld {
+                draw_selection_label(
+                    &mut framebuffer,
+                    "VUELO LIBRE  W/S O ARRIBA/ABAJO: INCLINAR  A/D O IZQ/DER: GIRAR  SHIFT: TURBO  ATRAVIESA EL AGUJERO PARA VOLVER",
+                    600,
+                    738,
+                    1,
+                    0xa9d8ff,
+                );
+            }
             let resolution_label = if dynamic_resolution.enabled {
                 format!("F2: RES AUTO {}%", dynamic_resolution.percentage())
             } else {
