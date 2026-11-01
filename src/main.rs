@@ -3383,10 +3383,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 let (exit_offset, exit_yaw) = if active_galaxy == Galaxy::Vesper {
                     // Keep the return portal visible ahead and to the right,
                     // while leaving enough lateral clearance for free flight.
-                    (Vec3::new(-48.0, 0.0, 68.0), std::f32::consts::FRAC_PI_2)
+                    (Vec3::new(-70.0, 0.0, 100.0), std::f32::consts::FRAC_PI_2)
                 } else {
                     // Arrive beside the portal and fly away from it by default.
-                    (Vec3::new(100.0, 0.0, 60.0), 0.0)
+                    (Vec3::new(150.0, 0.0, 80.0), 0.0)
                 };
                 ship_controller.ship.position = portal.add(exit_offset);
                 ship_controller.ship.yaw = exit_yaw;

@@ -17,7 +17,7 @@ pub(crate) fn wormhole_position(galaxy: Galaxy) -> Vec3 {
     match galaxy {
         // With the ship's default heading (-X), negative Z places the portal
         // on the right side of the view, opposite the pink planet.
-        Galaxy::Home => Vec3::new(-180.0, 48.0, -85.0),
+        Galaxy::Home => Vec3::new(-260.0, 48.0, -130.0),
         Galaxy::Vesper => Vec3::new(0.0, 48.0, 0.0),
     }
 }
