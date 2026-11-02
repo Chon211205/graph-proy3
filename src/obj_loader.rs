@@ -300,6 +300,14 @@ fn classify_surface(name: &str) -> SurfaceShader {
 }
 
 fn classify_color(name: &str) -> MaterialColor {
+    if let Some(rgb) = name.strip_prefix("race_rgb_") {
+        let mut values = rgb.split('_').map(str::parse::<u8>);
+        if let (Some(Ok(r)), Some(Ok(g)), Some(Ok(b)), None) =
+            (values.next(), values.next(), values.next(), values.next())
+        {
+            return MaterialColor::Fixed([r, g, b]);
+        }
+    }
     let fixed = if name.starts_with("mcqueen_") {
         match name {
             "mcqueen_red" => [225, 26, 35],
