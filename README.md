@@ -1,5 +1,13 @@
 # Aventura espacial
 
+## Planeta de carreras en Vesper
+
+Atraviesa el agujero con aro celeste para llegar a Vesper. Allí encontrarás un planeta verde con cinturón de pista a cuadros. Acércate hasta entrar en órbita y pulsa **Enter** para recorrer **Jardín Rust**, el mapa predeterminado de `ZyroBad/kart_racer`. En Vesper, **3** te lleva junto al planeta para entrar más rápido.
+
+Se conserva nuestro controlador: **A/D o flechas izquierda/derecha** para girar, **Espacio** para acelerar, **Ctrl** para frenar, **Enter** para disparar, **R** para reiniciar y **Esc** para pausar. El vehículo permanece sobre la pista; ASTRA, Swordfish, Buzz y Rayo usan su versión carro y los demás conservan su nave. **Backspace** regresa a la órbita del planeta en Vesper. El agujero permite volver a la galaxia inicial.
+
+Se integró únicamente el mapa, sin las mecánicas de carrera del otro proyecto. La cuadrícula original, conversión a OBJ y procedencia están documentadas en `assets/levels/kart_racer/SOURCE.md`.
+
 Juego 3D en Rust con renderizado por software. Ejecuta los comandos desde la raíz del repositorio para encontrar `assets/`.
 
 ```powershell

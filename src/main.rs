@@ -4,6 +4,7 @@ mod galaxy;
 mod input;
 mod menu;
 mod obj_loader;
+mod race_track;
 mod ship;
 mod triangle;
 
@@ -344,6 +345,7 @@ enum GameMode {
     FreeWorld,
     WaterLevel,
     CoreGuardian,
+    Racing,
 }
 
 struct WaterLevelState {
@@ -2253,6 +2255,7 @@ fn render_scene(
     wormhole_ring: &Model,
     wormhole_center: Vec3,
     galaxy: Galaxy,
+    race_planet: &Model,
     framebuffer: &mut Framebuffer,
     batch: &mut TriangleBatch,
     ship: &Ship,
@@ -2322,6 +2325,11 @@ fn render_scene(
         None,
         None,
     );
+    }
+
+    if galaxy == Galaxy::Vesper {
+        queue_model(race_planet, batch, &camera,
+            |v| v.add(race_track::PLANET_POSITION), None, None);
     }
 
     queue_model(
@@ -3123,6 +3131,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mcqueen_submarine_model =
         load_obj("assets/vehicles/mcqueen/mcqueen_submarino_detallado.obj")?;
     let mcqueen_car_center = model_center(&mcqueen_car_model);
+    let race_track = race_track::RaceTrack::load()?;
+    let race_vehicles = [
+        (&arwing_model, &ARWING_SPEC), (&kirby_model, &KIRBY_SPEC),
+        (&astra_car_model, &ASTRA_CAR_SPEC), (&cowboyb_car_model, &COWBOYB_CAR_SPEC),
+        (&buzz_variants[1], &BUZZ_CAR_SPEC), (&mcqueen_car_model, &MCQUEEN_CAR_SPEC),
+    ];
     let choices = [
         (&arwing_model, &ARWING_SPEC),
         (&kirby_model, &KIRBY_SPEC),
@@ -3418,7 +3432,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             window = create_window(fullscreen)?;
         }
         if crate::input::pressed(Key::R) {
-            if game_mode == GameMode::CoreGuardian {
+            if game_mode == GameMode::Racing {
+                race_track.enter(&mut ship_controller);
+            } else if game_mode == GameMode::CoreGuardian {
                 guardian_fight = CoreGuardian::new();
             } else {
                 ship_controller.reset();
@@ -3444,6 +3460,13 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             println!("Warp completado: planeta rosado | Enter: Guardián del Núcleo");
         }
 
+        if game_mode == GameMode::FreeWorld
+            && active_galaxy == Galaxy::Vesper
+            && crate::input::pressed(Key::Key3)
+        {
+            race_track.leave(&mut ship_controller);
+        }
+
         let pitch_input = (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8
             - (window.is_key_down(Key::S) || window.is_key_down(Key::Down)) as i8;
         let yaw_input = (window.is_key_down(Key::D) || window.is_key_down(Key::Right)) as i8
@@ -3459,7 +3482,13 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             && ship_controller.ship.planet_locked
             && crate::input::pressed(Key::Enter)
         {
-            if ship_controller.ship.spiky_planet_locked {
+            if active_galaxy == Galaxy::Vesper {
+                ship_controller = ShipController::new(race_vehicles[selected_ship].1);
+                race_track.enter(&mut ship_controller);
+                game_mode = GameMode::Racing;
+                entered_level = true;
+                window.set_title("Jardin Rust | Planeta de carreras | Backspace: volver a Vesper");
+            } else if ship_controller.ship.spiky_planet_locked {
                 guardian_fight = CoreGuardian::new();
                 game_mode = GameMode::CoreGuardian;
                 entered_level = true;
@@ -3474,6 +3503,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 window.set_title("Nivel submarino | Backspace: volver al sistema solar");
                 println!("Nivel submarino iniciado");
             }
+        } else if game_mode == GameMode::Racing && crate::input::pressed(Key::Backspace) {
+            game_mode = GameMode::FreeWorld;
+            ship_controller = ShipController::new(ship_spec);
+            race_track.leave(&mut ship_controller);
+            window.set_title("Vesper | Planeta de carreras | Enter: entrar | Backspace: salir de orbita");
         } else if game_mode == GameMode::WaterLevel && crate::input::pressed(Key::Backspace) {
             game_mode = GameMode::FreeWorld;
             bubble_emitter.clear();
@@ -3582,10 +3616,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             pitch_input,
                         );
                     } else {
-                        let (forward, _, _) = ship.movement_basis();
-                        ship.position = ship.position.add(forward.mul(movement));
-                        ship.planet_locked = false;
                         ship.spiky_planet_locked = false;
+                        move_around_planet(
+                            ship, movement, race_track::PLANET_POSITION,
+                            race_track::PLANET_RADIUS, world_time * 0.08, &[], yaw_input, pitch_input,
+                        );
                     }
                 }
                 let camera_target = if ship.orbit_plane_normal.is_some() { 1.0 } else { 0.0 };
@@ -3623,7 +3658,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 } else if near_wormhole {
                     window.set_title("Agujero de gusano | Atravesalo para viajar");
                 } else if ship.planet_locked {
-                    if ship.spiky_planet_locked {
+                    if active_galaxy == Galaxy::Vesper {
+                        window.set_title("Planeta de carreras | Enter: Jardin Rust | Backspace: salir de orbita");
+                    } else if ship.spiky_planet_locked {
                         window.set_title(
                             "Planeta rosado | Enter: Guardián del Núcleo | Backspace: salir",
                         );
@@ -3656,6 +3693,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &wormhole_ring,
                     wormhole_position(active_galaxy),
                     active_galaxy,
+                    &race_track.planet,
                     &mut scene_framebuffer,
                     &mut triangle_batch,
                     &ship_controller.ship,
@@ -3673,6 +3711,14 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 if let Some(transit) = &galaxy_transition {
                     draw_hyperspace_transition(&mut scene_framebuffer, transit.elapsed);
                 }
+            }
+            GameMode::Racing => {
+                race_track.update(&mut ship_controller, &input, delta_time);
+                race_track.render(
+                    &mut scene_framebuffer, &mut triangle_batch,
+                    race_vehicles[selected_ship].0, &ship_controller,
+                    &turbo_plume, &laser_bolt, world_time,
+                );
             }
             GameMode::WaterLevel => {
                 ship_controller.update(&input, delta_time);
@@ -3772,6 +3818,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         }
 
         upscale_scene(&scene_framebuffer, &mut framebuffer);
+        if game_mode == GameMode::Racing {
+            race_track.hud(&mut framebuffer, ship_controller.ship.position);
+        }
 
         if game_mode == GameMode::CoreGuardian {
             guardian_fight.draw_hud(&mut framebuffer);
@@ -3806,7 +3855,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 0xffffff,
             );
         } else {
-            let form = if selected_ship == 4 {
+            let form = if game_mode == GameMode::Racing {
+                race_vehicles[selected_ship].1.name
+            } else if selected_ship == 4 {
                 if game_mode == GameMode::WaterLevel {
                     "BUZZ - SUBMARINO"
                 } else if car_mode {
@@ -3852,7 +3903,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             if active_galaxy == Galaxy::Vesper && game_mode == GameMode::FreeWorld {
                 draw_selection_label(
                     &mut framebuffer,
-                    "VUELO LIBRE  W/S O ARRIBA/ABAJO: INCLINAR  A/D O IZQ/DER: GIRAR  SHIFT: TURBO  ATRAVIESA EL AGUJERO PARA VOLVER",
+                    "VESPER  3: PLANETA DE CARRERAS  ENTER EN ORBITA: JARDIN RUST  ATRAVIESA EL AGUJERO PARA VOLVER",
                     600,
                     738,
                     1,
