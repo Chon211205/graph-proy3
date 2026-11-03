@@ -1862,11 +1862,22 @@ struct TriangleCommand {
     style: TriangleStyle,
 }
 
+#[derive(Clone, Copy, Default)]
+struct RenderStats {
+    models_visible: usize,
+    models_culled: usize,
+    vertices_transformed: usize,
+    triangles_submitted: usize,
+    geometry_ms: f32,
+    raster_ms: f32,
+}
+
 struct TriangleBatch {
     commands: Vec<TriangleCommand>,
     camera_vertex_scratch: Vec<Vec3>,
     viewport_width: usize,
     viewport_height: usize,
+    stats: RenderStats,
 }
 
 impl TriangleBatch {
@@ -1876,7 +1887,17 @@ impl TriangleBatch {
             camera_vertex_scratch: Vec::new(),
             viewport_width,
             viewport_height,
+            stats: RenderStats::default(),
         }
+    }
+
+    fn begin_frame(&mut self) {
+        debug_assert!(self.commands.is_empty());
+        self.stats = RenderStats::default();
+    }
+
+    fn stats(&self) -> RenderStats {
+        self.stats
     }
 
     fn resize(&mut self, width: usize, height: usize) {
@@ -1893,6 +1914,7 @@ impl TriangleBatch {
         if self.commands.is_empty() {
             return;
         }
+        let raster_start = Instant::now();
         let width = framebuffer.width;
         let height = framebuffer.height;
         debug_assert_eq!((width, height), (self.viewport_width, self.viewport_height));
@@ -2004,6 +2026,7 @@ impl TriangleBatch {
             }
         });
         self.commands.clear();
+        self.stats.raster_ms += raster_start.elapsed().as_secs_f32() * 1_000.0;
     }
 }
 
@@ -2065,6 +2088,7 @@ fn queue_model_with_scratch<F>(
 ) where
     F: Fn(Vec3) -> Vec3 + Sync,
 {
+    let geometry_start = Instant::now();
     let tan_half_vertical = (VERTICAL_FOV * 0.5).tan();
     let tan_half_horizontal =
         tan_half_vertical * batch.viewport_width as f32 / batch.viewport_height as f32;
@@ -2102,8 +2126,14 @@ fn queue_model_with_scratch<F>(
         || camera_center.z * tan_half_vertical - camera_center.y
             < -transformed_radius * vertical_plane_length
     {
+        batch.stats.models_culled += 1;
+        batch.stats.geometry_ms += geometry_start.elapsed().as_secs_f32() * 1_000.0;
         return;
     }
+
+    batch.stats.models_visible += 1;
+    batch.stats.vertices_transformed += model.vertices.len();
+    let commands_before = batch.commands.len();
 
     let transform_vertex = |vertex: &Vec3| {
         let relative = transform(*vertex).sub(camera.position);
@@ -2228,6 +2258,8 @@ fn queue_model_with_scratch<F>(
             });
         }
     }
+    batch.stats.triangles_submitted += batch.commands.len() - commands_before;
+    batch.stats.geometry_ms += geometry_start.elapsed().as_secs_f32() * 1_000.0;
 }
 
 #[cfg(test)]
@@ -3319,6 +3351,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut previous = Instant::now();
     let mut world_time = 0.0_f32;
     let mut distance = 0.0_f32;
+    let mut performance_hud = false;
 
     while window.is_open() {
         if crate::input::pressed(Key::Escape) {
@@ -3439,6 +3472,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         } else {
             false
         };
+        if crate::input::pressed(Key::F3) {
+            performance_hud = !performance_hud;
+        }
         if resolution_changed || toggled_resolution {
             let (render_width, render_height) = dynamic_resolution.dimensions();
             scene_framebuffer = Framebuffer::new(render_width, render_height);
@@ -3566,6 +3602,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         } else {
             base_center
         };
+        triangle_batch.begin_frame();
         match game_mode {
             GameMode::FreeWorld => {
                 let portal_approach_active = galaxy_transition
@@ -3848,6 +3885,27 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         }
 
         upscale_scene(&scene_framebuffer, &mut framebuffer);
+        if performance_hud {
+            let stats = triangle_batch.stats();
+            let frame_ms = frame_time * 1_000.0;
+            let summary = format!(
+                "PERF  {:>3.0} FPS  {:>5.1} MS  GEO {:>4.1}  RAST {:>4.1}",
+                dynamic_resolution.fps_average,
+                frame_ms,
+                stats.geometry_ms,
+                stats.raster_ms,
+            );
+            let geometry = format!(
+                "MODELOS {}  CULL {}  VERT {}  TRI {}  RES {}%",
+                stats.models_visible,
+                stats.models_culled,
+                stats.vertices_transformed,
+                stats.triangles_submitted,
+                dynamic_resolution.percentage(),
+            );
+            draw_selection_label(&mut framebuffer, &summary, 600, 92, 1, 0x9fffd2);
+            draw_selection_label(&mut framebuffer, &geometry, 600, 108, 1, 0xc6d8ff);
+        }
         if game_mode == GameMode::Racing {
             race_track.hud(&mut framebuffer, ship_controller.ship.position);
         }
@@ -4428,6 +4486,39 @@ mod tests {
             None,
         );
         assert!(framebuffer.pixels.iter().all(|&pixel| pixel == 0));
+    }
+
+    #[test]
+    fn render_stats_count_visible_and_culled_geometry() {
+        let camera = test_camera();
+        let mut batch = TriangleBatch::new(WIDTH, HEIGHT);
+        let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
+        batch.begin_frame();
+        queue_model(
+            &test_triangle(5.0),
+            &mut batch,
+            &camera,
+            |vertex| vertex,
+            None,
+            None,
+        );
+        queue_model(
+            &test_triangle(-5.0),
+            &mut batch,
+            &camera,
+            |vertex| vertex,
+            None,
+            None,
+        );
+        batch.flush_with_workers(&mut framebuffer, 1);
+
+        let stats = batch.stats();
+        assert_eq!(stats.models_visible, 1);
+        assert_eq!(stats.models_culled, 1);
+        assert_eq!(stats.vertices_transformed, 3);
+        assert_eq!(stats.triangles_submitted, 1);
+        assert!(stats.geometry_ms.is_finite());
+        assert!(stats.raster_ms.is_finite());
     }
 
     #[test]

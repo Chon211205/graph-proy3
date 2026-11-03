@@ -42,6 +42,7 @@ Se necesita Rust con soporte para edición 2024 y las herramientas nativas de co
 | T | Alternar la apariencia nave/carro de Buzz o Rayo McQueen en vuelo libre |
 | R | Reiniciar posición o recorrido submarino |
 | F11 | Alternar pantalla completa |
+| F3 | Mostrar/ocultar métricas de rendimiento |
 | P | Guardar `captura.png` |
 
 Completa el recorrido submarino esquivando obstáculos. Buzz cambia automáticamente a submarino en ese nivel y recupera su forma anterior al salir. La forma carro es una transformación visual con los controles del vuelo libre; no incorpora un circuito terrestre ni física de conducción.
