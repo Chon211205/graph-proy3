@@ -1,10 +1,10 @@
 # Aventura espacial
 
-## Planeta de carreras en Vesper
+## Planeta de carreras en la galaxia inicial
 
-Atraviesa el agujero con aro celeste para llegar a Vesper. Allí encontrarás un planeta verde con cinturón de pista a cuadros. Acércate hasta entrar en órbita y pulsa **Enter** para recorrer **Jardín Rust**, el mapa predeterminado de `ZyroBad/kart_racer`. En Vesper, **3** te lleva junto al planeta para entrar más rápido.
+En el sistema solar inicial encontrarás un planeta verde con cinturón de pista a cuadros. Acércate hasta entrar en órbita y pulsa **Enter** para recorrer **Jardín Rust**, el mapa predeterminado de `ZyroBad/kart_racer`. La tecla **3** te lleva junto al planeta para entrar más rápido.
 
-Se conserva nuestro controlador: **A/D o flechas izquierda/derecha** para girar, **Espacio** para acelerar, **Ctrl** para frenar, **Enter** para disparar, **R** para reiniciar y **Esc** para pausar. El vehículo permanece sobre la pista; ASTRA, Swordfish, Buzz y Rayo usan su versión carro y los demás conservan su nave. **Backspace** regresa a la órbita del planeta en Vesper. El agujero permite volver a la galaxia inicial.
+Se conserva nuestro controlador: **A/D o flechas izquierda/derecha** para girar, **Espacio** para acelerar, **Ctrl** para frenar, **Enter** para disparar, **R** para reiniciar y **Esc** para pausar. El vehículo permanece sobre la pista; ASTRA, Swordfish, Buzz y Rayo usan su versión carro y los demás conservan su nave. **Backspace** regresa a la órbita del planeta en el sistema solar inicial.
 
 Se integró únicamente el mapa, sin las mecánicas de carrera del otro proyecto. La cuadrícula original, conversión a OBJ y procedencia están documentadas en `assets/levels/kart_racer/SOURCE.md`.
 
@@ -36,6 +36,7 @@ Se necesita Rust con soporte para edición 2024 y las herramientas nativas de co
 | Shift | Velocidad de luz en vuelo libre |
 | Enter | Disparar; mantener para cargar |
 | 1 | Transportarse cerca del planeta acuático |
+| 3 | Transportarse cerca del planeta de carreras |
 | Enter estando en órbita | Entrar al nivel submarino |
 | Backspace | Abandonar órbita o volver del nivel al espacio |
 | T | Alternar la apariencia nave/carro de Buzz o Rayo McQueen en vuelo libre |

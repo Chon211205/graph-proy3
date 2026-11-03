@@ -1576,11 +1576,20 @@ fn spiky_planet_is_closer(ship_position: Vec3, water_center: Vec3, spiky_center:
     spiky_offset.dot(spiky_offset) < water_offset.dot(water_offset)
 }
 
+fn race_planet_is_closest(ship_position: Vec3, water_center: Vec3, spiky_center: Vec3) -> bool {
+    let race_offset = ship_position.sub(race_track::PLANET_POSITION);
+    let water_offset = ship_position.sub(water_center);
+    let spiky_offset = ship_position.sub(spiky_center);
+    let race_distance = race_offset.dot(race_offset);
+    race_distance < water_offset.dot(water_offset) && race_distance < spiky_offset.dot(spiky_offset)
+}
+
 fn place_ship_near_water_planet(controller: &mut ShipController, world_time: f32) {
     controller.reset();
     let ship = &mut controller.ship;
     ship.position = water_planet_position(world_time).add(Vec3::new(45.0, 8.0, 0.0));
     ship.spiky_planet_locked = false;
+    ship.race_planet_locked = false;
     ship.pitch = -0.08;
     ship.speed = ship.spec.cruise_speed;
 }
@@ -1595,6 +1604,7 @@ fn place_ship_near_spiky_planet(controller: &mut ShipController, world_time: f32
     ship.speed = ship.spec.cruise_speed;
     ship.planet_locked = true;
     ship.spiky_planet_locked = true;
+    ship.race_planet_locked = false;
     ship.orbit_center = Some(center);
     let radial = offset.normalize();
     let (_, right, _) = ship.movement_basis();
@@ -1612,6 +1622,7 @@ fn launch_ship_after_guardian_victory(controller: &mut ShipController, world_tim
     ship.speed = ship.spec.cruise_speed;
     ship.planet_locked = false;
     ship.spiky_planet_locked = false;
+    ship.race_planet_locked = false;
     ship.orbit_center = None;
     ship.orbit_plane_normal = None;
     ship.orbit_camera_blend = 0.0;
@@ -1853,6 +1864,7 @@ struct TriangleCommand {
 
 struct TriangleBatch {
     commands: Vec<TriangleCommand>,
+    camera_vertex_scratch: Vec<Vec3>,
     viewport_width: usize,
     viewport_height: usize,
 }
@@ -1861,6 +1873,7 @@ impl TriangleBatch {
     fn new(viewport_width: usize, viewport_height: usize) -> Self {
         Self {
             commands: Vec::new(),
+            camera_vertex_scratch: Vec::new(),
             viewport_width,
             viewport_height,
         }
@@ -2026,7 +2039,9 @@ fn queue_model<F>(
 ) where
     F: Fn(Vec3) -> Vec3 + Sync,
 {
-    let mut camera_vertices = Vec::new();
+    // Reuse the largest vertex buffer seen by this batch. With several planets
+    // in the home galaxy this avoids multiple large allocations every frame.
+    let mut camera_vertices = std::mem::take(&mut batch.camera_vertex_scratch);
     queue_model_with_scratch(
         model,
         batch,
@@ -2036,6 +2051,7 @@ fn queue_model<F>(
         effect_spec,
         &mut camera_vertices,
     );
+    batch.camera_vertex_scratch = camera_vertices;
 }
 
 fn queue_model_with_scratch<F>(
@@ -2100,19 +2116,20 @@ fn queue_model_with_scratch<F>(
     let worker_count = render_worker_count();
     if model.vertices.len() >= 4_096 && worker_count > 1 {
         let chunk_size = model.vertices.len().div_ceil(worker_count);
-        *camera_vertices = thread::scope(|scope| {
-            let handles: Vec<_> = model
-                .vertices
-                .chunks(chunk_size)
-                .map(|vertices| {
-                    let transform_vertex = &transform_vertex;
-                    scope.spawn(move || vertices.iter().map(transform_vertex).collect::<Vec<_>>())
-                })
-                .collect();
-            handles
-                .into_iter()
-                .flat_map(|handle| handle.join().expect("vertex worker panicked"))
-                .collect()
+        camera_vertices.clear();
+        camera_vertices.resize(model.vertices.len(), Vec3::default());
+        thread::scope(|scope| {
+            for (output, vertices) in camera_vertices
+                .chunks_mut(chunk_size)
+                .zip(model.vertices.chunks(chunk_size))
+            {
+                let transform_vertex = &transform_vertex;
+                scope.spawn(move || {
+                    for (slot, vertex) in output.iter_mut().zip(vertices) {
+                        *slot = transform_vertex(vertex);
+                    }
+                });
+            }
         });
     } else {
         camera_vertices.clear();
@@ -2308,9 +2325,9 @@ fn render_scene(
     );
     let spiky_rotation = world_time * SPIKY_PLANET_ROTATION_SPEED;
     let spiky_position = spiky_planet_position(world_time);
-    render_model(
+    queue_model(
         spiky_planet,
-        framebuffer,
+        batch,
         &camera,
         |vertex| {
             let vertex = vertex.sub(spiky_planet_center).mul(spiky_planet_scale);
@@ -2327,7 +2344,7 @@ fn render_scene(
     );
     }
 
-    if galaxy == Galaxy::Vesper {
+    if galaxy == Galaxy::Home {
         queue_model(race_planet, batch, &camera,
             |v| v.add(race_track::PLANET_POSITION), None, None);
     }
@@ -3407,6 +3424,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 ship_controller.ship.pitch = 0.0;
                 ship_controller.ship.planet_locked = false;
                 ship_controller.ship.spiky_planet_locked = false;
+                ship_controller.ship.race_planet_locked = false;
                 ship_controller.ship.orbit_plane_normal = None;
                 ship_controller.ship.orbit_center = None;
                 ship_controller.ship.orbit_camera_blend = 0.0;
@@ -3461,7 +3479,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         }
 
         if game_mode == GameMode::FreeWorld
-            && active_galaxy == Galaxy::Vesper
+            && active_galaxy == Galaxy::Home
             && crate::input::pressed(Key::Key3)
         {
             race_track.leave(&mut ship_controller);
@@ -3482,12 +3500,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             && ship_controller.ship.planet_locked
             && crate::input::pressed(Key::Enter)
         {
-            if active_galaxy == Galaxy::Vesper {
+            if ship_controller.ship.race_planet_locked {
                 ship_controller = ShipController::new(race_vehicles[selected_ship].1);
                 race_track.enter(&mut ship_controller);
                 game_mode = GameMode::Racing;
                 entered_level = true;
-                window.set_title("Jardin Rust | Planeta de carreras | Backspace: volver a Vesper");
+                window.set_title("Jardin Rust | Planeta de carreras | Backspace: volver al sistema solar");
             } else if ship_controller.ship.spiky_planet_locked {
                 guardian_fight = CoreGuardian::new();
                 game_mode = GameMode::CoreGuardian;
@@ -3507,7 +3525,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             game_mode = GameMode::FreeWorld;
             ship_controller = ShipController::new(ship_spec);
             race_track.leave(&mut ship_controller);
-            window.set_title("Vesper | Planeta de carreras | Enter: entrar | Backspace: salir de orbita");
+            window.set_title("Sistema solar | Planeta de carreras | Enter: entrar | Backspace: salir de orbita");
         } else if game_mode == GameMode::WaterLevel && crate::input::pressed(Key::Backspace) {
             game_mode = GameMode::FreeWorld;
             bubble_emitter.clear();
@@ -3569,12 +3587,16 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 } else {
                     0.0
                 };
+                // Avoid f32 precision loss after prolonged travel. Do this
+                // before capturing the segment used for portal collision.
+                ship_controller.rebase_far_flight();
                 let ship = &mut ship_controller.ship;
                 let previous_ship_position = ship.position;
 
                 if crate::input::pressed(Key::Backspace) && ship.planet_locked {
                     ship.planet_locked = false;
                     ship.spiky_planet_locked = false;
+                    ship.race_planet_locked = false;
                     ship.orbit_release_active = true;
                     ship.orbit_plane_normal = None;
                     println!("Orbita liberada");
@@ -3586,11 +3608,20 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         let water_center = water_planet_position(world_time);
                         let spiky_center = spiky_planet_position(world_time);
                         if !ship.planet_locked {
-                            ship.spiky_planet_locked =
-                                spiky_planet_is_closer(ship.position, water_center, spiky_center);
+                            ship.race_planet_locked =
+                                race_planet_is_closest(ship.position, water_center, spiky_center);
+                            ship.spiky_planet_locked = !ship.race_planet_locked
+                                && spiky_planet_is_closer(ship.position, water_center, spiky_center);
                         }
                         let (orbit_center, orbit_radius, orbit_rotation, orbit_colliders) =
-                            if ship.spiky_planet_locked {
+                            if ship.race_planet_locked {
+                                (
+                                    race_track::PLANET_POSITION,
+                                    race_track::PLANET_RADIUS,
+                                    world_time * 0.08,
+                                    empty_colliders.as_slice(),
+                                )
+                            } else if ship.spiky_planet_locked {
                                 (
                                     spiky_center,
                                     SPIKY_PLANET_RADIUS,
@@ -3617,10 +3648,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         );
                     } else {
                         ship.spiky_planet_locked = false;
-                        move_around_planet(
-                            ship, movement, race_track::PLANET_POSITION,
-                            race_track::PLANET_RADIUS, world_time * 0.08, &[], yaw_input, pitch_input,
-                        );
+                        ship.race_planet_locked = false;
+                        let (forward, _, _) = ship.movement_basis();
+                        ship.position = ship.position.add(forward.mul(movement));
                     }
                 }
                 let camera_target = if ship.orbit_plane_normal.is_some() { 1.0 } else { 0.0 };
@@ -3658,7 +3688,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 } else if near_wormhole {
                     window.set_title("Agujero de gusano | Atravesalo para viajar");
                 } else if ship.planet_locked {
-                    if active_galaxy == Galaxy::Vesper {
+                    if ship.race_planet_locked {
                         window.set_title("Planeta de carreras | Enter: Jardin Rust | Backspace: salir de orbita");
                     } else if ship.spiky_planet_locked {
                         window.set_title(
@@ -3900,10 +3930,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 2,
                 0xffffff,
             );
-            if active_galaxy == Galaxy::Vesper && game_mode == GameMode::FreeWorld {
+            if active_galaxy == Galaxy::Home && game_mode == GameMode::FreeWorld {
                 draw_selection_label(
                     &mut framebuffer,
-                    "VESPER  3: PLANETA DE CARRERAS  ENTER EN ORBITA: JARDIN RUST  ATRAVIESA EL AGUJERO PARA VOLVER",
+                    "SISTEMA SOLAR  3: PLANETA DE CARRERAS  ENTER EN ORBITA: JARDIN RUST",
                     600,
                     738,
                     1,

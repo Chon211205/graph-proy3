@@ -3,6 +3,10 @@ use std::f32::consts::{PI, TAU};
 use crate::obj_loader::Vec3;
 
 const MAX_PROJECTILES: usize = 256;
+// Beyond this range f32 can no longer represent the small offsets used by the
+// chase camera and steering reliably.
+const FLOATING_ORIGIN_LIMIT: f32 = 32_768.0;
+const FLOATING_ORIGIN_RADIUS: f32 = 8_192.0;
 
 #[derive(Clone, Copy)]
 pub enum ModelAxes {
@@ -421,6 +425,7 @@ pub struct Ship {
     pub orbit_camera_blend: f32,
     pub planet_locked: bool,
     pub spiky_planet_locked: bool,
+    pub race_planet_locked: bool,
     pub orbit_release_active: bool,
     pub speed: f32,
 }
@@ -443,6 +448,7 @@ impl Ship {
             orbit_camera_blend: 0.0,
             planet_locked: false,
             spiky_planet_locked: false,
+            race_planet_locked: false,
             orbit_release_active: false,
             speed: spec.cruise_speed,
         }
@@ -555,6 +561,36 @@ impl ShipController {
         }
     }
 
+    /// Bring distant free flight back into a precise coordinate range without
+    /// changing heading or the position of live shots relative to the ship.
+    pub fn rebase_far_flight(&mut self) -> bool {
+        if self.ship.planet_locked {
+            return false;
+        }
+
+        let position = self.ship.position;
+        let furthest_axis = position.x.abs().max(position.y.abs()).max(position.z.abs());
+        if furthest_axis <= FLOATING_ORIGIN_LIMIT {
+            return false;
+        }
+
+        let length = position.dot(position).sqrt();
+        if !length.is_finite() || length <= FLOATING_ORIGIN_RADIUS {
+            return false;
+        }
+        let rebased_position = position.mul(FLOATING_ORIGIN_RADIUS / length);
+        let shift = rebased_position.sub(position);
+        self.ship.position = rebased_position;
+        for projectile in self
+            .projectiles
+            .iter_mut()
+            .filter(|shot| shot.lifetime > 0.0)
+        {
+            projectile.position = projectile.position.add(shift);
+        }
+        true
+    }
+
     fn spawn_projectile(&mut self, projectile: Projectile) {
         if let Some(slot) = self
             .projectiles
@@ -650,5 +686,46 @@ mod tests {
             controller.spawn_projectile(projectile(2.0));
         }
         assert_eq!(controller.projectiles.len(), MAX_PROJECTILES);
+    }
+
+    #[test]
+    fn far_flight_rebases_and_keeps_steering_responsive() {
+        let mut controller = ShipController::new(&ARWING_SPEC);
+        controller.ship.position = Vec3::new(1_000_000.0, 2_000.0, -4_000.0);
+        controller.ship.yaw = 0.7;
+        controller.spawn_projectile(Projectile {
+            position: controller.ship.position.add(Vec3::new(3.0, 2.0, -1.0)),
+            direction: Vec3::new(1.0, 0.0, 0.0),
+            lifetime: 2.0,
+            scale: 1.0,
+        });
+        let old_offset = controller.projectiles[0]
+            .position
+            .sub(controller.ship.position);
+
+        assert!(controller.rebase_far_flight());
+        assert!(
+            controller
+                .ship
+                .position
+                .dot(controller.ship.position)
+                .sqrt()
+                < 8_193.0
+        );
+        let new_offset = controller.projectiles[0]
+            .position
+            .sub(controller.ship.position);
+        let offset_error = new_offset.sub(old_offset);
+        assert!(offset_error.dot(offset_error) < 0.001);
+
+        let old_yaw = controller.ship.yaw;
+        controller.ship.update_flight(
+            &ShipInput {
+                yaw: 1,
+                ..ShipInput::default()
+            },
+            0.1,
+        );
+        assert!(controller.ship.yaw > old_yaw);
     }
 }

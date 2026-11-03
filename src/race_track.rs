@@ -1,10 +1,11 @@
 //! Jardín Rust geometry with the project's existing vehicle controller/rendering.
 use crate::{
-    TriangleBatch, chase_camera, draw_selection_label,
+    chase_camera, draw_selection_label,
     framebuffer::Framebuffer,
-    obj_loader::{Model, Vec3, load_obj},
+    obj_loader::{load_obj, Model, Vec3},
     queue_model, render_ship_components,
     ship::{ShipController, ShipInput},
+    TriangleBatch,
 };
 
 pub(crate) const PLANET_POSITION: Vec3 = Vec3 {
@@ -43,6 +44,7 @@ impl RaceTrack {
         controller.reset();
         controller.ship.position = PLANET_POSITION.add(Vec3::new(48.0, 8.0, 0.0));
         controller.ship.planet_locked = true;
+        controller.ship.race_planet_locked = true;
         controller.ship.orbit_center = Some(PLANET_POSITION);
     }
 
@@ -180,26 +182,20 @@ mod tests {
     fn imported_map_and_planet_render_with_their_native_materials() {
         let track = RaceTrack::load().unwrap();
         for model in [&track.map, &track.planet] {
-            assert!(
-                model
-                    .vertices
-                    .iter()
-                    .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
-            );
-            assert!(
-                model
-                    .faces
-                    .iter()
-                    .all(|f| f.indices.iter().all(|&i| i < model.vertices.len()))
-            );
-        }
-        assert!(
-            track
-                .map
+            assert!(model
+                .vertices
+                .iter()
+                .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
+            assert!(model
                 .faces
                 .iter()
-                .any(|f| f.color == crate::MaterialColor::Fixed([70, 72, 76]))
-        );
+                .all(|f| f.indices.iter().all(|&i| i < model.vertices.len())));
+        }
+        assert!(track
+            .map
+            .faces
+            .iter()
+            .any(|f| f.color == crate::MaterialColor::Fixed([70, 72, 76])));
         let camera = crate::Camera {
             position: Vec3::new(195.0, 340.0, 123.0),
             forward: Vec3::new(0.0, -1.0, 0.0),
@@ -216,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn track_uses_existing_vehicle_renderer_and_returns_to_vesper() {
+    fn track_uses_existing_vehicle_renderer_and_returns_to_home_orbit() {
         let track = RaceTrack::load().unwrap();
         let vehicle = load_obj("assets/vehicles/mcqueen/mcqueen_carro_detallado.obj").unwrap();
         let mut controller = ShipController::new(&MCQUEEN_CAR_SPEC);
@@ -241,18 +237,20 @@ mod tests {
         track.leave(&mut controller);
         assert!(controller.ship.planet_locked);
         assert!(!controller.ship.spiky_planet_locked);
+        assert!(controller.ship.race_planet_locked);
         assert!(controller.projectiles.is_empty());
     }
 
     #[test]
-    fn racing_planet_is_visible_from_the_vesper_portal_exit() {
+    fn racing_planet_is_visible_in_the_home_galaxy() {
         let track = RaceTrack::load().unwrap();
         let mut controller = ShipController::new(&MCQUEEN_CAR_SPEC);
-        controller.ship.position = Vec3::new(-70.0, 48.0, 100.0);
-        controller.ship.yaw = std::f32::consts::FRAC_PI_2;
+        controller.ship.position = PLANET_POSITION.add(Vec3::new(80.0, 30.0, 70.0));
+        let direction = PLANET_POSITION.sub(controller.ship.position).normalize();
+        (controller.ship.yaw, controller.ship.pitch) = crate::direction_to_angles(direction);
         let camera = chase_camera(&controller.ship);
         let mut frame = Framebuffer::new(crate::WIDTH, crate::HEIGHT);
-        crate::draw_skybox(&mut frame, 0.0, crate::galaxy::Galaxy::Vesper);
+        crate::draw_skybox(&mut frame, 0.0, crate::galaxy::Galaxy::Home);
         let before = frame.pixels.clone();
         crate::render_model(
             &track.planet,
