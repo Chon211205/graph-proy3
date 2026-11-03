@@ -80,6 +80,13 @@ exporta a OBJ para el juego. Para reconstruirlo con Blender 4.x:
 blender --background --python scripts/create_sun_blender.py
 ```
 
+El planeta de carreras también conserva su archivo Blender editable y se puede
+regenerar con:
+
+```powershell
+blender --background --python scripts/create_racing_planet_blender.py
+```
+
 `blender_mcp/` permite que un cliente MCP controle Blender para crear modelos a
 partir de cubos, esferas, cilindros, conos y toros, inspeccionar la escena y
 exportar OBJ/MTL directamente a `assets/`. La comunicacion es local

@@ -27,7 +27,7 @@ pub(crate) struct RaceTrack {
 impl RaceTrack {
     pub fn load() -> Result<Self, String> {
         Ok(Self {
-            planet: load_obj("assets/planets/planeta_carreras.obj")?,
+            planet: load_obj("assets/planets/planeta_carreras_detallado.obj")?,
             map: load_obj("assets/levels/kart_racer/jardin_rust.obj")?,
             tiles: MAP.lines().map(|line| line.as_bytes().to_vec()).collect(),
         })
@@ -196,6 +196,19 @@ mod tests {
             .faces
             .iter()
             .any(|f| f.color == crate::MaterialColor::Fixed([70, 72, 76])));
+        assert!(track.planet.vertices.len() > 7_000);
+        assert!(track.planet.faces.len() > 14_000);
+        let (_, radius) = track.planet.bounds();
+        assert!((30.0..33.0).contains(&radius), "unexpected planet radius {radius}");
+        for material in [
+            "race_rgb_44_133_88",
+            "race_rgb_245_246_239",
+            "race_rgb_30_34_42",
+            "race_rgb_245_208_42",
+            "race_rgb_54_220_255",
+        ] {
+            assert!(track.planet.faces.iter().any(|face| face.material == material));
+        }
         let camera = crate::Camera {
             position: Vec3::new(195.0, 340.0, 123.0),
             forward: Vec3::new(0.0, -1.0, 0.0),

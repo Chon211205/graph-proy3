@@ -10,6 +10,6 @@ Mapa predeterminado de [ZyroBad/kart_racer](https://github.com/ZyroBad/kart_race
 
 No se importaron menús, vehículos, audio, físicas, derrape, boost, checkpoints, vueltas ni reglas del juego de referencia. Las marcas de boost son parte visual del mapa. Este minijuego permite recorrer el circuito con los vehículos y el controlador del proyecto actual.
 
-`assets/planets/planeta_carreras.obj` es un planeta nuevo creado para esta integración, con superficie verde y un cinturón de pista con cuadros blancos y negros.
+`assets/planets/planeta_carreras_detallado.obj` es un planeta nuevo modelado en Blender para esta integración, con terreno orgánico, cinturón de pista a cuadros, guardarraíles, luces de impulso y balizas polares. Su fuente editable es `assets/planets/planeta_carreras_detallado.blend` y puede regenerarse con `scripts/create_racing_planet_blender.py`.
 
 Para reconstruir los OBJ, coloca la revisión indicada en `target/kart_racer_source` y ejecuta `python tools/import_kart_map.py` desde la raíz del proyecto. El juego usa los OBJ y las celdas ya incluidos; no necesita descargar el repositorio de referencia.
