@@ -8,7 +8,9 @@ Mapa predeterminado de [ZyroBad/kart_racer](https://github.com/ZyroBad/kart_race
 - Posición inicial original: `(15, 34)`, mirando hacia `+X`.
 - La colisión conserva las celdas sólidas de `src/player.rs`: `#`, `H`, `S`, `W`, `D`.
 
-No se importaron menús, vehículos, audio, físicas, derrape, boost, checkpoints, vueltas ni reglas del juego de referencia. Las marcas de boost son parte visual del mapa. Este minijuego permite recorrer el circuito con los vehículos y el controlador del proyecto actual.
+La geometría del mapa y las celdas proceden del proyecto de referencia. Su flujo de menús, vehículos, audio y código de juego no se incorporaron. Las mecánicas de carrera se reimplementaron para este proyecto en `src/race_track/`: conducción arcade, derrape y turbo, checkpoints, tres vueltas, colisiones, minimapa, HUD, pausa y resultados. En pista se renderiza la nave espacial elegida por el jugador usando el renderizador existente.
+
+Al salir con Backspace, el juego devuelve la nave al espacio libre alrededor del planeta de carreras. El mismo comportamiento de retorno al espacio se aplica al abandonar los minijuegos acuático y Guardián del Núcleo.
 
 `assets/planets/planeta_carreras_detallado.obj` es un planeta nuevo modelado en Blender para esta integración, con terreno orgánico, cinturón de pista a cuadros, guardarraíles, luces de impulso y balizas polares. Su fuente editable es `assets/planets/planeta_carreras_detallado.blend` y puede regenerarse con `scripts/create_racing_planet_blender.py`.
 
