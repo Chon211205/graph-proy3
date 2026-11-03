@@ -1362,6 +1362,70 @@ fn make_sphere(radius: f32, stacks: usize, slices: usize, sun: bool) -> Model {
     Model::new(vertices, faces)
 }
 
+#[derive(Clone, Copy)]
+enum PlanetVisual {
+    Water,
+    Spiky,
+    Racing,
+}
+
+struct PlanetLodModels {
+    low: Model,
+}
+
+#[derive(Clone, Copy, Default)]
+struct PlanetLodState {
+    level: usize,
+}
+
+impl PlanetLodState {
+    fn update(&mut self, projected_radius: f32) -> usize {
+        self.level = match self.level {
+            0 if projected_radius < 24.0 => 1,
+            1 if projected_radius > 34.0 => 0,
+            level => level,
+        };
+        self.level
+    }
+}
+
+fn make_planet_lod(radius: f32, stacks: usize, slices: usize, visual: PlanetVisual) -> Model {
+    let mut model = make_sphere(radius, stacks, slices, false);
+    for (index, face) in model.faces.iter_mut().enumerate() {
+        let band = index / (slices * 2).max(1);
+        let material = match visual {
+            PlanetVisual::Water if band < 2 || band + 2 >= stacks => "planet_ice",
+            PlanetVisual::Water if hash(index as u32 * 31) % 5 < 2 => "planet_land",
+            PlanetVisual::Water => "planet_ocean",
+            PlanetVisual::Spiky if hash(index as u32 * 17) % 7 == 0 => "Coral_claro",
+            PlanetVisual::Spiky if index % 2 == 0 => "Fucsia",
+            PlanetVisual::Spiky => "Magenta_sombra",
+            PlanetVisual::Racing if band == stacks / 2 => "race_rgb_245_208_42",
+            PlanetVisual::Racing if index % 3 == 0 => "race_rgb_58_160_107",
+            PlanetVisual::Racing => "race_rgb_44_133_88",
+        };
+        *face = Face::new(face.indices, material, "planet_lod");
+        face.smooth = true;
+    }
+    model.recalculate_normals();
+    model
+}
+
+fn make_planet_lods(radius: f32, visual: PlanetVisual) -> PlanetLodModels {
+    PlanetLodModels {
+        low: make_planet_lod(radius, 6, 10, visual),
+    }
+}
+
+fn projected_planet_radius(camera: &Camera, center: Vec3, radius: f32, focal: f32) -> f32 {
+    let depth = center.sub(camera.position).dot(camera.forward);
+    if depth <= NEAR_PLANE {
+        f32::INFINITY
+    } else {
+        radius * focal / depth
+    }
+}
+
 fn make_wormhole_sphere(radius: f32, stacks: usize, slices: usize) -> Model {
     let mut model = make_sphere(radius, stacks, slices, false);
     for face in &mut model.faces {
@@ -2383,6 +2447,8 @@ fn render_scene(
     wormhole_center: Vec3,
     galaxy: Galaxy,
     race_planet: &Model,
+    planet_lods: [&PlanetLodModels; 3],
+    planet_lod_states: &mut [PlanetLodState; 3],
     framebuffer: &mut Framebuffer,
     batch: &mut TriangleBatch,
     ship: &Ship,
@@ -2400,63 +2466,104 @@ fn render_scene(
     let planet_rotation = world_time * 0.25;
 
     if galaxy == Galaxy::Home {
-    draw_water_planet_atmosphere(
-        framebuffer,
-        &camera,
-        planet_position,
-        WATER_PLANET_RADIUS,
-        world_time,
-    );
+        draw_water_planet_atmosphere(
+            framebuffer,
+            &camera,
+            planet_position,
+            WATER_PLANET_RADIUS,
+            world_time,
+        );
 
-    queue_model(
-        sun,
-        batch,
-        &camera,
-        |vertex| vertex.add(sun_position),
-        None,
-        None,
-    );
-    queue_model(
-        planet,
-        batch,
-        &camera,
-        |vertex| {
-            let vertex = vertex.sub(planet_center).mul(planet_scale);
-            let (sin, cos) = planet_rotation.sin_cos();
-            Vec3::new(
-                vertex.x * cos - vertex.z * sin,
-                vertex.y,
-                vertex.x * sin + vertex.z * cos,
-            )
-            .add(planet_position)
-        },
-        Some(world_time),
-        None,
-    );
-    let spiky_rotation = world_time * SPIKY_PLANET_ROTATION_SPEED;
-    let spiky_position = spiky_planet_position(world_time);
-    queue_model(
-        spiky_planet,
-        batch,
-        &camera,
-        |vertex| {
-            let vertex = vertex.sub(spiky_planet_center).mul(spiky_planet_scale);
-            let (sin, cos) = spiky_rotation.sin_cos();
-            Vec3::new(
-                vertex.x * cos - vertex.z * sin,
-                vertex.y,
-                vertex.x * sin + vertex.z * cos,
-            )
-            .add(spiky_position)
-        },
-        None,
-        None,
-    );
-    }
-
-    if galaxy == Galaxy::Home {
-        queue_model(race_planet, batch, &camera,
-            |v| v.add(race_track::PLANET_POSITION), None, None);
+        queue_model(
+            sun,
+            batch,
+            &camera,
+            |vertex| vertex.add(sun_position),
+            None,
+            None,
+        );
+        let water_lod = planet_lod_states[0].update(projected_planet_radius(
+            &camera,
+            planet_position,
+            WATER_PLANET_RADIUS,
+            batch.projection.focal,
+        ));
+        let water_model = match water_lod {
+            0 => planet,
+            _ => &planet_lods[0].low,
+        };
+        queue_model(
+            water_model,
+            batch,
+            &camera,
+            |vertex| {
+                let vertex = if water_lod == 0 {
+                    vertex.sub(planet_center).mul(planet_scale)
+                } else {
+                    vertex
+                };
+                let (sin, cos) = planet_rotation.sin_cos();
+                Vec3::new(
+                    vertex.x * cos - vertex.z * sin,
+                    vertex.y,
+                    vertex.x * sin + vertex.z * cos,
+                )
+                .add(planet_position)
+            },
+            Some(world_time),
+            None,
+        );
+        let spiky_rotation = world_time * SPIKY_PLANET_ROTATION_SPEED;
+        let spiky_position = spiky_planet_position(world_time);
+        let spiky_lod = planet_lod_states[1].update(projected_planet_radius(
+            &camera,
+            spiky_position,
+            SPIKY_PLANET_RADIUS,
+            batch.projection.focal,
+        ));
+        let spiky_model = match spiky_lod {
+            0 => spiky_planet,
+            _ => &planet_lods[1].low,
+        };
+        queue_model(
+            spiky_model,
+            batch,
+            &camera,
+            |vertex| {
+                let vertex = if spiky_lod == 0 {
+                    vertex.sub(spiky_planet_center).mul(spiky_planet_scale)
+                } else {
+                    vertex
+                };
+                let (sin, cos) = spiky_rotation.sin_cos();
+                Vec3::new(
+                    vertex.x * cos - vertex.z * sin,
+                    vertex.y,
+                    vertex.x * sin + vertex.z * cos,
+                )
+                .add(spiky_position)
+            },
+            None,
+            None,
+        );
+        let race_lod = planet_lod_states[2].update(projected_planet_radius(
+            &camera,
+            race_track::PLANET_POSITION,
+            race_track::PLANET_RADIUS,
+            batch.projection.focal,
+        ));
+        let race_model = match race_lod {
+            0 => race_planet,
+            _ => &planet_lods[2].low,
+        };
+        queue_model(
+            race_model,
+            batch,
+            &camera,
+            |vertex| vertex.add(race_track::PLANET_POSITION),
+            None,
+            None,
+        );
     }
 
     queue_model(
@@ -3352,6 +3459,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let spiky_planet_path = "assets/planets/planeta_espinas.obj";
     let spiky_planet = load_obj(spiky_planet_path)
         .map_err(|error| format!("Error al cargar {spiky_planet_path}: {error}"))?;
+    let planet_lods = [
+        make_planet_lods(WATER_PLANET_RADIUS, PlanetVisual::Water),
+        make_planet_lods(SPIKY_PLANET_RADIUS, PlanetVisual::Spiky),
+        make_planet_lods(race_track::PLANET_RADIUS, PlanetVisual::Racing),
+    ];
+    let mut planet_lod_states = [PlanetLodState::default(); 3];
     let water_level_path = "assets/levels/waterlevel_extendido.obj";
     let mut water_level = load_obj(water_level_path)
         .map_err(|error| format!("Error al cargar {water_level_path}: {error}"))?;
@@ -3841,6 +3954,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     wormhole_position(active_galaxy),
                     active_galaxy,
                     &race_track.planet,
+                    [&planet_lods[0], &planet_lods[1], &planet_lods[2]],
+                    &mut planet_lod_states,
                     &mut scene_framebuffer,
                     &mut triangle_batch,
                     &ship_controller.ship,
@@ -3976,13 +4091,16 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 stats.raster_ms,
             );
             let geometry = format!(
-                "MODELOS {} CULL {} VERT {} TRI {} RES {}% DRS {}",
+                "MODELOS {} CULL {} VERT {} TRI {} RES {}% DRS {} LOD {}/{}/{}",
                 stats.models_visible,
                 stats.models_culled,
                 stats.vertices_transformed,
                 stats.triangles_submitted,
                 dynamic_resolution.percentage(),
                 dynamic_resolution.status,
+                planet_lod_states[0].level,
+                planet_lod_states[1].level,
+                planet_lod_states[2].level,
             );
             draw_selection_label(&mut framebuffer, &summary, 600, 92, 1, 0x9fffd2);
             draw_selection_label(&mut framebuffer, &geometry, 600, 108, 1, 0xc6d8ff);
@@ -4741,6 +4859,38 @@ mod tests {
         }
         assert_eq!(resolution.scale_index, 0);
         assert_eq!(resolution.status, "ESTABLE");
+    }
+
+    #[test]
+    fn planet_lod_uses_hysteresis_and_reduces_geometry() {
+        let lods = make_planet_lods(WATER_PLANET_RADIUS, PlanetVisual::Water);
+        assert!(lods.low.faces.len() < 200);
+
+        let mut state = PlanetLodState::default();
+        assert_eq!(state.update(80.0), 0);
+        assert_eq!(state.update(25.0), 0);
+        assert_eq!(state.update(23.0), 1);
+        assert_eq!(state.update(30.0), 1);
+        assert_eq!(state.update(35.0), 0);
+    }
+
+    #[test]
+    fn projected_planet_size_decreases_with_distance() {
+        let camera = test_camera();
+        let focal = ProjectionCache::new(WIDTH, HEIGHT).focal;
+        let near = projected_planet_radius(
+            &camera,
+            camera.position.add(camera.forward.mul(100.0)),
+            WATER_PLANET_RADIUS,
+            focal,
+        );
+        let far = projected_planet_radius(
+            &camera,
+            camera.position.add(camera.forward.mul(400.0)),
+            WATER_PLANET_RADIUS,
+            focal,
+        );
+        assert!(near > far * 3.9);
     }
 
     #[test]
