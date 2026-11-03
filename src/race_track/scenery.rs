@@ -7,7 +7,6 @@ pub(super) struct RaceScenery {
     pub arches: Vec<Model>,
     pub terrain: Model,
     pub hills: Model,
-    pub ringed_planet: Model,
 }
 
 impl RaceScenery {
@@ -23,13 +22,22 @@ impl RaceScenery {
                 let sample = course.samples[index];
                 let side = Vec3::new(-sample.tangent.z, 0.0, sample.tangent.x);
                 for direction in [-1.0, 1.0] {
-                    // Keep the forest close enough to frame the road while
-                    // leaving a clear sightline through upcoming corners.
-                    let spacing = 8.0 + ((index * 7 + chunk * 13) % 11) as f32;
-                    let offset = direction * (HALF_ROAD + CURB_WIDTH + spacing);
-                    let position = sample.position.add(side.mul(offset));
                     let seed = (index * 13 + chunk * 31) as f32;
-                    forest.tree(position, 5.5 + seed.sin().abs() * 3.8, seed);
+                    let tree_height = 5.5 + seed.sin().abs() * 3.8;
+                    let crown_radius = tree_height * 0.58;
+                    let clearance = HALF_ROAD + CURB_WIDTH + crown_radius + 4.0;
+                    let spacing = 12.0 + ((index * 7 + chunk * 13) % 11) as f32;
+                    let Some(position) = safe_offset_from_course(
+                        course,
+                        sample.position,
+                        side,
+                        direction,
+                        HALF_ROAD + CURB_WIDTH + spacing,
+                        clearance,
+                    ) else {
+                        continue;
+                    };
+                    forest.tree(position, tree_height, seed);
                     forest.fern(
                         position.add(side.mul(direction * 7.0)),
                         sample.tangent,
@@ -48,27 +56,36 @@ impl RaceScenery {
         }
 
         let mut hills = MeshBuilder::default();
-        hills.hills();
+        hills.hills(course);
         let mut terrain = MeshBuilder::default();
         terrain.terrain();
-        let mut planet = MeshBuilder::default();
-        planet.sphere(
-            Vec3::new(0.0, 0.0, 0.0),
-            Vec3::new(52.0, 42.0, 42.0),
-            16,
-            8,
-            [89, 157, 179],
-        );
-        planet.ring(66.0, 83.0, 2.2, 48, [189, 181, 131]);
-
         Self {
             forests,
             arches,
             terrain: terrain.finish(),
             hills: hills.finish(),
-            ringed_planet: planet.finish(),
         }
     }
+}
+
+fn safe_offset_from_course(
+    course: &RaceCourse,
+    origin: Vec3,
+    side: Vec3,
+    direction: f32,
+    initial_offset: f32,
+    clearance: f32,
+) -> Option<Vec3> {
+    let mut offset = initial_offset;
+    while offset <= 72.0 {
+        let candidate = origin.add(side.mul(direction * offset));
+        let (_, distance, _) = course.nearest(candidate);
+        if distance >= clearance {
+            return Some(candidate);
+        }
+        offset += 4.0;
+    }
+    None
 }
 
 #[derive(Default)]
@@ -193,7 +210,9 @@ impl MeshBuilder {
 
     fn stone_arch(&mut self, sample: super::course::TrackSample) {
         let side = Vec3::new(-sample.tangent.z, 0.0, sample.tangent.x);
-        let outer = HALF_ROAD + CURB_WIDTH + 1.5;
+        // Keep the arch pillars outside both the rumble strip and the
+        // continuous barrier line; only the crossbar passes over the track.
+        let outer = HALF_ROAD + CURB_WIDTH + 4.5;
         for direction in [-1.0, 1.0] {
             self.box_aligned(
                 sample.position.add(side.mul(outer * direction)),
@@ -336,54 +355,48 @@ impl MeshBuilder {
         }
     }
 
-    fn ring(&mut self, inner: f32, outer: f32, thickness: f32, sectors: usize, color: [u8; 3]) {
-        for sector in 0..sectors {
-            let a0 = sector as f32 * std::f32::consts::TAU / sectors as f32;
-            let a1 = (sector + 1) as f32 * std::f32::consts::TAU / sectors as f32;
-            let point = |radius: f32, angle: f32, y: f32| {
-                Vec3::new(radius * angle.cos(), y, radius * angle.sin())
-            };
-            self.quad(
-                point(inner, a0, 0.0),
-                point(outer, a0, thickness),
-                point(outer, a1, thickness),
-                point(inner, a1, 0.0),
-                if sector % 3 == 0 {
-                    [211, 203, 157]
-                } else {
-                    color
-                },
-                "ringed_planet_rings",
-            );
-        }
-    }
-
-    fn hills(&mut self) {
-        // Distant low hills use a shallow profile. The old tall, flat
-        // triangles sat beside the road and filled the camera with green
-        // polygons, hiding the course and the rivals.
-        let ridges = [
-            (Vec3::new(190.0, 0.0, -72.0), 210.0, 18.0),
-            (Vec3::new(190.0, 0.0, 315.0), 210.0, 20.0),
-            (Vec3::new(-82.0, 0.0, 120.0), 90.0, 16.0),
-            (Vec3::new(462.0, 0.0, 120.0), 90.0, 17.0),
-        ];
-        for (center, half_width, height) in ridges {
-            for segment in 0..24 {
-                let t0 = segment as f32 / 24.0;
-                let t1 = (segment + 1) as f32 / 24.0;
-                let x0 = center.x - half_width + t0 * half_width * 2.0;
-                let x1 = center.x - half_width + t1 * half_width * 2.0;
-                let hill_y0 = (t0 * std::f32::consts::PI).sin() * height;
-                let hill_y1 = (t1 * std::f32::consts::PI).sin() * height;
-                let near0 = Vec3::new(x0, 0.0, center.z - 18.0);
-                let near1 = Vec3::new(x1, 0.0, center.z - 18.0);
-                let crest0 = Vec3::new(x0, hill_y0, center.z + 6.0);
-                let crest1 = Vec3::new(x1, hill_y1, center.z + 6.0);
-                let far0 = Vec3::new(x0, 0.0, center.z + 34.0);
-                let far1 = Vec3::new(x1, 0.0, center.z + 34.0);
-                self.quad(near0, near1, crest1, crest0, [58, 111, 76], "misty_green_hills");
-                self.quad(crest0, crest1, far1, far0, [79, 132, 83], "hill_slopes");
+    fn hills(&mut self, course: &RaceCourse) {
+        // Build low-poly ridges beside the road, deriving every placement
+        // from the actual course and checking the full road loop for nearby
+        // sections. This prevents a later hairpin from running through a hill.
+        for (index, sample) in course.samples.iter().step_by(10).enumerate() {
+            let side = Vec3::new(-sample.tangent.z, 0.0, sample.tangent.x);
+            for direction in [-1.0, 1.0] {
+                let Some(center) = safe_offset_from_course(
+                    course,
+                    sample.position,
+                    side,
+                    direction,
+                    86.0,
+                    68.0,
+                ) else {
+                    continue;
+                };
+                let radius = 34.0 + (index % 4) as f32 * 4.0;
+                let height = 14.0 + (index % 5) as f32 * 2.5;
+                let segments = 8;
+                for segment in 0..segments {
+                    let a0 = segment as f32 * std::f32::consts::TAU / segments as f32;
+                    let a1 = (segment + 1) as f32 * std::f32::consts::TAU / segments as f32;
+                    let base0 = center.add(Vec3::new(a0.cos() * radius, 0.0, a0.sin() * radius));
+                    let base1 = center.add(Vec3::new(a1.cos() * radius, 0.0, a1.sin() * radius));
+                    let ridge = center.add(Vec3::new(
+                        (segment as f32 * 1.7).sin() * 7.0,
+                        height * (0.78 + (segment % 3) as f32 * 0.08),
+                        (segment as f32 * 1.3).cos() * 7.0,
+                    ));
+                    self.tri(
+                        base0,
+                        base1,
+                        ridge,
+                        if segment % 2 == 0 {
+                            [58, 111, 76]
+                        } else {
+                            [79, 132, 83]
+                        },
+                        "misty_green_hills",
+                    );
+                }
             }
         }
     }
@@ -433,5 +446,25 @@ impl MeshBuilder {
 
     fn finish(self) -> Model {
         Model::new(self.vertices, self.faces)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn forest_and_hill_geometry_stays_clear_of_the_drivable_surface() {
+        let course = RaceCourse::new();
+        let scenery = RaceScenery::new(&course);
+        for model in scenery.forests.iter().chain(std::iter::once(&scenery.hills)) {
+            for vertex in &model.vertices {
+                let (_, distance, _) = course.nearest(*vertex);
+                assert!(
+                    distance > HALF_ROAD + 0.8,
+                    "scenery intrudes into road clearance at {vertex:?} (distance {distance})"
+                );
+            }
+        }
     }
 }
