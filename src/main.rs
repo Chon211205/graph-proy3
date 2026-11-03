@@ -50,6 +50,8 @@ const AVOIDANCE_DISTANCE: f32 = 52.0;
 const ORBIT_LIMIT_RADIUS: f32 = 60.0;
 const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
 const WATER_LEVEL_LENGTH: f32 = 525.0;
+const WATER_BOSS_ARENA_START: f32 = 450.0;
+const WATER_BOSS_MAX_HEALTH: i32 = 30;
 const WATER_LEVEL_HALF_WIDTH: f32 = 10.0;
 const WATER_LEVEL_SOFT_BORDER: f32 = 8.4;
 const WATER_LEVEL_BORDER_STRENGTH: f32 = 26.0;
@@ -393,6 +395,32 @@ struct WaterLevelState {
     elapsed: f32,
     enemies: Vec<WaterEnemy>,
     defeated_enemies: usize,
+    boss_health: i32,
+    boss_defeated: bool,
+    boss_hit_flash: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WaterStage {
+    Entrance,
+    Ruins,
+    Minefield,
+    SpeedTunnel,
+    OpenArena,
+    SharkBoss,
+}
+
+impl WaterStage {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Entrance => "1 CAVERNA DE ENTRADA",
+            Self::Ruins => "2 CORREDOR DE RUINAS",
+            Self::Minefield => "3 CAMPO MINADO",
+            Self::SpeedTunnel => "4 TUNEL DE ALTA VELOCIDAD",
+            Self::OpenArena => "5 ARENA ABIERTA",
+            Self::SharkBoss => "6 TIBURON MECANICO",
+        }
+    }
 }
 
 struct WaterEnemy {
@@ -487,16 +515,23 @@ impl BubbleEmitter {
 
 impl WaterLevelState {
     fn new() -> Self {
-        let enemies = (0..30)
-            .map(|index| WaterEnemy {
-                kind: index % 3,
-                progress: 18.0 + index as f32 * 16.0,
-                lateral: [-3.5, 2.6, -1.0, 3.4, 0.7, -2.9][index % 6],
-                height: [3.0, 5.5, 8.5, 4.0, 10.0, 7.0][index % 6],
-                phase: index as f32 * 1.37,
+        let mut enemies = Vec::new();
+        let mut add_wave = |count: usize, start: f32, spacing: f32, kinds: &[usize]| {
+            let base = enemies.len();
+            enemies.extend((0..count).map(|index| WaterEnemy {
+                kind: kinds[index % kinds.len()],
+                progress: start + index as f32 * spacing,
+                lateral: [-4.8, 3.8, -1.4, 5.2, 1.2, -3.6][index % 6],
+                height: [3.0, 6.0, 9.5, 4.2, 10.5, 7.2][index % 6],
+                phase: (base + index) as f32 * 1.37,
                 alive: true,
-            })
-            .collect();
+            }));
+        };
+        add_wave(4, 28.0, 13.0, &[2, 1]);
+        add_wave(8, 88.0, 10.0, &[1, 2, 1]);
+        add_wave(16, 176.0, 5.4, &[0]);
+        add_wave(6, 286.0, 13.0, &[0, 2]);
+        add_wave(10, 366.0, 7.2, &[1, 2, 0]);
         Self {
             progress: 3.0,
             lateral: 0.0,
@@ -504,12 +539,44 @@ impl WaterLevelState {
             elapsed: 0.0,
             enemies,
             defeated_enemies: 0,
+            boss_health: WATER_BOSS_MAX_HEALTH,
+            boss_defeated: false,
+            boss_hit_flash: 0.0,
         }
+    }
+
+    fn stage(&self) -> WaterStage {
+        match self.progress {
+            progress if progress < 75.0 => WaterStage::Entrance,
+            progress if progress < 170.0 => WaterStage::Ruins,
+            progress if progress < 270.0 => WaterStage::Minefield,
+            progress if progress < 360.0 => WaterStage::SpeedTunnel,
+            progress if progress < WATER_BOSS_ARENA_START => WaterStage::OpenArena,
+            _ => WaterStage::SharkBoss,
+        }
+    }
+
+    fn boss_position(&self) -> Vec3 {
+        let lunge = ((self.elapsed * 0.72).sin().max(0.0)).powf(5.0) * 9.0;
+        Vec3::new(
+            -(WATER_BOSS_ARENA_START + 31.0 - lunge),
+            7.2 + (self.elapsed * 1.15).sin() * 2.8,
+            (self.elapsed * 0.78).sin() * 7.2,
+        )
     }
 
     fn update(&mut self, ship: &mut Ship, input: &ShipInput, delta_time: f32) {
         self.elapsed += delta_time;
-        self.progress += ship.speed * WATER_LEVEL_SPEED_FACTOR * delta_time;
+        self.boss_hit_flash = (self.boss_hit_flash - delta_time).max(0.0);
+        let speed_boost = if self.stage() == WaterStage::SpeedTunnel {
+            1.75
+        } else {
+            1.0
+        };
+        self.progress += ship.speed * WATER_LEVEL_SPEED_FACTOR * speed_boost * delta_time;
+        if !self.boss_defeated {
+            self.progress = self.progress.min(WATER_BOSS_ARENA_START);
+        }
         self.lateral += input.yaw as f32 * 17.0 * delta_time;
 
         let border_distance = self.lateral.abs();
@@ -526,8 +593,7 @@ impl WaterLevelState {
         self.height = (self.height + input.pitch as f32 * 15.0 * delta_time)
             .clamp(WATER_LEVEL_MIN_HEIGHT, WATER_LEVEL_MAX_HEIGHT);
 
-        let route_curve = (self.progress * 0.12).sin() * 3.0;
-        let route_height = (self.progress * 0.018).sin() * 1.5;
+        let (route_curve, route_height) = water_route(self.progress);
         ship.position = Vec3::new(
             -self.progress,
             self.height + route_height,
@@ -543,10 +609,29 @@ impl WaterLevelState {
     }
 }
 
+fn water_route(progress: f32) -> (f32, f32) {
+    match progress {
+        p if p < 75.0 => ((p * 0.075).sin() * 1.4, (p * 0.035).sin() * 0.8),
+        p if p < 170.0 => (
+            (p * 0.115).sin() * 4.2 + (p * 0.041).sin() * 1.6,
+            (p * 0.052).sin() * 1.8,
+        ),
+        p if p < 270.0 => (
+            (p * 0.082).sin() * 3.0,
+            (p * 0.071).sin() * 2.0,
+        ),
+        p if p < 360.0 => ((p * 0.028).sin() * 1.1, (p * 0.032).sin() * 0.7),
+        p if p < WATER_BOSS_ARENA_START => (
+            (p * 0.055).sin() * 2.0,
+            (p * 0.024).sin() * 1.2,
+        ),
+        _ => (0.0, 0.0),
+    }
+}
+
 impl WaterEnemy {
     fn position(&self, time: f32) -> Vec3 {
-        let route_curve = (self.progress * 0.12).sin() * 3.0;
-        let route_height = (self.progress * 0.018).sin() * 1.5;
+        let (route_curve, route_height) = water_route(self.progress);
         let (lateral_motion, vertical_motion) = match self.kind {
             0 => (
                 (time * 0.65 + self.phase).sin() * 0.7,
@@ -704,6 +789,44 @@ fn resolve_water_enemy_collisions(
     ship: &mut Ship,
     projectiles: &mut [Projectile],
 ) {
+    let boss_active = state.stage() == WaterStage::SharkBoss && !state.boss_defeated;
+    let boss_position = state.boss_position();
+    if boss_active {
+        for projectile in projectiles.iter_mut().filter(|shot| shot.lifetime > 0.0) {
+            let offset = projectile.position.sub(boss_position);
+            let hit_radius = 8.5 + projectile.scale * 0.45;
+            if offset.dot(offset) <= hit_radius * hit_radius {
+                let damage = if projectile.scale > 2.0 { 3 } else { 1 };
+                state.boss_health = (state.boss_health - damage).max(0);
+                state.boss_hit_flash = 0.16;
+                projectile.lifetime = 0.0;
+                if state.boss_health == 0 {
+                    state.boss_defeated = true;
+                    state.defeated_enemies += 1;
+                }
+            }
+        }
+
+        let offset = ship.position.sub(boss_position);
+        let separation = ship.spec.collision_radius + 8.0;
+        let distance_squared = offset.dot(offset);
+        if distance_squared < separation * separation {
+            let lateral = Vec3::new(0.0, offset.y, offset.z);
+            let lateral_length = lateral.dot(lateral).sqrt();
+            let normal = if lateral_length > 0.001 {
+                lateral.mul(1.0 / lateral_length)
+            } else {
+                Vec3::new(0.0, 1.0, 0.0)
+            };
+            let correction = normal.mul(separation - distance_squared.sqrt() + 0.5);
+            state.height = (state.height + correction.y)
+                .clamp(WATER_LEVEL_MIN_HEIGHT, WATER_LEVEL_MAX_HEIGHT);
+            state.lateral = (state.lateral + correction.z)
+                .clamp(-WATER_LEVEL_HALF_WIDTH, WATER_LEVEL_HALF_WIDTH);
+            ship.position = ship.position.add(correction);
+        }
+    }
+
     let enemy_positions: Vec<Vec3> = state
         .enemies
         .iter()
@@ -1481,6 +1604,44 @@ fn make_wormhole_sphere(radius: f32, stacks: usize, slices: usize) -> Model {
         face.color = MaterialColor::Fixed([2, 1, 7]);
     }
     model
+}
+
+fn make_underwater_boost_ring() -> Model {
+    let major_segments = 32;
+    let tube_segments = 6;
+    let major_radius = 7.8;
+    let tube_radius = 0.34;
+    let mut vertices = Vec::new();
+    for major in 0..=major_segments {
+        let angle = TAU * major as f32 / major_segments as f32;
+        let (sin_angle, cos_angle) = angle.sin_cos();
+        for tube in 0..=tube_segments {
+            let around = TAU * tube as f32 / tube_segments as f32;
+            let (sin_around, cos_around) = around.sin_cos();
+            let ring = major_radius + tube_radius * cos_around;
+            vertices.push(Vec3::new(
+                tube_radius * sin_around,
+                ring * cos_angle,
+                ring * sin_angle,
+            ));
+        }
+    }
+    let mut faces = Vec::new();
+    for major in 0..major_segments {
+        for tube in 0..tube_segments {
+            let a = major * (tube_segments + 1) + tube;
+            let b = a + tube_segments + 1;
+            let c = a + 1;
+            let d = b + 1;
+            for indices in [[a, b, c], [c, b, d]] {
+                let mut face = Face::new(indices, "energy_submarina", "boost_ring");
+                face.shader = SurfaceShader::Flat;
+                face.color = MaterialColor::Fixed([30, 220, 240]);
+                faces.push(face);
+            }
+        }
+    }
+    Model::new(vertices, faces)
 }
 
 fn draw_wormhole_energy(
@@ -2973,10 +3134,10 @@ fn render_water_level(
     level: &LevelSpatialIndex,
     enemy_models: &[Model; 3],
     enemy_centers: &[Vec3; 3],
-    enemies: &[WaterEnemy],
-    enemy_elapsed: f32,
+    state: &WaterLevelState,
     enemy_instance_buffers: &mut [Vec<Vec3>; 3],
     bubble_model: &Model,
+    boost_ring: &Model,
     bubbles: &[BubbleParticle],
     ship_model: &Model,
     ship_center: Vec3,
@@ -2987,15 +3148,14 @@ fn render_water_level(
     batch: &mut TriangleBatch,
     ship: &Ship,
     world_time: f32,
-    progress: f32,
     turbo_power: f32,
     fire_charge: f32,
 ) {
     framebuffer.clear(0);
-    draw_underwater_background(framebuffer, progress * 0.002);
+    draw_underwater_background(framebuffer, state.progress * 0.002);
     let camera = chase_camera(ship);
     debug_assert!(batch.commands.is_empty());
-    for chunk in level.visible_chunks(progress) {
+    for chunk in level.visible_chunks(state.progress) {
         queue_model(
             chunk,
             batch,
@@ -3008,13 +3168,54 @@ fn render_water_level(
     render_water_enemies(
         enemy_models,
         enemy_centers,
-        enemies,
-        enemy_elapsed,
-        progress,
+        &state.enemies,
+        state.elapsed,
+        state.progress,
         batch,
         &camera,
         enemy_instance_buffers,
     );
+    for gate_progress in [286.0_f32, 310.0, 334.0, 356.0] {
+        if (gate_progress - state.progress).abs() < 135.0 {
+            let (route_curve, route_height) = water_route(gate_progress);
+            let pulse = 0.92 + (world_time * 4.0 + gate_progress).sin() * 0.08;
+            queue_model(
+                boost_ring,
+                batch,
+                &camera,
+                |vertex| {
+                    Vec3::new(-gate_progress, 7.0 + route_height, route_curve)
+                        .add(vertex.mul(pulse))
+                },
+                None,
+                None,
+            );
+        }
+    }
+    if state.stage() == WaterStage::SharkBoss && !state.boss_defeated {
+        let model = &enemy_models[1];
+        let center = enemy_centers[1];
+        let position = state.boss_position();
+        let scale = if state.boss_hit_flash > 0.0 { 3.75 } else { 3.55 };
+        let sway = (state.elapsed * 1.6).sin() * 0.08;
+        let forward = Vec3::new(sway.cos(), 0.0, sway.sin());
+        let right = Vec3::new(-sway.sin(), 0.0, sway.cos());
+        let up = Vec3::new(0.0, 1.0, 0.0);
+        queue_model(
+            model,
+            batch,
+            &camera,
+            |vertex| {
+                let local = vertex.sub(center).mul(WATER_ENEMY_SCALE * scale);
+                position
+                    .add(forward.mul(local.x))
+                    .add(right.mul(local.y))
+                    .add(up.mul(local.z))
+            },
+            None,
+            None,
+        );
+    }
     for bubble in bubbles.iter().filter(|bubble| bubble.lifetime > 0.0) {
         queue_model(
             bubble_model,
@@ -3574,6 +3775,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let turbo_plume = make_turbo_plume(12);
     let laser_bolt = make_laser_bolt();
     let bubble_model = make_bubble_model();
+    let underwater_boost_ring = make_underwater_boost_ring();
 
     println!("Vuelo libre 3D iniciado: {}", ship_spec.name);
     println!("W/S o flechas: subir/bajar | Espacio: acelerar | Ctrl: frenar");
@@ -4068,10 +4270,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &water_level_spatial,
                     &enemy_models,
                     &enemy_centers,
-                    &water_level_state.enemies,
-                    water_level_state.elapsed,
+                    &water_level_state,
                     &mut enemy_instance_buffers,
                     &bubble_model,
+                    &underwater_boost_ring,
                     &bubble_emitter.particles,
                     level_ship_model,
                     level_ship_center,
@@ -4082,7 +4284,6 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &mut triangle_batch,
                     &ship_controller.ship,
                     world_time,
-                    water_level_state.progress,
                     turbo_power,
                     ship_controller.charge_ratio(),
                 );
@@ -4242,9 +4443,39 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 let enemy_counter = format!(
                     "ENEMIGOS: {}/{}",
                     water_level_state.defeated_enemies,
-                    water_level_state.enemies.len()
+                    water_level_state.enemies.len() + 1
                 );
                 draw_selection_label(&mut framebuffer, &enemy_counter, 1035, 24, 2, 0x65dfea);
+                draw_selection_label(
+                    &mut framebuffer,
+                    water_level_state.stage().label(),
+                    600,
+                    54,
+                    2,
+                    0x8cebf4,
+                );
+                if water_level_state.stage() == WaterStage::SharkBoss {
+                    let boss_status = if water_level_state.boss_defeated {
+                        "TIBURON DESTRUIDO - SALIDA ABIERTA".to_string()
+                    } else {
+                        format!(
+                            "TIBURON MECANICO  VIDA {}/{}  ENTER: DISPARAR",
+                            water_level_state.boss_health, WATER_BOSS_MAX_HEALTH
+                        )
+                    };
+                    draw_selection_label(
+                        &mut framebuffer,
+                        &boss_status,
+                        600,
+                        82,
+                        2,
+                        if water_level_state.boss_hit_flash > 0.0 {
+                            0xffffff
+                        } else {
+                            0xff5252
+                        },
+                    );
+                }
             }
             draw_selection_label(
                 &mut framebuffer,
@@ -5102,8 +5333,61 @@ mod tests {
         assert!(!spatial.nearby_colliders(510.0).is_empty());
 
         let state = WaterLevelState::new();
-        assert_eq!(state.enemies.len(), 30);
+        assert_eq!(state.enemies.len(), 44);
         assert!(state.enemies.last().unwrap().progress < WATER_LEVEL_LENGTH);
+        assert_eq!(state.stage(), WaterStage::Entrance);
+        assert_eq!(
+            state
+                .enemies
+                .iter()
+                .filter(|enemy| enemy.kind == 0 && (170.0..270.0).contains(&enemy.progress))
+                .count(),
+            16
+        );
+    }
+
+    #[test]
+    fn aquatic_ruins_progresses_through_six_stages_and_stops_for_boss() {
+        let mut state = WaterLevelState::new();
+        for (progress, expected) in [
+            (20.0, WaterStage::Entrance),
+            (100.0, WaterStage::Ruins),
+            (200.0, WaterStage::Minefield),
+            (300.0, WaterStage::SpeedTunnel),
+            (400.0, WaterStage::OpenArena),
+            (WATER_BOSS_ARENA_START, WaterStage::SharkBoss),
+        ] {
+            state.progress = progress;
+            assert_eq!(state.stage(), expected);
+        }
+
+        let mut ship = Ship::new(&ARWING_SUBMARINE_SPEC);
+        state.progress = WATER_BOSS_ARENA_START - 0.1;
+        state.update(&mut ship, &ShipInput::default(), 1.0);
+        assert_eq!(state.progress, WATER_BOSS_ARENA_START);
+    }
+
+    #[test]
+    fn charged_shots_defeat_mecha_shark_and_open_exit() {
+        let mut state = WaterLevelState::new();
+        state.progress = WATER_BOSS_ARENA_START;
+        let boss_position = state.boss_position();
+        let mut ship = Ship::new(&ARWING_SUBMARINE_SPEC);
+        ship.position = Vec3::new(-WATER_BOSS_ARENA_START, 2.5, -9.0);
+        let mut projectiles: Vec<Projectile> = (0..10)
+            .map(|_| Projectile {
+                position: boss_position,
+                direction: Vec3::new(-1.0, 0.0, 0.0),
+                lifetime: 1.0,
+                scale: 3.0,
+            })
+            .collect();
+        resolve_water_enemy_collisions(&mut state, &mut ship, &mut projectiles);
+        assert!(state.boss_defeated);
+        assert_eq!(state.boss_health, 0);
+
+        state.update(&mut ship, &ShipInput::default(), 1.0);
+        assert!(state.progress > WATER_BOSS_ARENA_START);
     }
 
     #[test]

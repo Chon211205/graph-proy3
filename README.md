@@ -47,6 +47,12 @@ Se necesita Rust con soporte para edición 2024 y las herramientas nativas de co
 
 Completa el recorrido submarino esquivando obstáculos. Buzz cambia automáticamente a submarino en ese nivel y recupera su forma anterior al salir. La forma carro es una transformación visual con los controles del vuelo libre; no incorpora un circuito terrestre ni física de conducción.
 
+El recorrido submarino sigue la estructura **Ruinas Acuáticas**: caverna de
+entrada, corredor de ruinas, campo minado, túnel de alta velocidad con anillos
+de impulso, arena abierta y combate final contra un tiburón mecánico. El avance
+se detiene en la última arena hasta destruir al jefe con **Enter**; los disparos
+cargados causan más daño.
+
 ## Rayo McQueen
 
 En el hangar, selecciona Rayo McQueen y pulsa **V** para alternar nave/carro/submarino. **Enter** inicia con la forma de Rayo que estés viendo; si eliges submarino, empiezas directamente en el nivel acuático. Durante el vuelo libre, **T** alterna nave/carro conservando posición y velocidad. El carro usa los controles de vuelo existentes, sin física terrestre.
