@@ -1872,11 +1872,38 @@ struct RenderStats {
     raster_ms: f32,
 }
 
+#[derive(Clone, Copy)]
+struct ProjectionCache {
+    tan_half_vertical: f32,
+    tan_half_horizontal: f32,
+    horizontal_plane_length: f32,
+    vertical_plane_length: f32,
+    focal: f32,
+    light: Vec3,
+}
+
+impl ProjectionCache {
+    fn new(width: usize, height: usize) -> Self {
+        let tan_half_vertical = (VERTICAL_FOV * 0.5).tan();
+        let tan_half_horizontal = tan_half_vertical * width as f32 / height as f32;
+        Self {
+            tan_half_vertical,
+            tan_half_horizontal,
+            horizontal_plane_length: (1.0 + tan_half_horizontal * tan_half_horizontal).sqrt(),
+            vertical_plane_length: (1.0 + tan_half_vertical * tan_half_vertical).sqrt(),
+            focal: height as f32 / tan_half_vertical * 0.5,
+            light: Vec3::new(-0.3, 0.8, -0.5).normalize(),
+        }
+    }
+}
+
 struct TriangleBatch {
     commands: Vec<TriangleCommand>,
     camera_vertex_scratch: Vec<Vec3>,
+    camera_normal_scratch: Vec<Vec3>,
     viewport_width: usize,
     viewport_height: usize,
+    projection: ProjectionCache,
     stats: RenderStats,
 }
 
@@ -1885,8 +1912,10 @@ impl TriangleBatch {
         Self {
             commands: Vec::new(),
             camera_vertex_scratch: Vec::new(),
+            camera_normal_scratch: Vec::new(),
             viewport_width,
             viewport_height,
+            projection: ProjectionCache::new(viewport_width, viewport_height),
             stats: RenderStats::default(),
         }
     }
@@ -1904,6 +1933,7 @@ impl TriangleBatch {
         debug_assert!(self.commands.is_empty());
         self.viewport_width = width;
         self.viewport_height = height;
+        self.projection = ProjectionCache::new(width, height);
     }
 
     fn flush(&mut self, framebuffer: &mut Framebuffer) {
@@ -2065,6 +2095,7 @@ fn queue_model<F>(
     // Reuse the largest vertex buffer seen by this batch. With several planets
     // in the home galaxy this avoids multiple large allocations every frame.
     let mut camera_vertices = std::mem::take(&mut batch.camera_vertex_scratch);
+    let mut camera_normals = std::mem::take(&mut batch.camera_normal_scratch);
     queue_model_with_scratch(
         model,
         batch,
@@ -2073,8 +2104,10 @@ fn queue_model<F>(
         water_time,
         effect_spec,
         &mut camera_vertices,
+        &mut camera_normals,
     );
     batch.camera_vertex_scratch = camera_vertices;
+    batch.camera_normal_scratch = camera_normals;
 }
 
 fn queue_model_with_scratch<F>(
@@ -2085,13 +2118,12 @@ fn queue_model_with_scratch<F>(
     water_time: Option<f32>,
     effect_spec: Option<&ShipSpec>,
     camera_vertices: &mut Vec<Vec3>,
+    camera_normals: &mut Vec<Vec3>,
 ) where
     F: Fn(Vec3) -> Vec3 + Sync,
 {
     let geometry_start = Instant::now();
-    let tan_half_vertical = (VERTICAL_FOV * 0.5).tan();
-    let tan_half_horizontal =
-        tan_half_vertical * batch.viewport_width as f32 / batch.viewport_height as f32;
+    let projection = batch.projection;
     let (local_center, local_radius) = model.bounds();
     let world_center = transform(local_center);
     let transformed_radius = if local_radius > 0.0 {
@@ -2113,18 +2145,16 @@ fn queue_model_with_scratch<F>(
         relative_center.dot(camera.up),
         relative_center.dot(camera.forward),
     );
-    let horizontal_plane_length = (1.0 + tan_half_horizontal * tan_half_horizontal).sqrt();
-    let vertical_plane_length = (1.0 + tan_half_vertical * tan_half_vertical).sqrt();
     if camera_center.z + transformed_radius < NEAR_PLANE
         || camera_center.z - transformed_radius > FAR_PLANE
-        || camera_center.z * tan_half_horizontal + camera_center.x
-            < -transformed_radius * horizontal_plane_length
-        || camera_center.z * tan_half_horizontal - camera_center.x
-            < -transformed_radius * horizontal_plane_length
-        || camera_center.z * tan_half_vertical + camera_center.y
-            < -transformed_radius * vertical_plane_length
-        || camera_center.z * tan_half_vertical - camera_center.y
-            < -transformed_radius * vertical_plane_length
+        || camera_center.z * projection.tan_half_horizontal + camera_center.x
+            < -transformed_radius * projection.horizontal_plane_length
+        || camera_center.z * projection.tan_half_horizontal - camera_center.x
+            < -transformed_radius * projection.horizontal_plane_length
+        || camera_center.z * projection.tan_half_vertical + camera_center.y
+            < -transformed_radius * projection.vertical_plane_length
+        || camera_center.z * projection.tan_half_vertical - camera_center.y
+            < -transformed_radius * projection.vertical_plane_length
     {
         batch.stats.models_culled += 1;
         batch.stats.geometry_ms += geometry_start.elapsed().as_secs_f32() * 1_000.0;
@@ -2166,25 +2196,21 @@ fn queue_model_with_scratch<F>(
         camera_vertices.reserve(model.vertices.len());
         camera_vertices.extend(model.vertices.iter().map(transform_vertex));
     }
-    let camera_normals: Vec<Vec3> = if model.faces.iter().any(|face| face.smooth) {
-        model
-            .vertex_normals
-            .iter()
-            .map(|normal| {
-                let world_direction = transform(local_center.add(*normal)).sub(world_center);
-                Vec3::new(
-                    world_direction.dot(camera.right),
-                    world_direction.dot(camera.up),
-                    world_direction.dot(camera.forward),
-                )
-                .normalize()
-            })
-            .collect()
+    camera_normals.clear();
+    if model.faces.iter().any(|face| face.smooth) {
+        camera_normals.reserve(model.vertex_normals.len());
+        camera_normals.extend(model.vertex_normals.iter().map(|normal| {
+            let world_direction = transform(local_center.add(*normal)).sub(world_center);
+            Vec3::new(
+                world_direction.dot(camera.right),
+                world_direction.dot(camera.up),
+                world_direction.dot(camera.forward),
+            )
+            .normalize()
+        }));
     } else {
-        Vec::new()
-    };
-    let focal = batch.viewport_height as f32 / tan_half_vertical * 0.5;
-    let light = Vec3::new(-0.3, 0.8, -0.5).normalize();
+        camera_normals.clear();
+    }
     for face in &model.faces {
         let [i0, i1, i2] = face.indices;
         let v0 = camera_vertices[i0];
@@ -2194,28 +2220,28 @@ fn queue_model_with_scratch<F>(
             continue;
         }
         if (v0.z > FAR_PLANE && v1.z > FAR_PLANE && v2.z > FAR_PLANE)
-            || (v0.x < -v0.z * tan_half_horizontal
-                && v1.x < -v1.z * tan_half_horizontal
-                && v2.x < -v2.z * tan_half_horizontal)
-            || (v0.x > v0.z * tan_half_horizontal
-                && v1.x > v1.z * tan_half_horizontal
-                && v2.x > v2.z * tan_half_horizontal)
-            || (v0.y < -v0.z * tan_half_vertical
-                && v1.y < -v1.z * tan_half_vertical
-                && v2.y < -v2.z * tan_half_vertical)
-            || (v0.y > v0.z * tan_half_vertical
-                && v1.y > v1.z * tan_half_vertical
-                && v2.y > v2.z * tan_half_vertical)
+            || (v0.x < -v0.z * projection.tan_half_horizontal
+                && v1.x < -v1.z * projection.tan_half_horizontal
+                && v2.x < -v2.z * projection.tan_half_horizontal)
+            || (v0.x > v0.z * projection.tan_half_horizontal
+                && v1.x > v1.z * projection.tan_half_horizontal
+                && v2.x > v2.z * projection.tan_half_horizontal)
+            || (v0.y < -v0.z * projection.tan_half_vertical
+                && v1.y < -v1.z * projection.tan_half_vertical
+                && v2.y < -v2.z * projection.tan_half_vertical)
+            || (v0.y > v0.z * projection.tan_half_vertical
+                && v1.y > v1.z * projection.tan_half_vertical
+                && v2.y > v2.z * projection.tan_half_vertical)
         {
             continue;
         }
         let project = |vertex: Vec3| ScreenVertex {
-            x: batch.viewport_width as f32 * 0.5 + vertex.x * focal / vertex.z,
-            y: batch.viewport_height as f32 * 0.5 - vertex.y * focal / vertex.z,
+            x: batch.viewport_width as f32 * 0.5 + vertex.x * projection.focal / vertex.z,
+            y: batch.viewport_height as f32 * 0.5 - vertex.y * projection.focal / vertex.z,
             z: 1.0 / vertex.z,
         };
         let normal = v1.sub(v0).cross(v2.sub(v0)).normalize();
-        let brightness = 0.34 + normal.dot(light).abs() * 0.66;
+        let brightness = 0.34 + normal.dot(projection.light).abs() * 0.66;
         let a = project(v0);
         let b = project(v1);
         let c = project(v2);
@@ -2243,7 +2269,9 @@ fn queue_model_with_scratch<F>(
             });
         } else if face.smooth {
             let brightness =
-                [i0, i1, i2].map(|index| 0.34 + camera_normals[index].dot(light).abs() * 0.66);
+                [i0, i1, i2].map(|index| {
+                    0.34 + camera_normals[index].dot(projection.light).abs() * 0.66
+                });
             batch.commands.push(TriangleCommand {
                 vertices: [a, b, c],
                 style: TriangleStyle::Smooth {
@@ -2275,6 +2303,7 @@ fn render_model_with_scratch<F>(
     F: Fn(Vec3) -> Vec3 + Sync,
 {
     let mut batch = TriangleBatch::new(framebuffer.width, framebuffer.height);
+    let mut camera_normals = Vec::new();
     queue_model_with_scratch(
         model,
         &mut batch,
@@ -2283,6 +2312,7 @@ fn render_model_with_scratch<F>(
         water_time,
         effect_spec,
         camera_vertices,
+        &mut camera_normals,
     );
     batch.flush(framebuffer);
 }
@@ -2681,6 +2711,7 @@ fn render_water_enemies(
     instance_buffers: &mut [Vec<Vec3>; 3],
 ) {
     let up = Vec3::new(0.0, 1.0, 0.0);
+    let mut camera_normals = Vec::new();
     for kind in 0..enemy_models.len() {
         let model = &enemy_models[kind];
         let center = enemy_centers[kind];
@@ -2710,6 +2741,7 @@ fn render_water_enemies(
                 None,
                 None,
                 camera_vertices,
+                &mut camera_normals,
             );
         }
     }
@@ -4548,6 +4580,32 @@ mod tests {
         );
         assert_eq!(camera_vertices.len(), model.vertices.len());
         assert_eq!(camera_vertices.as_ptr(), allocation);
+    }
+
+    #[test]
+    fn batched_rendering_reuses_normal_buffer_and_refreshes_projection_on_resize() {
+        let camera = test_camera();
+        let mut model = test_triangle(5.0);
+        model.faces[0].smooth = true;
+        model.recalculate_normals();
+        let mut batch = TriangleBatch::new(WIDTH, HEIGHT);
+
+        queue_model(&model, &mut batch, &camera, |vertex| vertex, None, None);
+        let normal_allocation = batch.camera_normal_scratch.as_ptr();
+        queue_model(
+            &model,
+            &mut batch,
+            &camera,
+            |vertex| vertex.add(Vec3::new(0.25, 0.0, 0.0)),
+            None,
+            None,
+        );
+        assert_eq!(batch.camera_normal_scratch.as_ptr(), normal_allocation);
+
+        batch.commands.clear();
+        let previous_focal = batch.projection.focal;
+        batch.resize(WIDTH / 2, HEIGHT / 2);
+        assert!(batch.projection.focal < previous_focal);
     }
 
     #[test]
