@@ -75,9 +75,13 @@ struct DynamicResolution {
     enabled: bool,
     scale_index: usize,
     fps_average: f32,
+    frame_ms_average: f32,
+    render_ms_average: f32,
+    jitter_ms_average: f32,
     low_time: f32,
     high_time: f32,
     cooldown: f32,
+    status: &'static str,
 }
 
 impl DynamicResolution {
@@ -86,9 +90,13 @@ impl DynamicResolution {
             enabled: true,
             scale_index: 0,
             fps_average: 60.0,
+            frame_ms_average: 1_000.0 / 60.0,
+            render_ms_average: 0.0,
+            jitter_ms_average: 0.0,
             low_time: 0.0,
             high_time: 0.0,
             cooldown: 0.0,
+            status: "ESTABLE",
         }
     }
 
@@ -104,6 +112,7 @@ impl DynamicResolution {
         self.enabled = !self.enabled;
         self.low_time = 0.0;
         self.high_time = 0.0;
+        self.status = if self.enabled { "ESTABLE" } else { "OFF" };
         if !self.enabled && self.scale_index != 0 {
             self.scale_index = 0;
             return true;
@@ -111,36 +120,65 @@ impl DynamicResolution {
         false
     }
 
-    fn update(&mut self, frame_time: f32) -> bool {
-        let frame_time = frame_time.max(0.000_1);
-        let fps = 1.0 / frame_time;
-        let smoothing = 1.0 - (-frame_time * 3.0).exp();
+    fn update(&mut self, frame_time: f32, previous_render: RenderStats) -> bool {
+        // Ignore extreme pause/debugger spikes without hiding sustained load.
+        let frame_time = frame_time.clamp(0.000_1, 0.1);
+        let control_dt = frame_time.min(1.0 / 30.0);
+        let frame_ms = (frame_time * 1_000.0).min(self.frame_ms_average + 12.0);
+        let fps = 1_000.0 / frame_ms;
+        let smoothing = 1.0 - (-frame_time * 2.5).exp();
         self.fps_average += (fps - self.fps_average) * smoothing;
+        let previous_frame_average = self.frame_ms_average;
+        self.frame_ms_average += (frame_ms - self.frame_ms_average) * smoothing;
+        self.jitter_ms_average +=
+            ((frame_ms - previous_frame_average).abs() - self.jitter_ms_average) * smoothing;
+        let render_ms = previous_render.geometry_ms
+            + previous_render.sort_ms
+            + previous_render.raster_ms;
+        if render_ms > 0.0 {
+            self.render_ms_average += (render_ms - self.render_ms_average) * smoothing;
+        }
         self.cooldown = (self.cooldown - frame_time).max(0.0);
-        if !self.enabled || self.cooldown > 0.0 {
+        if !self.enabled {
+            self.status = "OFF";
+            return false;
+        }
+        if self.cooldown > 0.0 {
+            self.status = "COOLDOWN";
             return false;
         }
 
-        if self.fps_average < 50.0 {
-            self.low_time += frame_time;
-            self.high_time = 0.0;
-        } else if self.fps_average > 58.0 {
-            self.high_time += frame_time;
-            self.low_time = 0.0;
+        let overloaded = self.frame_ms_average > 19.0 || self.render_ms_average > 16.5;
+        let comfortable = self.frame_ms_average < 14.8
+            && (self.render_ms_average == 0.0 || self.render_ms_average < 11.5)
+            && self.jitter_ms_average < 3.5;
+        if overloaded {
+            self.low_time += control_dt;
+            self.high_time = (self.high_time - control_dt * 2.0).max(0.0);
+            self.status = "BAJANDO";
+        } else if comfortable {
+            self.high_time += control_dt;
+            self.low_time = (self.low_time - control_dt).max(0.0);
+            self.status = "SUBIENDO";
         } else {
-            self.low_time = 0.0;
-            self.high_time = 0.0;
+            self.low_time = (self.low_time - control_dt * 0.5).max(0.0);
+            self.high_time = (self.high_time - control_dt * 0.5).max(0.0);
+            self.status = "ESTABLE";
         }
 
-        if self.low_time >= 1.0 && self.scale_index + 1 < RESOLUTION_SCALES.len() {
+        if self.low_time >= 0.8 && self.scale_index + 1 < RESOLUTION_SCALES.len() {
             self.scale_index += 1;
             self.low_time = 0.0;
-            self.cooldown = 2.0;
+            self.high_time = 0.0;
+            self.cooldown = 2.5;
+            self.status = "REDUCIDA";
             true
         } else if self.high_time >= 3.0 && self.scale_index > 0 {
             self.scale_index -= 1;
             self.high_time = 0.0;
-            self.cooldown = 3.0;
+            self.low_time = 0.0;
+            self.cooldown = 4.0;
+            self.status = "AUMENTADA";
             true
         } else {
             false
@@ -3508,7 +3546,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
         }
 
-        let resolution_changed = dynamic_resolution.update(frame_time);
+        let resolution_changed = dynamic_resolution.update(frame_time, triangle_batch.stats());
         let toggled_resolution = if crate::input::pressed(Key::F2) {
             dynamic_resolution.toggle()
         } else {
@@ -3929,22 +3967,22 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         upscale_scene(&scene_framebuffer, &mut framebuffer);
         if performance_hud {
             let stats = triangle_batch.stats();
-            let frame_ms = frame_time * 1_000.0;
             let summary = format!(
-                "PERF {:>3.0} FPS {:>5.1} MS  GEO {:>4.1} SORT {:>3.1} RAST {:>4.1}",
+                "PERF {:>3.0} FPS AVG {:>4.1} MS GEO {:>4.1} SORT {:>3.1} RAST {:>4.1}",
                 dynamic_resolution.fps_average,
-                frame_ms,
+                dynamic_resolution.frame_ms_average,
                 stats.geometry_ms,
                 stats.sort_ms,
                 stats.raster_ms,
             );
             let geometry = format!(
-                "MODELOS {}  CULL {}  VERT {}  TRI {}  RES {}%",
+                "MODELOS {} CULL {} VERT {} TRI {} RES {}% DRS {}",
                 stats.models_visible,
                 stats.models_culled,
                 stats.vertices_transformed,
                 stats.triangles_submitted,
                 dynamic_resolution.percentage(),
+                dynamic_resolution.status,
             );
             draw_selection_label(&mut framebuffer, &summary, 600, 92, 1, 0x9fffd2);
             draw_selection_label(&mut framebuffer, &geometry, 600, 108, 1, 0xc6d8ff);
@@ -4653,13 +4691,13 @@ mod tests {
     fn dynamic_resolution_reacts_only_to_sustained_frame_rates() {
         let mut resolution = DynamicResolution::new();
         for _ in 0..80 {
-            resolution.update(1.0 / 40.0);
+            resolution.update(1.0 / 40.0, RenderStats::default());
         }
         assert_eq!(resolution.scale_index, 1);
         assert_eq!(resolution.dimensions(), (1080, 720));
 
         for _ in 0..600 {
-            resolution.update(1.0 / 100.0);
+            resolution.update(1.0 / 100.0, RenderStats::default());
         }
         assert_eq!(resolution.scale_index, 0);
         assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
@@ -4672,6 +4710,37 @@ mod tests {
         assert!(resolution.toggle());
         assert!(!resolution.enabled);
         assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
+    }
+
+    #[test]
+    fn dynamic_resolution_uses_render_load_and_ignores_isolated_spikes() {
+        let mut loaded = DynamicResolution::new();
+        let expensive_render = RenderStats {
+            raster_ms: 22.0,
+            ..RenderStats::default()
+        };
+        for _ in 0..180 {
+            loaded.update(1.0 / 60.0, expensive_render);
+        }
+        assert!(loaded.scale_index > 0);
+
+        let mut stable = DynamicResolution::new();
+        stable.update(0.1, RenderStats::default());
+        for _ in 0..120 {
+            stable.update(1.0 / 60.0, RenderStats::default());
+        }
+        assert_eq!(stable.scale_index, 0);
+    }
+
+    #[test]
+    fn dynamic_resolution_hysteresis_avoids_boundary_oscillation() {
+        let mut resolution = DynamicResolution::new();
+        for frame in 0..600 {
+            let frame_time = if frame % 2 == 0 { 1.0 / 52.0 } else { 1.0 / 65.0 };
+            resolution.update(frame_time, RenderStats::default());
+        }
+        assert_eq!(resolution.scale_index, 0);
+        assert_eq!(resolution.status, "ESTABLE");
     }
 
     #[test]
