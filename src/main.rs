@@ -1869,6 +1869,7 @@ struct RenderStats {
     vertices_transformed: usize,
     triangles_submitted: usize,
     geometry_ms: f32,
+    sort_ms: f32,
     raster_ms: f32,
 }
 
@@ -1944,6 +1945,15 @@ impl TriangleBatch {
         if self.commands.is_empty() {
             return;
         }
+        let sort_start = Instant::now();
+        if self.commands.len() > 128 {
+            self.commands.sort_unstable_by(|a, b| {
+                let a_depth = (a.vertices[0].z + a.vertices[1].z + a.vertices[2].z) / 3.0;
+                let b_depth = (b.vertices[0].z + b.vertices[1].z + b.vertices[2].z) / 3.0;
+                b_depth.total_cmp(&a_depth)
+            });
+        }
+        self.stats.sort_ms += sort_start.elapsed().as_secs_f32() * 1_000.0;
         let raster_start = Instant::now();
         let width = framebuffer.width;
         let height = framebuffer.height;
@@ -3921,10 +3931,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             let stats = triangle_batch.stats();
             let frame_ms = frame_time * 1_000.0;
             let summary = format!(
-                "PERF  {:>3.0} FPS  {:>5.1} MS  GEO {:>4.1}  RAST {:>4.1}",
+                "PERF {:>3.0} FPS {:>5.1} MS  GEO {:>4.1} SORT {:>3.1} RAST {:>4.1}",
                 dynamic_resolution.fps_average,
                 frame_ms,
                 stats.geometry_ms,
+                stats.sort_ms,
                 stats.raster_ms,
             );
             let geometry = format!(

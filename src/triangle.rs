@@ -94,10 +94,12 @@ pub fn draw_triangle_shaded_region<F>(
 
             if w0 >= -1e-6 && w1 >= -1e-6 && w2 >= -1e-6 {
                 let z = w0 * a.z + w1 * b.z + w2 * c.z;
-
-                let color = shader(w0, w1, w2, x, y);
                 let index = (y as usize - region_y) * width + x as usize;
                 if z > depth[index] {
+                    // Shade only fragments that pass the early depth test.
+                    // Front-to-back command ordering makes this reject most
+                    // hidden fragments before procedural color work begins.
+                    let color = shader(w0, w1, w2, x, y);
                     depth[index] = z;
                     pixels[index] = color;
                 }
@@ -113,6 +115,7 @@ pub fn draw_triangle_shaded_region<F>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
 
     #[test]
     fn rasterizer_draws_inside_but_not_outside_triangle() {
@@ -163,5 +166,36 @@ mod tests {
             0xffffff,
         );
         assert!(framebuffer.pixels.iter().any(|&pixel| pixel != 0));
+    }
+
+    #[test]
+    fn depth_rejection_happens_before_expensive_shading() {
+        let mut framebuffer = Framebuffer::new(8, 8);
+        let vertices = [
+            ScreenVertex { x: 1.0, y: 1.0, z: 1.0 },
+            ScreenVertex { x: 6.0, y: 1.0, z: 1.0 },
+            ScreenVertex { x: 1.0, y: 6.0, z: 1.0 },
+        ];
+        draw_triangle(
+            &mut framebuffer,
+            vertices[0],
+            vertices[1],
+            vertices[2],
+            0xffffff,
+        );
+
+        let shaded_fragments = Cell::new(0);
+        let farther = vertices.map(|vertex| ScreenVertex { z: 0.5, ..vertex });
+        draw_triangle_shaded(
+            &mut framebuffer,
+            farther[0],
+            farther[1],
+            farther[2],
+            |_, _, _, _, _| {
+                shaded_fragments.set(shaded_fragments.get() + 1);
+                0xff00ff
+            },
+        );
+        assert_eq!(shaded_fragments.get(), 0);
     }
 }
