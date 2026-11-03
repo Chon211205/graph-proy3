@@ -1483,56 +1483,82 @@ fn make_wormhole_sphere(radius: f32, stacks: usize, slices: usize) -> Model {
     model
 }
 
-fn make_wormhole_ring(major_radius: f32, tube_radius: f32) -> Model {
-    let major_segments = 48;
-    let tube_segments = 8;
-    let mut vertices = Vec::with_capacity((major_segments + 1) * (tube_segments + 1));
-    for major in 0..=major_segments {
-        let u = TAU * major as f32 / major_segments as f32;
-        let (sin_u, cos_u) = u.sin_cos();
-        for tube in 0..=tube_segments {
-            let v = TAU * tube as f32 / tube_segments as f32;
-            let (sin_v, cos_v) = v.sin_cos();
-            let ring = major_radius + tube_radius * cos_v;
-            vertices.push(Vec3::new(ring * cos_u, ring * sin_u, tube_radius * sin_v));
-        }
+fn draw_wormhole_energy(
+    framebuffer: &mut Framebuffer,
+    camera: &Camera,
+    center: Vec3,
+    time: f32,
+) {
+    let relative = center.sub(camera.position);
+    let camera_x = relative.dot(camera.right);
+    let camera_y = relative.dot(camera.up);
+    let camera_z = relative.dot(camera.forward);
+    if camera_z <= NEAR_PLANE || camera_z >= FAR_PLANE {
+        return;
     }
 
-    let mut faces = Vec::with_capacity(major_segments * tube_segments * 2);
-    for major in 0..major_segments {
-        for tube in 0..tube_segments {
-            let a = major * (tube_segments + 1) + tube;
-            let b = a + tube_segments + 1;
-            let c = a + 1;
-            let d = b + 1;
-            let color = if major % 3 == 0 {
-                [102, 63, 255]
-            } else {
-                [48, 204, 255]
-            };
-            for indices in [[a, b, c], [c, b, d]] {
-                let mut face = Face::new(indices, "wormhole_glow", "wormhole_ring");
-                face.shader = SurfaceShader::Flat;
-                face.color = MaterialColor::Fixed(color);
-                faces.push(face);
+    let focal = framebuffer.height as f32 / (VERTICAL_FOV * 0.5).tan() * 0.5;
+    let center_x = framebuffer.width as f32 * 0.5 + camera_x * focal / camera_z;
+    let center_y = framebuffer.height as f32 * 0.5 - camera_y * focal / camera_z;
+    let radius = 30.0 * focal / camera_z;
+    if radius < 1.0 {
+        return;
+    }
+    let extent = radius * 1.55;
+    let width = framebuffer.width;
+    let height = framebuffer.height;
+    let min_x = (center_x - extent).floor().max(0.0) as usize;
+    let max_x = (center_x + extent)
+        .ceil()
+        .min(width.saturating_sub(1) as f32) as usize;
+    let min_y = (center_y - extent).floor().max(0.0) as usize;
+    let max_y = (center_y + extent)
+        .ceil()
+        .min(height.saturating_sub(1) as f32) as usize;
+    if min_x > max_x || min_y > max_y {
+        return;
+    }
+
+    let portal_depth = 1.0 / camera_z;
+    let (pixels, depth) = framebuffer.buffers_mut();
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            let dx = x as f32 + 0.5 - center_x;
+            let dy = y as f32 + 0.5 - center_y;
+            let distance = (dx * dx + dy * dy).sqrt();
+            let angle = dy.atan2(dx);
+            let turbulence = (angle * 7.0 + time * 2.4).sin() * 0.055
+                + (angle * 13.0 - time * 3.1).sin() * 0.028
+                + (angle * 3.0 + time * 1.3).cos() * 0.035;
+            let energy_radius = radius * (1.0 + turbulence);
+            let arc_mask = ((angle * 5.0 - time * 2.8).sin() * 0.5 + 0.5).powf(2.2);
+            let filament = ((distance - energy_radius).abs() / (radius * 0.075).max(1.0))
+                .clamp(0.0, 1.0);
+            let core_energy = (1.0 - filament).powf(2.4) * (0.45 + arc_mask * 0.85);
+            let halo_distance = ((distance - energy_radius).abs() / (radius * 0.30).max(1.0))
+                .clamp(0.0, 1.0);
+            let halo = (1.0 - halo_distance).powf(3.0) * 0.28;
+            let sparks = ((angle * 29.0 + time * 5.6).sin() * 0.5 + 0.5).powf(18.0)
+                * (1.0 - ((distance - radius * 1.18).abs() / (radius * 0.24)).clamp(0.0, 1.0));
+            let intensity = (core_energy + halo + sparks * 1.25).clamp(0.0, 1.5);
+            if intensity < 0.015 {
+                continue;
             }
+            let index = y * width + x;
+            if depth[index] > portal_depth + 0.001 {
+                continue;
+            }
+            let old = pixels[index];
+            let old_r = ((old >> 16) & 0xff) as f32;
+            let old_g = ((old >> 8) & 0xff) as f32;
+            let old_b = (old & 0xff) as f32;
+            let violet = (angle * 4.0 + time * 1.7).sin() * 0.5 + 0.5;
+            let red = (old_r + intensity * (32.0 + violet * 72.0)).min(255.0) as u32;
+            let green = (old_g + intensity * (126.0 + (1.0 - violet) * 70.0)).min(255.0) as u32;
+            let blue = (old_b + intensity * 245.0).min(255.0) as u32;
+            pixels[index] = (red << 16) | (green << 8) | blue;
         }
     }
-    Model::new(vertices, faces)
-}
-
-fn orient_wormhole_ring(point: Vec3, center: Vec3, observer: Vec3) -> Vec3 {
-    let normal = observer.sub(center).normalize();
-    let world_up = Vec3::new(0.0, 1.0, 0.0);
-    let mut right = world_up.cross(normal).normalize();
-    if right.dot(right) < 0.001 {
-        right = Vec3::new(1.0, 0.0, 0.0);
-    }
-    let up = normal.cross(right).normalize();
-    center
-        .add(right.mul(point.x))
-        .add(up.mul(point.y))
-        .add(normal.mul(point.z))
 }
 
 fn make_turbo_plume(segments: usize) -> Model {
@@ -2491,7 +2517,6 @@ fn render_scene(
     spiky_planet_scale: f32,
     sun: &Model,
     wormhole: &Model,
-    wormhole_ring: &Model,
     wormhole_center: Vec3,
     galaxy: Galaxy,
     race_planet: &Model,
@@ -2616,14 +2641,6 @@ fn render_scene(
     }
 
     queue_model(
-        wormhole_ring,
-        batch,
-        &camera,
-        |vertex| orient_wormhole_ring(vertex, wormhole_center, ship.position),
-        None,
-        None,
-    );
-    queue_model(
         wormhole,
         batch,
         &camera,
@@ -2647,6 +2664,7 @@ fn render_scene(
         true,
     );
     batch.flush(framebuffer);
+    draw_wormhole_energy(framebuffer, &camera, wormhole_center, world_time);
 }
 
 fn render_ship_components(
@@ -3553,7 +3571,6 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let sun = load_obj(sun_path)
         .map_err(|error| format!("Error al cargar {sun_path}: {error}"))?;
     let wormhole = make_wormhole_sphere(22.0, 18, 28);
-    let wormhole_ring = make_wormhole_ring(30.0, 3.2);
     let turbo_plume = make_turbo_plume(12);
     let laser_bolt = make_laser_bolt();
     let bubble_model = make_bubble_model();
@@ -4001,7 +4018,6 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     spiky_planet_scale,
                     &sun,
                     &wormhole,
-                    &wormhole_ring,
                     wormhole_position(active_galaxy),
                     active_galaxy,
                     &race_track.planet,
@@ -4663,6 +4679,30 @@ mod tests {
             let blue = pixel & 0xff;
             pixel != 0x030718 && blue > green
         }));
+    }
+
+    #[test]
+    fn wormhole_energy_is_animated_and_leaves_no_solid_physical_ring() {
+        let camera = test_camera();
+        let center = Vec3::new(0.0, 0.0, 100.0);
+        let background = 0x02030b;
+        let mut first = Framebuffer::new(320, 200);
+        first.clear(background);
+        draw_wormhole_energy(&mut first, &camera, center, 0.0);
+        let lit = first.pixels.iter().filter(|&&pixel| pixel != background).count();
+        assert!(lit > 500);
+        assert_eq!(first.pixels[100 * 320 + 160], background);
+
+        let mut later = Framebuffer::new(320, 200);
+        later.clear(background);
+        draw_wormhole_energy(&mut later, &camera, center, 0.7);
+        assert!(first
+            .pixels
+            .iter()
+            .zip(&later.pixels)
+            .filter(|(a, b)| a != b)
+            .count()
+            > 300);
     }
 
     #[test]
