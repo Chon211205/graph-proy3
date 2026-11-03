@@ -1444,6 +1444,36 @@ fn projected_planet_radius(camera: &Camera, center: Vec3, radius: f32, focal: f3
     }
 }
 
+fn animate_spiky_tentacle(vertex: Vec3, time: f32) -> Vec3 {
+    let radius = vertex.dot(vertex).sqrt();
+    // The authored planet body ends around radius 1.49. Fade deformation in
+    // above that boundary so every tentacle stays firmly rooted in the shell.
+    let extension = ((radius - 1.48) / 0.82).clamp(0.0, 1.0);
+    if extension <= 0.0 {
+        return vertex;
+    }
+
+    let radial = vertex.normalize();
+    let reference = if radial.y.abs() < 0.82 {
+        Vec3::new(0.0, 1.0, 0.0)
+    } else {
+        Vec3::new(1.0, 0.0, 0.0)
+    };
+    let tangent_a = radial.cross(reference).normalize();
+    let tangent_b = radial.cross(tangent_a).normalize();
+    let phase = radial.z.atan2(radial.x) * 2.7 + radial.y * 4.1;
+    // Keep the first third nearly rigid, then exaggerate the long outer arcs.
+    let bend = extension.powf(2.15);
+    let wave_a = (time * 1.78 + phase + extension * 3.2).sin();
+    let wave_b = (time * 1.46 - phase * 0.73 + extension * 4.2).cos();
+    let tip_flutter = (time * 2.65 + phase * 1.4 + extension * 5.8).sin();
+    let breathing = (time * 1.05 + phase).sin() * 0.065 * bend;
+    vertex
+        .add(tangent_a.mul((wave_a * 0.285 + tip_flutter * 0.065 * extension) * bend))
+        .add(tangent_b.mul((wave_b * 0.205 - tip_flutter * 0.048 * extension) * bend))
+        .add(radial.mul(breathing))
+}
+
 fn make_wormhole_sphere(radius: f32, stacks: usize, slices: usize) -> Model {
     let mut model = make_sphere(radius, stacks, slices, false);
     for face in &mut model.faces {
@@ -2549,7 +2579,8 @@ fn render_scene(
             &camera,
             |vertex| {
                 let vertex = if spiky_lod == 0 {
-                    vertex.sub(spiky_planet_center).mul(spiky_planet_scale)
+                    animate_spiky_tentacle(vertex.sub(spiky_planet_center), world_time)
+                        .mul(spiky_planet_scale)
                 } else {
                     vertex
                 };
@@ -4911,6 +4942,20 @@ mod tests {
             focal,
         );
         assert!(near > far * 3.9);
+    }
+
+    #[test]
+    fn spiky_tentacles_wave_while_planet_surface_stays_anchored() {
+        let surface = Vec3::new(1.47, 0.0, 0.0);
+        assert_eq!(animate_spiky_tentacle(surface, 0.0).x, surface.x);
+        assert_eq!(animate_spiky_tentacle(surface, 2.0).y, surface.y);
+
+        let tip = Vec3::new(2.30, 0.18, 0.12);
+        let first = animate_spiky_tentacle(tip, 0.0);
+        let later = animate_spiky_tentacle(tip, 1.0);
+        let movement = later.sub(first);
+        assert!(movement.dot(movement) > 0.02);
+        assert!(first.sub(tip).dot(first.sub(tip)) < 0.12);
     }
 
     #[test]
