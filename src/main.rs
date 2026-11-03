@@ -75,9 +75,13 @@ struct DynamicResolution {
     enabled: bool,
     scale_index: usize,
     fps_average: f32,
+    frame_ms_average: f32,
+    render_ms_average: f32,
+    jitter_ms_average: f32,
     low_time: f32,
     high_time: f32,
     cooldown: f32,
+    status: &'static str,
 }
 
 impl DynamicResolution {
@@ -86,9 +90,13 @@ impl DynamicResolution {
             enabled: true,
             scale_index: 0,
             fps_average: 60.0,
+            frame_ms_average: 1_000.0 / 60.0,
+            render_ms_average: 0.0,
+            jitter_ms_average: 0.0,
             low_time: 0.0,
             high_time: 0.0,
             cooldown: 0.0,
+            status: "ESTABLE",
         }
     }
 
@@ -104,6 +112,7 @@ impl DynamicResolution {
         self.enabled = !self.enabled;
         self.low_time = 0.0;
         self.high_time = 0.0;
+        self.status = if self.enabled { "ESTABLE" } else { "OFF" };
         if !self.enabled && self.scale_index != 0 {
             self.scale_index = 0;
             return true;
@@ -111,36 +120,65 @@ impl DynamicResolution {
         false
     }
 
-    fn update(&mut self, frame_time: f32) -> bool {
-        let frame_time = frame_time.max(0.000_1);
-        let fps = 1.0 / frame_time;
-        let smoothing = 1.0 - (-frame_time * 3.0).exp();
+    fn update(&mut self, frame_time: f32, previous_render: RenderStats) -> bool {
+        // Ignore extreme pause/debugger spikes without hiding sustained load.
+        let frame_time = frame_time.clamp(0.000_1, 0.1);
+        let control_dt = frame_time.min(1.0 / 30.0);
+        let frame_ms = (frame_time * 1_000.0).min(self.frame_ms_average + 12.0);
+        let fps = 1_000.0 / frame_ms;
+        let smoothing = 1.0 - (-frame_time * 2.5).exp();
         self.fps_average += (fps - self.fps_average) * smoothing;
+        let previous_frame_average = self.frame_ms_average;
+        self.frame_ms_average += (frame_ms - self.frame_ms_average) * smoothing;
+        self.jitter_ms_average +=
+            ((frame_ms - previous_frame_average).abs() - self.jitter_ms_average) * smoothing;
+        let render_ms = previous_render.geometry_ms
+            + previous_render.sort_ms
+            + previous_render.raster_ms;
+        if render_ms > 0.0 {
+            self.render_ms_average += (render_ms - self.render_ms_average) * smoothing;
+        }
         self.cooldown = (self.cooldown - frame_time).max(0.0);
-        if !self.enabled || self.cooldown > 0.0 {
+        if !self.enabled {
+            self.status = "OFF";
+            return false;
+        }
+        if self.cooldown > 0.0 {
+            self.status = "COOLDOWN";
             return false;
         }
 
-        if self.fps_average < 50.0 {
-            self.low_time += frame_time;
-            self.high_time = 0.0;
-        } else if self.fps_average > 58.0 {
-            self.high_time += frame_time;
-            self.low_time = 0.0;
+        let overloaded = self.frame_ms_average > 19.0 || self.render_ms_average > 16.5;
+        let comfortable = self.frame_ms_average < 14.8
+            && (self.render_ms_average == 0.0 || self.render_ms_average < 11.5)
+            && self.jitter_ms_average < 3.5;
+        if overloaded {
+            self.low_time += control_dt;
+            self.high_time = (self.high_time - control_dt * 2.0).max(0.0);
+            self.status = "BAJANDO";
+        } else if comfortable {
+            self.high_time += control_dt;
+            self.low_time = (self.low_time - control_dt).max(0.0);
+            self.status = "SUBIENDO";
         } else {
-            self.low_time = 0.0;
-            self.high_time = 0.0;
+            self.low_time = (self.low_time - control_dt * 0.5).max(0.0);
+            self.high_time = (self.high_time - control_dt * 0.5).max(0.0);
+            self.status = "ESTABLE";
         }
 
-        if self.low_time >= 1.0 && self.scale_index + 1 < RESOLUTION_SCALES.len() {
+        if self.low_time >= 0.8 && self.scale_index + 1 < RESOLUTION_SCALES.len() {
             self.scale_index += 1;
             self.low_time = 0.0;
-            self.cooldown = 2.0;
+            self.high_time = 0.0;
+            self.cooldown = 2.5;
+            self.status = "REDUCIDA";
             true
         } else if self.high_time >= 3.0 && self.scale_index > 0 {
             self.scale_index -= 1;
             self.high_time = 0.0;
-            self.cooldown = 3.0;
+            self.low_time = 0.0;
+            self.cooldown = 4.0;
+            self.status = "AUMENTADA";
             true
         } else {
             false
@@ -1092,6 +1130,24 @@ fn procedural_surface_color(
                 1.0 / brightness.max(0.01),
             )
         }
+        SurfaceShader::Sun => {
+            let direction = point.normalize();
+            let flow_a = (direction.x * 17.0 + direction.z * 9.0 + time * 0.72).sin();
+            let flow_b = (direction.y * 23.0 - direction.x * 11.0 - time * 0.93).sin();
+            let granulation = ((direction.x + direction.y - direction.z) * 61.0
+                + (time * 1.4).sin() * 2.0)
+                .sin()
+                .abs();
+            let plasma = (flow_a * 0.5 + flow_b * 0.35 + granulation * 0.4)
+                .clamp(-0.7, 1.0);
+            let pulse = 0.94 + (time * 2.1 + direction.y * 8.0).sin() * 0.06;
+            (
+                255.0 * pulse,
+                (126.0 + plasma * 72.0 + granulation * 38.0) * pulse,
+                (18.0 + plasma.max(0.0) * 38.0 + fresnel * 32.0) * pulse,
+                1.0 / brightness.max(0.01),
+            )
+        }
         SurfaceShader::Flat => (220.0, 230.0, 238.0, 1.0),
     };
 
@@ -1324,6 +1380,100 @@ fn make_sphere(radius: f32, stacks: usize, slices: usize, sun: bool) -> Model {
     Model::new(vertices, faces)
 }
 
+#[derive(Clone, Copy)]
+enum PlanetVisual {
+    Water,
+    Spiky,
+    Racing,
+}
+
+struct PlanetLodModels {
+    low: Model,
+}
+
+#[derive(Clone, Copy, Default)]
+struct PlanetLodState {
+    level: usize,
+}
+
+impl PlanetLodState {
+    fn update(&mut self, projected_radius: f32) -> usize {
+        self.level = match self.level {
+            0 if projected_radius < 24.0 => 1,
+            1 if projected_radius > 34.0 => 0,
+            level => level,
+        };
+        self.level
+    }
+}
+
+fn make_planet_lod(radius: f32, stacks: usize, slices: usize, visual: PlanetVisual) -> Model {
+    let mut model = make_sphere(radius, stacks, slices, false);
+    for (index, face) in model.faces.iter_mut().enumerate() {
+        let band = index / (slices * 2).max(1);
+        let material = match visual {
+            PlanetVisual::Water if band < 2 || band + 2 >= stacks => "planet_ice",
+            PlanetVisual::Water if hash(index as u32 * 31) % 5 < 2 => "planet_land",
+            PlanetVisual::Water => "planet_ocean",
+            PlanetVisual::Spiky if hash(index as u32 * 17) % 7 == 0 => "Coral_claro",
+            PlanetVisual::Spiky if index % 2 == 0 => "Fucsia",
+            PlanetVisual::Spiky => "Magenta_sombra",
+            PlanetVisual::Racing if band == stacks / 2 => "race_rgb_245_208_42",
+            PlanetVisual::Racing if index % 3 == 0 => "race_rgb_58_160_107",
+            PlanetVisual::Racing => "race_rgb_44_133_88",
+        };
+        *face = Face::new(face.indices, material, "planet_lod");
+        face.smooth = true;
+    }
+    model.recalculate_normals();
+    model
+}
+
+fn make_planet_lods(radius: f32, visual: PlanetVisual) -> PlanetLodModels {
+    PlanetLodModels {
+        low: make_planet_lod(radius, 6, 10, visual),
+    }
+}
+
+fn projected_planet_radius(camera: &Camera, center: Vec3, radius: f32, focal: f32) -> f32 {
+    let depth = center.sub(camera.position).dot(camera.forward);
+    if depth <= NEAR_PLANE {
+        f32::INFINITY
+    } else {
+        radius * focal / depth
+    }
+}
+
+fn animate_spiky_tentacle(vertex: Vec3, time: f32) -> Vec3 {
+    let radius = vertex.dot(vertex).sqrt();
+    // The authored planet body ends around radius 1.49. Fade deformation in
+    // above that boundary so every tentacle stays firmly rooted in the shell.
+    let extension = ((radius - 1.48) / 0.82).clamp(0.0, 1.0);
+    if extension <= 0.0 {
+        return vertex;
+    }
+
+    let radial = vertex.normalize();
+    let reference = if radial.y.abs() < 0.82 {
+        Vec3::new(0.0, 1.0, 0.0)
+    } else {
+        Vec3::new(1.0, 0.0, 0.0)
+    };
+    let tangent_a = radial.cross(reference).normalize();
+    let tangent_b = radial.cross(tangent_a).normalize();
+    let phase = radial.z.atan2(radial.x) * 2.7 + radial.y * 4.1;
+    // Keep the first third nearly rigid, then exaggerate the long outer arcs.
+    let bend = extension.powf(2.15);
+    let wave_a = (time * 1.78 + phase + extension * 3.2).sin();
+    let wave_b = (time * 1.46 - phase * 0.73 + extension * 4.2).cos();
+    let tip_flutter = (time * 2.65 + phase * 1.4 + extension * 5.8).sin();
+    let breathing = (time * 1.05 + phase).sin() * 0.065 * bend;
+    vertex
+        .add(tangent_a.mul((wave_a * 0.285 + tip_flutter * 0.065 * extension) * bend))
+        .add(tangent_b.mul((wave_b * 0.205 - tip_flutter * 0.048 * extension) * bend))
+        .add(radial.mul(breathing))
+}
+
 fn make_wormhole_sphere(radius: f32, stacks: usize, slices: usize) -> Model {
     let mut model = make_sphere(radius, stacks, slices, false);
     for face in &mut model.faces {
@@ -1333,56 +1483,82 @@ fn make_wormhole_sphere(radius: f32, stacks: usize, slices: usize) -> Model {
     model
 }
 
-fn make_wormhole_ring(major_radius: f32, tube_radius: f32) -> Model {
-    let major_segments = 48;
-    let tube_segments = 8;
-    let mut vertices = Vec::with_capacity((major_segments + 1) * (tube_segments + 1));
-    for major in 0..=major_segments {
-        let u = TAU * major as f32 / major_segments as f32;
-        let (sin_u, cos_u) = u.sin_cos();
-        for tube in 0..=tube_segments {
-            let v = TAU * tube as f32 / tube_segments as f32;
-            let (sin_v, cos_v) = v.sin_cos();
-            let ring = major_radius + tube_radius * cos_v;
-            vertices.push(Vec3::new(ring * cos_u, ring * sin_u, tube_radius * sin_v));
-        }
+fn draw_wormhole_energy(
+    framebuffer: &mut Framebuffer,
+    camera: &Camera,
+    center: Vec3,
+    time: f32,
+) {
+    let relative = center.sub(camera.position);
+    let camera_x = relative.dot(camera.right);
+    let camera_y = relative.dot(camera.up);
+    let camera_z = relative.dot(camera.forward);
+    if camera_z <= NEAR_PLANE || camera_z >= FAR_PLANE {
+        return;
     }
 
-    let mut faces = Vec::with_capacity(major_segments * tube_segments * 2);
-    for major in 0..major_segments {
-        for tube in 0..tube_segments {
-            let a = major * (tube_segments + 1) + tube;
-            let b = a + tube_segments + 1;
-            let c = a + 1;
-            let d = b + 1;
-            let color = if major % 3 == 0 {
-                [102, 63, 255]
-            } else {
-                [48, 204, 255]
-            };
-            for indices in [[a, b, c], [c, b, d]] {
-                let mut face = Face::new(indices, "wormhole_glow", "wormhole_ring");
-                face.shader = SurfaceShader::Flat;
-                face.color = MaterialColor::Fixed(color);
-                faces.push(face);
+    let focal = framebuffer.height as f32 / (VERTICAL_FOV * 0.5).tan() * 0.5;
+    let center_x = framebuffer.width as f32 * 0.5 + camera_x * focal / camera_z;
+    let center_y = framebuffer.height as f32 * 0.5 - camera_y * focal / camera_z;
+    let radius = 30.0 * focal / camera_z;
+    if radius < 1.0 {
+        return;
+    }
+    let extent = radius * 1.55;
+    let width = framebuffer.width;
+    let height = framebuffer.height;
+    let min_x = (center_x - extent).floor().max(0.0) as usize;
+    let max_x = (center_x + extent)
+        .ceil()
+        .min(width.saturating_sub(1) as f32) as usize;
+    let min_y = (center_y - extent).floor().max(0.0) as usize;
+    let max_y = (center_y + extent)
+        .ceil()
+        .min(height.saturating_sub(1) as f32) as usize;
+    if min_x > max_x || min_y > max_y {
+        return;
+    }
+
+    let portal_depth = 1.0 / camera_z;
+    let (pixels, depth) = framebuffer.buffers_mut();
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            let dx = x as f32 + 0.5 - center_x;
+            let dy = y as f32 + 0.5 - center_y;
+            let distance = (dx * dx + dy * dy).sqrt();
+            let angle = dy.atan2(dx);
+            let turbulence = (angle * 7.0 + time * 2.4).sin() * 0.055
+                + (angle * 13.0 - time * 3.1).sin() * 0.028
+                + (angle * 3.0 + time * 1.3).cos() * 0.035;
+            let energy_radius = radius * (1.0 + turbulence);
+            let arc_mask = ((angle * 5.0 - time * 2.8).sin() * 0.5 + 0.5).powf(2.2);
+            let filament = ((distance - energy_radius).abs() / (radius * 0.075).max(1.0))
+                .clamp(0.0, 1.0);
+            let core_energy = (1.0 - filament).powf(2.4) * (0.45 + arc_mask * 0.85);
+            let halo_distance = ((distance - energy_radius).abs() / (radius * 0.30).max(1.0))
+                .clamp(0.0, 1.0);
+            let halo = (1.0 - halo_distance).powf(3.0) * 0.28;
+            let sparks = ((angle * 29.0 + time * 5.6).sin() * 0.5 + 0.5).powf(18.0)
+                * (1.0 - ((distance - radius * 1.18).abs() / (radius * 0.24)).clamp(0.0, 1.0));
+            let intensity = (core_energy + halo + sparks * 1.25).clamp(0.0, 1.5);
+            if intensity < 0.015 {
+                continue;
             }
+            let index = y * width + x;
+            if depth[index] > portal_depth + 0.001 {
+                continue;
+            }
+            let old = pixels[index];
+            let old_r = ((old >> 16) & 0xff) as f32;
+            let old_g = ((old >> 8) & 0xff) as f32;
+            let old_b = (old & 0xff) as f32;
+            let violet = (angle * 4.0 + time * 1.7).sin() * 0.5 + 0.5;
+            let red = (old_r + intensity * (32.0 + violet * 72.0)).min(255.0) as u32;
+            let green = (old_g + intensity * (126.0 + (1.0 - violet) * 70.0)).min(255.0) as u32;
+            let blue = (old_b + intensity * 245.0).min(255.0) as u32;
+            pixels[index] = (red << 16) | (green << 8) | blue;
         }
     }
-    Model::new(vertices, faces)
-}
-
-fn orient_wormhole_ring(point: Vec3, center: Vec3, observer: Vec3) -> Vec3 {
-    let normal = observer.sub(center).normalize();
-    let world_up = Vec3::new(0.0, 1.0, 0.0);
-    let mut right = world_up.cross(normal).normalize();
-    if right.dot(right) < 0.001 {
-        right = Vec3::new(1.0, 0.0, 0.0);
-    }
-    let up = normal.cross(right).normalize();
-    center
-        .add(right.mul(point.x))
-        .add(up.mul(point.y))
-        .add(normal.mul(point.z))
 }
 
 fn make_turbo_plume(segments: usize) -> Model {
@@ -1862,11 +2038,50 @@ struct TriangleCommand {
     style: TriangleStyle,
 }
 
+#[derive(Clone, Copy, Default)]
+struct RenderStats {
+    models_visible: usize,
+    models_culled: usize,
+    vertices_transformed: usize,
+    triangles_submitted: usize,
+    geometry_ms: f32,
+    sort_ms: f32,
+    raster_ms: f32,
+}
+
+#[derive(Clone, Copy)]
+struct ProjectionCache {
+    tan_half_vertical: f32,
+    tan_half_horizontal: f32,
+    horizontal_plane_length: f32,
+    vertical_plane_length: f32,
+    focal: f32,
+    light: Vec3,
+}
+
+impl ProjectionCache {
+    fn new(width: usize, height: usize) -> Self {
+        let tan_half_vertical = (VERTICAL_FOV * 0.5).tan();
+        let tan_half_horizontal = tan_half_vertical * width as f32 / height as f32;
+        Self {
+            tan_half_vertical,
+            tan_half_horizontal,
+            horizontal_plane_length: (1.0 + tan_half_horizontal * tan_half_horizontal).sqrt(),
+            vertical_plane_length: (1.0 + tan_half_vertical * tan_half_vertical).sqrt(),
+            focal: height as f32 / tan_half_vertical * 0.5,
+            light: Vec3::new(-0.3, 0.8, -0.5).normalize(),
+        }
+    }
+}
+
 struct TriangleBatch {
     commands: Vec<TriangleCommand>,
     camera_vertex_scratch: Vec<Vec3>,
+    camera_normal_scratch: Vec<Vec3>,
     viewport_width: usize,
     viewport_height: usize,
+    projection: ProjectionCache,
+    stats: RenderStats,
 }
 
 impl TriangleBatch {
@@ -1874,15 +2089,28 @@ impl TriangleBatch {
         Self {
             commands: Vec::new(),
             camera_vertex_scratch: Vec::new(),
+            camera_normal_scratch: Vec::new(),
             viewport_width,
             viewport_height,
+            projection: ProjectionCache::new(viewport_width, viewport_height),
+            stats: RenderStats::default(),
         }
+    }
+
+    fn begin_frame(&mut self) {
+        debug_assert!(self.commands.is_empty());
+        self.stats = RenderStats::default();
+    }
+
+    fn stats(&self) -> RenderStats {
+        self.stats
     }
 
     fn resize(&mut self, width: usize, height: usize) {
         debug_assert!(self.commands.is_empty());
         self.viewport_width = width;
         self.viewport_height = height;
+        self.projection = ProjectionCache::new(width, height);
     }
 
     fn flush(&mut self, framebuffer: &mut Framebuffer) {
@@ -1893,6 +2121,16 @@ impl TriangleBatch {
         if self.commands.is_empty() {
             return;
         }
+        let sort_start = Instant::now();
+        if self.commands.len() > 128 {
+            self.commands.sort_unstable_by(|a, b| {
+                let a_depth = (a.vertices[0].z + a.vertices[1].z + a.vertices[2].z) / 3.0;
+                let b_depth = (b.vertices[0].z + b.vertices[1].z + b.vertices[2].z) / 3.0;
+                b_depth.total_cmp(&a_depth)
+            });
+        }
+        self.stats.sort_ms += sort_start.elapsed().as_secs_f32() * 1_000.0;
+        let raster_start = Instant::now();
         let width = framebuffer.width;
         let height = framebuffer.height;
         debug_assert_eq!((width, height), (self.viewport_width, self.viewport_height));
@@ -2004,6 +2242,7 @@ impl TriangleBatch {
             }
         });
         self.commands.clear();
+        self.stats.raster_ms += raster_start.elapsed().as_secs_f32() * 1_000.0;
     }
 }
 
@@ -2042,6 +2281,7 @@ fn queue_model<F>(
     // Reuse the largest vertex buffer seen by this batch. With several planets
     // in the home galaxy this avoids multiple large allocations every frame.
     let mut camera_vertices = std::mem::take(&mut batch.camera_vertex_scratch);
+    let mut camera_normals = std::mem::take(&mut batch.camera_normal_scratch);
     queue_model_with_scratch(
         model,
         batch,
@@ -2050,8 +2290,10 @@ fn queue_model<F>(
         water_time,
         effect_spec,
         &mut camera_vertices,
+        &mut camera_normals,
     );
     batch.camera_vertex_scratch = camera_vertices;
+    batch.camera_normal_scratch = camera_normals;
 }
 
 fn queue_model_with_scratch<F>(
@@ -2062,12 +2304,12 @@ fn queue_model_with_scratch<F>(
     water_time: Option<f32>,
     effect_spec: Option<&ShipSpec>,
     camera_vertices: &mut Vec<Vec3>,
+    camera_normals: &mut Vec<Vec3>,
 ) where
     F: Fn(Vec3) -> Vec3 + Sync,
 {
-    let tan_half_vertical = (VERTICAL_FOV * 0.5).tan();
-    let tan_half_horizontal =
-        tan_half_vertical * batch.viewport_width as f32 / batch.viewport_height as f32;
+    let geometry_start = Instant::now();
+    let projection = batch.projection;
     let (local_center, local_radius) = model.bounds();
     let world_center = transform(local_center);
     let transformed_radius = if local_radius > 0.0 {
@@ -2089,21 +2331,25 @@ fn queue_model_with_scratch<F>(
         relative_center.dot(camera.up),
         relative_center.dot(camera.forward),
     );
-    let horizontal_plane_length = (1.0 + tan_half_horizontal * tan_half_horizontal).sqrt();
-    let vertical_plane_length = (1.0 + tan_half_vertical * tan_half_vertical).sqrt();
     if camera_center.z + transformed_radius < NEAR_PLANE
         || camera_center.z - transformed_radius > FAR_PLANE
-        || camera_center.z * tan_half_horizontal + camera_center.x
-            < -transformed_radius * horizontal_plane_length
-        || camera_center.z * tan_half_horizontal - camera_center.x
-            < -transformed_radius * horizontal_plane_length
-        || camera_center.z * tan_half_vertical + camera_center.y
-            < -transformed_radius * vertical_plane_length
-        || camera_center.z * tan_half_vertical - camera_center.y
-            < -transformed_radius * vertical_plane_length
+        || camera_center.z * projection.tan_half_horizontal + camera_center.x
+            < -transformed_radius * projection.horizontal_plane_length
+        || camera_center.z * projection.tan_half_horizontal - camera_center.x
+            < -transformed_radius * projection.horizontal_plane_length
+        || camera_center.z * projection.tan_half_vertical + camera_center.y
+            < -transformed_radius * projection.vertical_plane_length
+        || camera_center.z * projection.tan_half_vertical - camera_center.y
+            < -transformed_radius * projection.vertical_plane_length
     {
+        batch.stats.models_culled += 1;
+        batch.stats.geometry_ms += geometry_start.elapsed().as_secs_f32() * 1_000.0;
         return;
     }
+
+    batch.stats.models_visible += 1;
+    batch.stats.vertices_transformed += model.vertices.len();
+    let commands_before = batch.commands.len();
 
     let transform_vertex = |vertex: &Vec3| {
         let relative = transform(*vertex).sub(camera.position);
@@ -2136,25 +2382,21 @@ fn queue_model_with_scratch<F>(
         camera_vertices.reserve(model.vertices.len());
         camera_vertices.extend(model.vertices.iter().map(transform_vertex));
     }
-    let camera_normals: Vec<Vec3> = if model.faces.iter().any(|face| face.smooth) {
-        model
-            .vertex_normals
-            .iter()
-            .map(|normal| {
-                let world_direction = transform(local_center.add(*normal)).sub(world_center);
-                Vec3::new(
-                    world_direction.dot(camera.right),
-                    world_direction.dot(camera.up),
-                    world_direction.dot(camera.forward),
-                )
-                .normalize()
-            })
-            .collect()
+    camera_normals.clear();
+    if model.faces.iter().any(|face| face.smooth) {
+        camera_normals.reserve(model.vertex_normals.len());
+        camera_normals.extend(model.vertex_normals.iter().map(|normal| {
+            let world_direction = transform(local_center.add(*normal)).sub(world_center);
+            Vec3::new(
+                world_direction.dot(camera.right),
+                world_direction.dot(camera.up),
+                world_direction.dot(camera.forward),
+            )
+            .normalize()
+        }));
     } else {
-        Vec::new()
-    };
-    let focal = batch.viewport_height as f32 / tan_half_vertical * 0.5;
-    let light = Vec3::new(-0.3, 0.8, -0.5).normalize();
+        camera_normals.clear();
+    }
     for face in &model.faces {
         let [i0, i1, i2] = face.indices;
         let v0 = camera_vertices[i0];
@@ -2164,28 +2406,28 @@ fn queue_model_with_scratch<F>(
             continue;
         }
         if (v0.z > FAR_PLANE && v1.z > FAR_PLANE && v2.z > FAR_PLANE)
-            || (v0.x < -v0.z * tan_half_horizontal
-                && v1.x < -v1.z * tan_half_horizontal
-                && v2.x < -v2.z * tan_half_horizontal)
-            || (v0.x > v0.z * tan_half_horizontal
-                && v1.x > v1.z * tan_half_horizontal
-                && v2.x > v2.z * tan_half_horizontal)
-            || (v0.y < -v0.z * tan_half_vertical
-                && v1.y < -v1.z * tan_half_vertical
-                && v2.y < -v2.z * tan_half_vertical)
-            || (v0.y > v0.z * tan_half_vertical
-                && v1.y > v1.z * tan_half_vertical
-                && v2.y > v2.z * tan_half_vertical)
+            || (v0.x < -v0.z * projection.tan_half_horizontal
+                && v1.x < -v1.z * projection.tan_half_horizontal
+                && v2.x < -v2.z * projection.tan_half_horizontal)
+            || (v0.x > v0.z * projection.tan_half_horizontal
+                && v1.x > v1.z * projection.tan_half_horizontal
+                && v2.x > v2.z * projection.tan_half_horizontal)
+            || (v0.y < -v0.z * projection.tan_half_vertical
+                && v1.y < -v1.z * projection.tan_half_vertical
+                && v2.y < -v2.z * projection.tan_half_vertical)
+            || (v0.y > v0.z * projection.tan_half_vertical
+                && v1.y > v1.z * projection.tan_half_vertical
+                && v2.y > v2.z * projection.tan_half_vertical)
         {
             continue;
         }
         let project = |vertex: Vec3| ScreenVertex {
-            x: batch.viewport_width as f32 * 0.5 + vertex.x * focal / vertex.z,
-            y: batch.viewport_height as f32 * 0.5 - vertex.y * focal / vertex.z,
+            x: batch.viewport_width as f32 * 0.5 + vertex.x * projection.focal / vertex.z,
+            y: batch.viewport_height as f32 * 0.5 - vertex.y * projection.focal / vertex.z,
             z: 1.0 / vertex.z,
         };
         let normal = v1.sub(v0).cross(v2.sub(v0)).normalize();
-        let brightness = 0.34 + normal.dot(light).abs() * 0.66;
+        let brightness = 0.34 + normal.dot(projection.light).abs() * 0.66;
         let a = project(v0);
         let b = project(v1);
         let c = project(v2);
@@ -2213,7 +2455,9 @@ fn queue_model_with_scratch<F>(
             });
         } else if face.smooth {
             let brightness =
-                [i0, i1, i2].map(|index| 0.34 + camera_normals[index].dot(light).abs() * 0.66);
+                [i0, i1, i2].map(|index| {
+                    0.34 + camera_normals[index].dot(projection.light).abs() * 0.66
+                });
             batch.commands.push(TriangleCommand {
                 vertices: [a, b, c],
                 style: TriangleStyle::Smooth {
@@ -2228,6 +2472,8 @@ fn queue_model_with_scratch<F>(
             });
         }
     }
+    batch.stats.triangles_submitted += batch.commands.len() - commands_before;
+    batch.stats.geometry_ms += geometry_start.elapsed().as_secs_f32() * 1_000.0;
 }
 
 #[cfg(test)]
@@ -2243,6 +2489,7 @@ fn render_model_with_scratch<F>(
     F: Fn(Vec3) -> Vec3 + Sync,
 {
     let mut batch = TriangleBatch::new(framebuffer.width, framebuffer.height);
+    let mut camera_normals = Vec::new();
     queue_model_with_scratch(
         model,
         &mut batch,
@@ -2251,6 +2498,7 @@ fn render_model_with_scratch<F>(
         water_time,
         effect_spec,
         camera_vertices,
+        &mut camera_normals,
     );
     batch.flush(framebuffer);
 }
@@ -2269,10 +2517,11 @@ fn render_scene(
     spiky_planet_scale: f32,
     sun: &Model,
     wormhole: &Model,
-    wormhole_ring: &Model,
     wormhole_center: Vec3,
     galaxy: Galaxy,
     race_planet: &Model,
+    planet_lods: [&PlanetLodModels; 3],
+    planet_lod_states: &mut [PlanetLodState; 3],
     framebuffer: &mut Framebuffer,
     batch: &mut TriangleBatch,
     ship: &Ship,
@@ -2290,73 +2539,107 @@ fn render_scene(
     let planet_rotation = world_time * 0.25;
 
     if galaxy == Galaxy::Home {
-    draw_water_planet_atmosphere(
-        framebuffer,
-        &camera,
-        planet_position,
-        WATER_PLANET_RADIUS,
-        world_time,
-    );
+        draw_water_planet_atmosphere(
+            framebuffer,
+            &camera,
+            planet_position,
+            WATER_PLANET_RADIUS,
+            world_time,
+        );
 
-    queue_model(
-        sun,
-        batch,
-        &camera,
-        |vertex| vertex.add(sun_position),
-        None,
-        None,
-    );
-    queue_model(
-        planet,
-        batch,
-        &camera,
-        |vertex| {
-            let vertex = vertex.sub(planet_center).mul(planet_scale);
-            let (sin, cos) = planet_rotation.sin_cos();
-            Vec3::new(
-                vertex.x * cos - vertex.z * sin,
-                vertex.y,
-                vertex.x * sin + vertex.z * cos,
-            )
-            .add(planet_position)
-        },
-        Some(world_time),
-        None,
-    );
-    let spiky_rotation = world_time * SPIKY_PLANET_ROTATION_SPEED;
-    let spiky_position = spiky_planet_position(world_time);
-    queue_model(
-        spiky_planet,
-        batch,
-        &camera,
-        |vertex| {
-            let vertex = vertex.sub(spiky_planet_center).mul(spiky_planet_scale);
-            let (sin, cos) = spiky_rotation.sin_cos();
-            Vec3::new(
-                vertex.x * cos - vertex.z * sin,
-                vertex.y,
-                vertex.x * sin + vertex.z * cos,
-            )
-            .add(spiky_position)
-        },
-        None,
-        None,
-    );
+        queue_model(
+            sun,
+            batch,
+            &camera,
+            |vertex| vertex.add(sun_position),
+            Some(world_time),
+            None,
+        );
+        let water_lod = planet_lod_states[0].update(projected_planet_radius(
+            &camera,
+            planet_position,
+            WATER_PLANET_RADIUS,
+            batch.projection.focal,
+        ));
+        let water_model = match water_lod {
+            0 => planet,
+            _ => &planet_lods[0].low,
+        };
+        queue_model(
+            water_model,
+            batch,
+            &camera,
+            |vertex| {
+                let vertex = if water_lod == 0 {
+                    vertex.sub(planet_center).mul(planet_scale)
+                } else {
+                    vertex
+                };
+                let (sin, cos) = planet_rotation.sin_cos();
+                Vec3::new(
+                    vertex.x * cos - vertex.z * sin,
+                    vertex.y,
+                    vertex.x * sin + vertex.z * cos,
+                )
+                .add(planet_position)
+            },
+            Some(world_time),
+            None,
+        );
+        let spiky_rotation = world_time * SPIKY_PLANET_ROTATION_SPEED;
+        let spiky_position = spiky_planet_position(world_time);
+        let spiky_lod = planet_lod_states[1].update(projected_planet_radius(
+            &camera,
+            spiky_position,
+            SPIKY_PLANET_RADIUS,
+            batch.projection.focal,
+        ));
+        let spiky_model = match spiky_lod {
+            0 => spiky_planet,
+            _ => &planet_lods[1].low,
+        };
+        queue_model(
+            spiky_model,
+            batch,
+            &camera,
+            |vertex| {
+                let vertex = if spiky_lod == 0 {
+                    animate_spiky_tentacle(vertex.sub(spiky_planet_center), world_time)
+                        .mul(spiky_planet_scale)
+                } else {
+                    vertex
+                };
+                let (sin, cos) = spiky_rotation.sin_cos();
+                Vec3::new(
+                    vertex.x * cos - vertex.z * sin,
+                    vertex.y,
+                    vertex.x * sin + vertex.z * cos,
+                )
+                .add(spiky_position)
+            },
+            None,
+            None,
+        );
+        let race_lod = planet_lod_states[2].update(projected_planet_radius(
+            &camera,
+            race_track::PLANET_POSITION,
+            race_track::PLANET_RADIUS,
+            batch.projection.focal,
+        ));
+        let race_model = match race_lod {
+            0 => race_planet,
+            _ => &planet_lods[2].low,
+        };
+        queue_model(
+            race_model,
+            batch,
+            &camera,
+            |vertex| vertex.add(race_track::PLANET_POSITION),
+            None,
+            None,
+        );
     }
 
-    if galaxy == Galaxy::Home {
-        queue_model(race_planet, batch, &camera,
-            |v| v.add(race_track::PLANET_POSITION), None, None);
-    }
-
-    queue_model(
-        wormhole_ring,
-        batch,
-        &camera,
-        |vertex| orient_wormhole_ring(vertex, wormhole_center, ship.position),
-        None,
-        None,
-    );
     queue_model(
         wormhole,
         batch,
@@ -2381,6 +2664,7 @@ fn render_scene(
         true,
     );
     batch.flush(framebuffer);
+    draw_wormhole_energy(framebuffer, &camera, wormhole_center, world_time);
 }
 
 fn render_ship_components(
@@ -2649,6 +2933,7 @@ fn render_water_enemies(
     instance_buffers: &mut [Vec<Vec3>; 3],
 ) {
     let up = Vec3::new(0.0, 1.0, 0.0);
+    let mut camera_normals = Vec::new();
     for kind in 0..enemy_models.len() {
         let model = &enemy_models[kind];
         let center = enemy_centers[kind];
@@ -2678,6 +2963,7 @@ fn render_water_enemies(
                 None,
                 None,
                 camera_vertices,
+                &mut camera_normals,
             );
         }
     }
@@ -3240,6 +3526,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let spiky_planet_path = "assets/planets/planeta_espinas.obj";
     let spiky_planet = load_obj(spiky_planet_path)
         .map_err(|error| format!("Error al cargar {spiky_planet_path}: {error}"))?;
+    let planet_lods = [
+        make_planet_lods(WATER_PLANET_RADIUS, PlanetVisual::Water),
+        make_planet_lods(SPIKY_PLANET_RADIUS, PlanetVisual::Spiky),
+        make_planet_lods(race_track::PLANET_RADIUS, PlanetVisual::Racing),
+    ];
+    let mut planet_lod_states = [PlanetLodState::default(); 3];
     let water_level_path = "assets/levels/waterlevel_extendido.obj";
     let mut water_level = load_obj(water_level_path)
         .map_err(|error| format!("Error al cargar {water_level_path}: {error}"))?;
@@ -3275,9 +3567,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         SPIKY_PLANET_RADIUS / model_radius(&spiky_planet, spiky_planet_center).max(0.001);
     let planet_surface_radius = material_radius(&planet, planet_center, "Oceano") * planet_scale;
     let object_colliders = build_object_colliders(&planet, planet_center, planet_scale);
-    let sun = make_sphere(55.0, 18, 28, true);
+    let sun_path = "assets/planets/sol_detallado.obj";
+    let sun = load_obj(sun_path)
+        .map_err(|error| format!("Error al cargar {sun_path}: {error}"))?;
     let wormhole = make_wormhole_sphere(22.0, 18, 28);
-    let wormhole_ring = make_wormhole_ring(30.0, 3.2);
     let turbo_plume = make_turbo_plume(12);
     let laser_bolt = make_laser_bolt();
     let bubble_model = make_bubble_model();
@@ -3319,6 +3612,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut previous = Instant::now();
     let mut world_time = 0.0_f32;
     let mut distance = 0.0_f32;
+    let mut performance_hud = false;
 
     while window.is_open() {
         if crate::input::pressed(Key::Escape) {
@@ -3433,12 +3727,15 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
         }
 
-        let resolution_changed = dynamic_resolution.update(frame_time);
+        let resolution_changed = dynamic_resolution.update(frame_time, triangle_batch.stats());
         let toggled_resolution = if crate::input::pressed(Key::F2) {
             dynamic_resolution.toggle()
         } else {
             false
         };
+        if crate::input::pressed(Key::F3) {
+            performance_hud = !performance_hud;
+        }
         if resolution_changed || toggled_resolution {
             let (render_width, render_height) = dynamic_resolution.dimensions();
             scene_framebuffer = Framebuffer::new(render_width, render_height);
@@ -3566,6 +3863,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         } else {
             base_center
         };
+        triangle_batch.begin_frame();
         match game_mode {
             GameMode::FreeWorld => {
                 let portal_approach_active = galaxy_transition
@@ -3720,10 +4018,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     spiky_planet_scale,
                     &sun,
                     &wormhole,
-                    &wormhole_ring,
                     wormhole_position(active_galaxy),
                     active_galaxy,
                     &race_track.planet,
+                    [&planet_lods[0], &planet_lods[1], &planet_lods[2]],
+                    &mut planet_lod_states,
                     &mut scene_framebuffer,
                     &mut triangle_batch,
                     &ship_controller.ship,
@@ -3848,6 +4147,31 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         }
 
         upscale_scene(&scene_framebuffer, &mut framebuffer);
+        if performance_hud {
+            let stats = triangle_batch.stats();
+            let summary = format!(
+                "PERF {:>3.0} FPS AVG {:>4.1} MS GEO {:>4.1} SORT {:>3.1} RAST {:>4.1}",
+                dynamic_resolution.fps_average,
+                dynamic_resolution.frame_ms_average,
+                stats.geometry_ms,
+                stats.sort_ms,
+                stats.raster_ms,
+            );
+            let geometry = format!(
+                "MODELOS {} CULL {} VERT {} TRI {} RES {}% DRS {} LOD {}/{}/{}",
+                stats.models_visible,
+                stats.models_culled,
+                stats.vertices_transformed,
+                stats.triangles_submitted,
+                dynamic_resolution.percentage(),
+                dynamic_resolution.status,
+                planet_lod_states[0].level,
+                planet_lod_states[1].level,
+                planet_lod_states[2].level,
+            );
+            draw_selection_label(&mut framebuffer, &summary, 600, 92, 1, 0x9fffd2);
+            draw_selection_label(&mut framebuffer, &geometry, 600, 108, 1, 0xc6d8ff);
+        }
         if game_mode == GameMode::Racing {
             race_track.hud(&mut framebuffer, ship_controller.ship.position);
         }
@@ -4358,6 +4682,30 @@ mod tests {
     }
 
     #[test]
+    fn wormhole_energy_is_animated_and_leaves_no_solid_physical_ring() {
+        let camera = test_camera();
+        let center = Vec3::new(0.0, 0.0, 100.0);
+        let background = 0x02030b;
+        let mut first = Framebuffer::new(320, 200);
+        first.clear(background);
+        draw_wormhole_energy(&mut first, &camera, center, 0.0);
+        let lit = first.pixels.iter().filter(|&&pixel| pixel != background).count();
+        assert!(lit > 500);
+        assert_eq!(first.pixels[100 * 320 + 160], background);
+
+        let mut later = Framebuffer::new(320, 200);
+        later.clear(background);
+        draw_wormhole_energy(&mut later, &camera, center, 0.7);
+        assert!(first
+            .pixels
+            .iter()
+            .zip(&later.pixels)
+            .filter(|(a, b)| a != b)
+            .count()
+            > 300);
+    }
+
+    #[test]
     fn refractive_water_distorts_and_tints_the_background() {
         let width = 16;
         let height = 16;
@@ -4431,6 +4779,39 @@ mod tests {
     }
 
     #[test]
+    fn render_stats_count_visible_and_culled_geometry() {
+        let camera = test_camera();
+        let mut batch = TriangleBatch::new(WIDTH, HEIGHT);
+        let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
+        batch.begin_frame();
+        queue_model(
+            &test_triangle(5.0),
+            &mut batch,
+            &camera,
+            |vertex| vertex,
+            None,
+            None,
+        );
+        queue_model(
+            &test_triangle(-5.0),
+            &mut batch,
+            &camera,
+            |vertex| vertex,
+            None,
+            None,
+        );
+        batch.flush_with_workers(&mut framebuffer, 1);
+
+        let stats = batch.stats();
+        assert_eq!(stats.models_visible, 1);
+        assert_eq!(stats.models_culled, 1);
+        assert_eq!(stats.vertices_transformed, 3);
+        assert_eq!(stats.triangles_submitted, 1);
+        assert!(stats.geometry_ms.is_finite());
+        assert!(stats.raster_ms.is_finite());
+    }
+
+    #[test]
     fn instanced_rendering_reuses_the_vertex_buffer() {
         let camera = test_camera();
         let model = test_triangle(5.0);
@@ -4457,6 +4838,32 @@ mod tests {
         );
         assert_eq!(camera_vertices.len(), model.vertices.len());
         assert_eq!(camera_vertices.as_ptr(), allocation);
+    }
+
+    #[test]
+    fn batched_rendering_reuses_normal_buffer_and_refreshes_projection_on_resize() {
+        let camera = test_camera();
+        let mut model = test_triangle(5.0);
+        model.faces[0].smooth = true;
+        model.recalculate_normals();
+        let mut batch = TriangleBatch::new(WIDTH, HEIGHT);
+
+        queue_model(&model, &mut batch, &camera, |vertex| vertex, None, None);
+        let normal_allocation = batch.camera_normal_scratch.as_ptr();
+        queue_model(
+            &model,
+            &mut batch,
+            &camera,
+            |vertex| vertex.add(Vec3::new(0.25, 0.0, 0.0)),
+            None,
+            None,
+        );
+        assert_eq!(batch.camera_normal_scratch.as_ptr(), normal_allocation);
+
+        batch.commands.clear();
+        let previous_focal = batch.projection.focal;
+        batch.resize(WIDTH / 2, HEIGHT / 2);
+        assert!(batch.projection.focal < previous_focal);
     }
 
     #[test]
@@ -4493,13 +4900,13 @@ mod tests {
     fn dynamic_resolution_reacts_only_to_sustained_frame_rates() {
         let mut resolution = DynamicResolution::new();
         for _ in 0..80 {
-            resolution.update(1.0 / 40.0);
+            resolution.update(1.0 / 40.0, RenderStats::default());
         }
         assert_eq!(resolution.scale_index, 1);
         assert_eq!(resolution.dimensions(), (1080, 720));
 
         for _ in 0..600 {
-            resolution.update(1.0 / 100.0);
+            resolution.update(1.0 / 100.0, RenderStats::default());
         }
         assert_eq!(resolution.scale_index, 0);
         assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
@@ -4512,6 +4919,83 @@ mod tests {
         assert!(resolution.toggle());
         assert!(!resolution.enabled);
         assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
+    }
+
+    #[test]
+    fn dynamic_resolution_uses_render_load_and_ignores_isolated_spikes() {
+        let mut loaded = DynamicResolution::new();
+        let expensive_render = RenderStats {
+            raster_ms: 22.0,
+            ..RenderStats::default()
+        };
+        for _ in 0..180 {
+            loaded.update(1.0 / 60.0, expensive_render);
+        }
+        assert!(loaded.scale_index > 0);
+
+        let mut stable = DynamicResolution::new();
+        stable.update(0.1, RenderStats::default());
+        for _ in 0..120 {
+            stable.update(1.0 / 60.0, RenderStats::default());
+        }
+        assert_eq!(stable.scale_index, 0);
+    }
+
+    #[test]
+    fn dynamic_resolution_hysteresis_avoids_boundary_oscillation() {
+        let mut resolution = DynamicResolution::new();
+        for frame in 0..600 {
+            let frame_time = if frame % 2 == 0 { 1.0 / 52.0 } else { 1.0 / 65.0 };
+            resolution.update(frame_time, RenderStats::default());
+        }
+        assert_eq!(resolution.scale_index, 0);
+        assert_eq!(resolution.status, "ESTABLE");
+    }
+
+    #[test]
+    fn planet_lod_uses_hysteresis_and_reduces_geometry() {
+        let lods = make_planet_lods(WATER_PLANET_RADIUS, PlanetVisual::Water);
+        assert!(lods.low.faces.len() < 200);
+
+        let mut state = PlanetLodState::default();
+        assert_eq!(state.update(80.0), 0);
+        assert_eq!(state.update(25.0), 0);
+        assert_eq!(state.update(23.0), 1);
+        assert_eq!(state.update(30.0), 1);
+        assert_eq!(state.update(35.0), 0);
+    }
+
+    #[test]
+    fn projected_planet_size_decreases_with_distance() {
+        let camera = test_camera();
+        let focal = ProjectionCache::new(WIDTH, HEIGHT).focal;
+        let near = projected_planet_radius(
+            &camera,
+            camera.position.add(camera.forward.mul(100.0)),
+            WATER_PLANET_RADIUS,
+            focal,
+        );
+        let far = projected_planet_radius(
+            &camera,
+            camera.position.add(camera.forward.mul(400.0)),
+            WATER_PLANET_RADIUS,
+            focal,
+        );
+        assert!(near > far * 3.9);
+    }
+
+    #[test]
+    fn spiky_tentacles_wave_while_planet_surface_stays_anchored() {
+        let surface = Vec3::new(1.47, 0.0, 0.0);
+        assert_eq!(animate_spiky_tentacle(surface, 0.0).x, surface.x);
+        assert_eq!(animate_spiky_tentacle(surface, 2.0).y, surface.y);
+
+        let tip = Vec3::new(2.30, 0.18, 0.12);
+        let first = animate_spiky_tentacle(tip, 0.0);
+        let later = animate_spiky_tentacle(tip, 1.0);
+        let movement = later.sub(first);
+        assert!(movement.dot(movement) > 0.02);
+        assert!(first.sub(tip).dot(first.sub(tip)) < 0.12);
     }
 
     #[test]
@@ -4830,6 +5314,26 @@ mod tests {
                     "missing Arwing material {material}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn blender_sun_asset_has_plasma_corona_and_valid_scale() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let sun = load_obj(root.join("assets/planets/sol_detallado.obj")).unwrap();
+        assert!(sun.vertices.len() > 3_500);
+        assert!(sun.faces.len() > 7_000);
+        let radius = model_radius(&sun, model_center(&sun));
+        assert!((55.0..75.0).contains(&radius), "unexpected sun radius {radius}");
+        for material in [
+            "sun_hot_plasma",
+            "sun_bright_cells",
+            "sun_dark_cells",
+            "sun_corona_flare",
+        ] {
+            assert!(sun.faces.iter().any(|face| {
+                face.material == material && face.shader == SurfaceShader::Sun
+            }));
         }
     }
 

@@ -86,6 +86,7 @@ pub enum SurfaceShader {
     McQueenYellowMetal,
     McQueenWhiteMetal,
     McQueenEmission,
+    Sun,
     Flat,
 }
 
@@ -269,6 +270,8 @@ fn classify_surface(name: &str) -> SurfaceShader {
         SurfaceShader::ArwingEmission
     } else if name == "warning_yellow" {
         SurfaceShader::ArwingYellow
+    } else if name.contains("sun") {
+        SurfaceShader::Sun
     } else if name.contains("oceano") {
         SurfaceShader::Ocean
     } else if name.contains("cascada") {

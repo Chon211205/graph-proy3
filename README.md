@@ -42,6 +42,7 @@ Se necesita Rust con soporte para edición 2024 y las herramientas nativas de co
 | T | Alternar la apariencia nave/carro de Buzz o Rayo McQueen en vuelo libre |
 | R | Reiniciar posición o recorrido submarino |
 | F11 | Alternar pantalla completa |
+| F3 | Mostrar/ocultar métricas de rendimiento |
 | P | Guardar `captura.png` |
 
 Completa el recorrido submarino esquivando obstáculos. Buzz cambia automáticamente a submarino en ese nivel y recupera su forma anterior al salir. La forma carro es una transformación visual con los controles del vuelo libre; no incorpora un circuito terrestre ni física de conducción.
@@ -71,6 +72,20 @@ cargo test --locked
 ```
 
 ## Modelado con Blender mediante MCP
+
+El sol detallado se conserva como `assets/planets/sol_detallado.blend` y se
+exporta a OBJ para el juego. Para reconstruirlo con Blender 4.x:
+
+```powershell
+blender --background --python scripts/create_sun_blender.py
+```
+
+El planeta de carreras también conserva su archivo Blender editable y se puede
+regenerar con:
+
+```powershell
+blender --background --python scripts/create_racing_planet_blender.py
+```
 
 `blender_mcp/` permite que un cliente MCP controle Blender para crear modelos a
 partir de cubos, esferas, cilindros, conos y toros, inspeccionar la escena y
