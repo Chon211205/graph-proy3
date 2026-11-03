@@ -4,78 +4,108 @@ use crate::{
 };
 
 use super::{
-    RacePhase, TILE_SIZE,
+    RacePhase,
+    course::RaceCourse,
     drive::DriveState,
     progress::{ProgressEvent, RaceProgress},
+    racer::Rival,
 };
 
 pub(super) fn draw(
     frame: &mut Framebuffer,
-    tiles: &[Vec<u8>],
+    course: &RaceCourse,
     progress: &RaceProgress,
     drive: &DriveState,
     position: Vec3,
     yaw: f32,
+    rivals: Option<&[Rival; 3]>,
+    place: usize,
     phase: RacePhase,
     countdown: f32,
 ) {
-    label(frame, "JARDIN RUST", 600, 20, 2, 0xffe778);
-    let lap = format!(
-        "VUELTA {}/{}",
-        progress.current_lap(),
-        progress.total_laps()
-    );
-    let checkpoint = format!(
-        "CHECKPOINT {}/{}",
-        progress.current_checkpoint() + 1,
-        progress.checkpoint_count()
-    );
-    label(frame, &lap, 98, 28, 2, 0xffffff);
-    label(frame, &checkpoint, 600, 58, 1, 0xaad6ff);
-
-    let speed = format!("{:03.0} KM/H", drive.speed.abs() * 3.6);
-    label(frame, &speed, 105, 85, 2, 0x85f1ff);
-    let timer = format!("TIEMPO {}", format_time(progress.race_time()));
-    label(frame, &timer, 105, 122, 1, 0xffffff);
-    let lap_timer = format!("VUELTA {}", format_time(progress.lap_time()));
-    label(frame, &lap_timer, 105, 140, 1, 0xc7d8ed);
-    if let Some(best) = progress.best_lap_time() {
-        let best = format!("MEJOR {}", format_time(best));
-        label(frame, &best, 105, 158, 1, 0xffdf6b);
-    }
-
-    draw_bar(
+    draw_space_panel(frame, 24, 14, 248, 176, 0x4ddfff);
+    draw_space_panel(frame, 438, 8, 324, 62, 0xffd15c);
+    draw_space_panel(frame, 970, 14, 216, 42, 0xffd15c);
+    label(frame, "TELEMETRIA ORBITAL", 148, 22, 1, 0x76e9ff);
+    label(frame, "GRAN PREMIO ORBITAL", 600, 16, 2, 0xffe778);
+    label(
         frame,
-        38,
-        HEIGHT as i32 - 82,
-        172,
-        12,
-        drive.drift_charge,
-        0xffb34f,
+        &format!(
+            "VUELTA {}/{}",
+            progress.current_lap(),
+            progress.total_laps()
+        ),
+        148,
+        43,
+        2,
+        0xffffff,
+    );
+    label(frame, &format!("PUESTO {place}/4"), 1078, 23, 1, 0xffdf6b);
+    label(
+        frame,
+        &format!(
+            "SECTOR {:02}/{:02}",
+            progress.current_checkpoint() + 1,
+            progress.checkpoint_count()
+        ),
+        600,
+        46,
+        1,
+        0xaad6ff,
     );
     label(
         frame,
-        "TURBO DE DERRAPE",
-        124,
-        HEIGHT as i32 - 103,
-        1,
-        0xffd6a0,
+        &format!("{:03.0} KM/H", drive.speed.abs() * 3.6),
+        148,
+        77,
+        2,
+        0x85f1ff,
     );
-    draw_bar(
+    label(
         frame,
-        38,
-        HEIGHT as i32 - 54,
-        172,
-        9,
-        drive.boost_timer.clamp(0.0, 1.4) / 1.4,
-        0x4ce7ff,
+        &format!("TIEMPO {}", format_time(progress.race_time())),
+        145,
+        112,
+        1,
+        0xffffff,
     );
-    label(frame, "IMPULSO", 124, HEIGHT as i32 - 73, 1, 0xb6f5ff);
+    label(
+        frame,
+        &format!("VUELTA {}", format_time(progress.lap_time())),
+        145,
+        132,
+        1,
+        0xc7d8ed,
+    );
+    if let Some(last) = progress.last_lap_time() {
+        label(
+            frame,
+            &format!("ULTIMA {}", format_time(last)),
+            145,
+            151,
+            1,
+            0xb8d7c8,
+        );
+    }
+    if let Some(best) = progress.best_lap_time() {
+        label(
+            frame,
+            &format!("MEJOR {}", format_time(best)),
+            145,
+            170,
+            1,
+            0xffdf6b,
+        );
+    }
 
-    draw_minimap(frame, tiles, progress, position, yaw);
+    draw_minimap(frame, course, progress, position, yaw, rivals);
+    label(frame, "RESERVA TURBO", 112, 675, 1, 0xffd6a0);
+    draw_bar(frame, 34, 690, 156, 9, drive.turbo / 3.2, 0xffbc42);
+    label(frame, "DERRAPE", 112, 713, 1, 0x9cecff);
+    draw_bar(frame, 34, 728, 156, 8, drive.drift_charge, 0x57d9ed);
     if let Some(event) = progress.event() {
         let (message, color) = event_label(event);
-        label(frame, message, 600, 108, 2, color);
+        label(frame, message, 600, 95, 2, color);
     }
 
     match phase {
@@ -89,66 +119,100 @@ pub(super) fn draw(
             } else {
                 "YA!"
             };
-            panel(frame, 480, 285, 720, 490, true);
-            label(frame, "PREPARATE", 600, 325, 2, 0xffffff);
-            label(frame, number, 600, 390, 5, 0xffe35c);
+            draw_space_panel(frame, 438, 258, 324, 286, 0x4ddfff);
+            label(frame, "SECUENCIA DE LANZAMIENTO", 600, 282, 1, 0x8deaff);
+            label(frame, "MOTORES ORBITALES", 600, 309, 1, 0xffd15c);
+            draw_ring(frame, 600, 414, 70, 0x284a67);
+            draw_ring(frame, 600, 414, 61, 0x4ddfff);
+            draw_ring_ticks(frame, 600, 414, 70);
+            let countdown_color = if number == "YA!" { 0x8dffcf } else { 0xffe35c };
+            label(frame, number, 600, 367, 5, countdown_color);
+            label(frame, "ENLACE DE CARRERA ESTABLE", 600, 496, 1, 0xa7cde1);
+            draw_bar(
+                frame,
+                500,
+                521,
+                200,
+                7,
+                (3.25 - countdown).clamp(0.0, 3.25) / 3.25,
+                0x4ddfff,
+            );
         }
         RacePhase::Paused => {
-            panel(frame, 295, 278, 905, 510, true);
-            label(frame, "CARRERA EN PAUSA", 600, 322, 3, 0xffffff);
-            label(frame, "P / ENTER: CONTINUAR", 600, 390, 2, 0x8feaff);
-            label(frame, "BACKSPACE: SALIR AL ESPACIO", 600, 438, 2, 0xffdf6b);
+            panel(frame, 310, 290, 890, 500, true);
+            label(frame, "CARRERA EN PAUSA", 600, 330, 3, 0xffffff);
+            label(frame, "P / ENTER: CONTINUAR", 600, 395, 2, 0x8feaff);
+            label(frame, "BACKSPACE: SALIR AL ESPACIO", 600, 442, 2, 0xffdf6b);
         }
         RacePhase::Finished => {
-            panel(frame, 285, 250, 915, 545, true);
-            label(frame, "CARRERA COMPLETADA", 600, 295, 3, 0xffe778);
+            panel(frame, 300, 250, 900, 555, true);
+            label(
+                frame,
+                if place == 1 {
+                    "VICTORIA"
+                } else {
+                    "CARRERA FINALIZADA"
+                },
+                600,
+                294,
+                3,
+                if place == 1 { 0xffdf6b } else { 0xffffff },
+            );
+            label(
+                frame,
+                &format!("POSICION FINAL {place}/4"),
+                600,
+                350,
+                2,
+                0xffdf6b,
+            );
             label(
                 frame,
                 &format!("TIEMPO {}", format_time(progress.race_time())),
                 600,
-                365,
+                385,
                 2,
                 0xffffff,
             );
-            if let Some(last) = progress.last_lap_time() {
-                label(
-                    frame,
-                    &format!("ULTIMA VUELTA {}", format_time(last)),
-                    600,
-                    390,
-                    2,
-                    0xc7d8ed,
-                );
-            }
             if let Some(best) = progress.best_lap_time() {
                 label(
                     frame,
                     &format!("MEJOR VUELTA {}", format_time(best)),
                     600,
-                    405,
+                    420,
                     2,
                     0x9fffd2,
                 );
             }
-            label(frame, "ENTER: REINTENTAR", 600, 460, 2, 0xffffff);
-            label(frame, "BACKSPACE: VOLVER AL ESPACIO", 600, 500, 2, 0xffdf6b);
+            if let Some(last) = progress.last_lap_time() {
+                label(
+                    frame,
+                    &format!("ULTIMA VUELTA {}", format_time(last)),
+                    600,
+                    440,
+                    2,
+                    0xc7d8ed,
+                );
+            }
+            label(frame, "ENTER: REINTENTAR", 600, 475, 2, 0xffffff);
+            label(frame, "BACKSPACE: SALIR AL ESPACIO", 600, 515, 2, 0xffdf6b);
         }
         RacePhase::Driving => {
             label(
                 frame,
-                "W/UP ACELERA  S/DOWN FRENA  A/D O FLECHAS GIRA",
+                "W ACELERA  S FRENA  A/D O FLECHAS GIRA  SPACE DERRAPE  SHIFT TURBO  P PAUSA",
                 600,
-                HEIGHT as i32 - 27,
+                HEIGHT as i32 - 24,
                 1,
                 0xd7e5f1,
             );
             label(
                 frame,
-                "SPACE DERRAPE  SHIFT TURBO  R RECUPERAR  P PAUSA  BACKSPACE SALIR",
+                "R RECUPERAR  BACKSPACE SALIR",
                 600,
-                HEIGHT as i32 - 12,
+                HEIGHT as i32 - 10,
                 1,
-                0xd7e5f1,
+                0xc5d7e7,
             );
         }
     }
@@ -156,78 +220,75 @@ pub(super) fn draw(
 
 fn draw_minimap(
     frame: &mut Framebuffer,
-    tiles: &[Vec<u8>],
+    course: &RaceCourse,
     progress: &RaceProgress,
     position: Vec3,
     yaw: f32,
+    rivals: Option<&[Rival; 3]>,
 ) {
-    const SCALE: usize = 2;
-    const LEFT: usize = WIDTH - 65 * SCALE - 24;
+    const MAP_WIDTH: usize = 150;
+    const MAP_HEIGHT: usize = 98;
+    const LEFT: usize = WIDTH - MAP_WIDTH - 20;
     const TOP: usize = 62;
     panel(
         frame,
         LEFT - 7,
         TOP - 7,
-        WIDTH - 10,
-        TOP + 41 * SCALE + 7,
+        WIDTH - 8,
+        TOP + MAP_HEIGHT + 7,
         false,
     );
-    for (row, line) in tiles.iter().enumerate() {
-        for (col, tile) in line.iter().enumerate() {
-            let color = match tile {
-                b'#' | b'H' | b'S' | b'D' => 0x263342,
-                b'W' => 0x24668b,
-                b'R' => 0xffc83d,
-                b'P' | b'K' | b'L' | b'M' => 0x88949b,
-                _ => 0x285637,
-            };
-            for dy in 0..SCALE {
-                for dx in 0..SCALE {
-                    let x = LEFT + col * SCALE + dx;
-                    let y = TOP + row * SCALE + dy;
-                    if x < WIDTH && y < HEIGHT {
-                        frame.pixels[y * frame.width + x] = color;
-                    }
-                }
-            }
-        }
+    label(
+        frame,
+        "RADAR ORBITAL",
+        (LEFT + MAP_WIDTH / 2) as i32,
+        TOP as i32 - 19,
+        1,
+        0x76e9ff,
+    );
+    for sample in course.samples.iter().step_by(2) {
+        let (x, y) = map_point(sample.position);
+        draw_disk(frame, LEFT as i32 + x, TOP as i32 + y, 3, 0x707e80);
     }
-    for pair in progress.checkpoints().windows(2) {
-        let a = grid_point(pair[0].center);
-        let b = grid_point(pair[1].center);
-        draw_line(
-            frame,
-            LEFT as i32 + a.0,
-            TOP as i32 + a.1,
-            LEFT as i32 + b.0,
-            TOP as i32 + b.1,
-            0xecd35d,
-        );
+    for checkpoint in progress.checkpoints() {
+        let (x, y) = map_point(checkpoint.center);
+        draw_disk(frame, LEFT as i32 + x, TOP as i32 + y, 2, 0xe0bb55);
     }
     if let Some(active) = progress.active_checkpoint() {
-        let (x, y) = grid_point(active.center);
-        draw_disk(frame, LEFT as i32 + x, TOP as i32 + y, 3, 0xff5c56);
+        let (x, y) = map_point(active.center);
+        draw_ring(frame, LEFT as i32 + x, TOP as i32 + y, 6, 0xff775b);
+        draw_disk(frame, LEFT as i32 + x, TOP as i32 + y, 2, 0xffd15c);
     }
-    let player_x = (position.x / TILE_SIZE * SCALE as f32) as i32;
-    let player_y = (position.z / TILE_SIZE * SCALE as f32) as i32;
-    let px = LEFT as i32 + player_x;
-    let py = TOP as i32 + player_y;
-    draw_disk(frame, px, py, 3, 0x71f3ff);
+    for (index, rival) in rivals.into_iter().flatten().enumerate() {
+        let (x, y) = map_point(rival.controller.ship.position);
+        draw_disk(
+            frame,
+            LEFT as i32 + x,
+            TOP as i32 + y,
+            4,
+            [0xff6d53, 0xffc94e, 0xc177ff][index],
+        );
+    }
+    let (x, y) = map_point(position);
+    let px = LEFT as i32 + x;
+    let py = TOP as i32 + y;
+    draw_ring(frame, px, py, 7, 0x4ddfff);
+    draw_disk(frame, px, py, 3, 0xc9f8ff);
     let (sin, cos) = yaw.sin_cos();
     draw_line(
         frame,
         px,
         py,
-        px + (-cos * 10.0) as i32,
-        py + (-sin * 10.0) as i32,
+        px + (-cos * 8.0) as i32,
+        py + (-sin * 8.0) as i32,
         0xffffff,
     );
 }
 
-fn grid_point(point: Vec3) -> (i32, i32) {
+fn map_point(position: Vec3) -> (i32, i32) {
     (
-        (point.x / TILE_SIZE * 2.0) as i32,
-        (point.z / TILE_SIZE * 2.0) as i32,
+        ((position.x + 45.0) * 0.29) as i32,
+        ((position.z + 30.0) * 0.29) as i32,
     )
 }
 
@@ -249,6 +310,67 @@ fn draw_bar(
                 0x25303c
             };
         }
+    }
+}
+
+fn draw_space_panel(
+    frame: &mut Framebuffer,
+    left: i32,
+    top: i32,
+    width: i32,
+    height: i32,
+    accent: u32,
+) {
+    panel(
+        frame,
+        left as usize,
+        top as usize,
+        (left + width) as usize,
+        (top + height) as usize,
+        false,
+    );
+    let corner = 12;
+    for (x, y, dx, dy) in [
+        (left + 2, top + 2, 1, 1),
+        (left + width - 2, top + 2, -1, 1),
+        (left + 2, top + height - 2, 1, -1),
+        (left + width - 2, top + height - 2, -1, -1),
+    ] {
+        draw_line(frame, x, y, x + dx * corner, y, accent);
+        draw_line(frame, x, y, x, y + dy * corner, accent);
+    }
+}
+
+fn draw_ring(frame: &mut Framebuffer, cx: i32, cy: i32, radius: i32, color: u32) {
+    let segments = 64;
+    for index in 0..segments {
+        let angle0 = index as f32 * std::f32::consts::TAU / segments as f32;
+        let angle1 = (index + 1) as f32 * std::f32::consts::TAU / segments as f32;
+        let point = |angle: f32| {
+            (
+                cx + (angle.cos() * radius as f32) as i32,
+                cy + (angle.sin() * radius as f32) as i32,
+            )
+        };
+        let (x0, y0) = point(angle0);
+        let (x1, y1) = point(angle1);
+        draw_line(frame, x0, y0, x1, y1, color);
+    }
+}
+
+fn draw_ring_ticks(frame: &mut Framebuffer, cx: i32, cy: i32, radius: i32) {
+    for index in 0..12 {
+        let angle = index as f32 * std::f32::consts::TAU / 12.0;
+        let outer = radius + 8;
+        let inner = if index % 3 == 0 { radius + 1 } else { radius + 4 };
+        draw_line(
+            frame,
+            cx + (angle.cos() * inner as f32) as i32,
+            cy + (angle.sin() * inner as f32) as i32,
+            cx + (angle.cos() * outer as f32) as i32,
+            cy + (angle.sin() * outer as f32) as i32,
+            if index % 3 == 0 { 0xffd15c } else { 0x4ddfff },
+        );
     }
 }
 
