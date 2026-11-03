@@ -1788,12 +1788,29 @@ fn place_ship_near_spiky_planet(controller: &mut ShipController, world_time: f32
     ship.orbit_camera_blend = 1.0;
 }
 
-fn launch_ship_after_guardian_victory(controller: &mut ShipController, world_time: f32) {
+fn place_ship_near_race_planet(controller: &mut ShipController) {
     controller.reset();
-    let center = spiky_planet_position(world_time);
-    let radial = Vec3::new(1.0, 0.22, 0.0).normalize();
+    let center = race_track::PLANET_POSITION;
+    let offset = Vec3::new(45.0, 8.0, 0.0);
     let ship = &mut controller.ship;
-    ship.position = center.add(radial.mul(SPIKY_PLANET_RADIUS + ORBIT_LIMIT_RADIUS + 20.0));
+    ship.position = center.add(offset);
+    (ship.yaw, ship.pitch) = direction_to_angles(offset.mul(-1.0));
+    ship.speed = ship.spec.cruise_speed;
+    ship.planet_locked = true;
+    ship.spiky_planet_locked = false;
+    ship.race_planet_locked = true;
+    ship.orbit_center = Some(center);
+    let radial = offset.normalize();
+    let (_, right, _) = ship.movement_basis();
+    ship.orbit_plane_normal = Some(radial.cross(right).normalize());
+    ship.orbit_camera_blend = 1.0;
+}
+
+fn launch_ship_from_planet(controller: &mut ShipController, center: Vec3, radius: f32) {
+    controller.reset();
+    let radial = Vec3::new(1.0, 0.24, -0.12).normalize();
+    let ship = &mut controller.ship;
+    ship.position = center.add(radial.mul(radius + ORBIT_LIMIT_RADIUS + 20.0));
     (ship.yaw, ship.pitch) = direction_to_angles(radial);
     ship.speed = ship.spec.cruise_speed;
     ship.planet_locked = false;
@@ -1803,6 +1820,14 @@ fn launch_ship_after_guardian_victory(controller: &mut ShipController, world_tim
     ship.orbit_plane_normal = None;
     ship.orbit_camera_blend = 0.0;
     ship.orbit_release_active = false;
+}
+
+fn launch_ship_after_guardian_exit(controller: &mut ShipController, world_time: f32) {
+    launch_ship_from_planet(
+        controller,
+        spiky_planet_position(world_time),
+        SPIKY_PLANET_RADIUS,
+    );
 }
 
 fn direction_to_angles(direction: Vec3) -> (f32, f32) {
@@ -3434,11 +3459,14 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mcqueen_submarine_model =
         load_obj("assets/vehicles/mcqueen/mcqueen_submarino_detallado.obj")?;
     let mcqueen_car_center = model_center(&mcqueen_car_model);
-    let race_track = race_track::RaceTrack::load()?;
+    let mut race_track = race_track::RaceTrack::load()?;
     let race_vehicles = [
-        (&arwing_model, &ARWING_SPEC), (&kirby_model, &KIRBY_SPEC),
-        (&astra_car_model, &ASTRA_CAR_SPEC), (&cowboyb_car_model, &COWBOYB_CAR_SPEC),
-        (&buzz_variants[1], &BUZZ_CAR_SPEC), (&mcqueen_car_model, &MCQUEEN_CAR_SPEC),
+        (&arwing_model, &ARWING_SPEC),
+        (&kirby_model, &KIRBY_SPEC),
+        (&astra_model, &ASTRA_SPEC),
+        (&cowboyb_model, &COWBOYB_SPEC),
+        (&buzz_variants[0], &BUZZ_SPEC),
+        (&mcqueen_model, &MCQUEEN_SPEC),
     ];
     let choices = [
         (&arwing_model, &ARWING_SPEC),
@@ -3616,6 +3644,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 
     while window.is_open() {
         if crate::input::pressed(Key::Escape) {
+            if game_mode == GameMode::Racing {
+                race_track.pause();
+                previous = Instant::now();
+                crate::input::clear();
+                continue;
+            }
             match menu::show(&mut window, &mut framebuffer, true)? {
                 menu::Action::Quit => return Ok(false),
                 menu::Action::Hangar => {
@@ -3748,7 +3782,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         }
         if crate::input::pressed(Key::R) {
             if game_mode == GameMode::Racing {
-                race_track.enter(&mut ship_controller);
+                race_track.recover(&mut ship_controller);
             } else if game_mode == GameMode::CoreGuardian {
                 guardian_fight = CoreGuardian::new();
             } else {
@@ -3779,7 +3813,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             && active_galaxy == Galaxy::Home
             && crate::input::pressed(Key::Key3)
         {
-            race_track.leave(&mut ship_controller);
+            place_ship_near_race_planet(&mut ship_controller);
         }
 
         let pitch_input = (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8
@@ -3802,7 +3836,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 race_track.enter(&mut ship_controller);
                 game_mode = GameMode::Racing;
                 entered_level = true;
-                window.set_title("Jardin Rust | Planeta de carreras | Backspace: volver al sistema solar");
+                window.set_title("Jardin Rust | W acelerar | A/D girar | Backspace: espacio");
             } else if ship_controller.ship.spiky_planet_locked {
                 guardian_fight = CoreGuardian::new();
                 game_mode = GameMode::CoreGuardian;
@@ -3822,12 +3856,16 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             game_mode = GameMode::FreeWorld;
             ship_controller = ShipController::new(ship_spec);
             race_track.leave(&mut ship_controller);
-            window.set_title("Sistema solar | Planeta de carreras | Enter: entrar | Backspace: salir de orbita");
+            window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
         } else if game_mode == GameMode::WaterLevel && crate::input::pressed(Key::Backspace) {
             game_mode = GameMode::FreeWorld;
             bubble_emitter.clear();
             ship_controller = ShipController::new(ship_spec);
-            place_ship_near_water_planet(&mut ship_controller, world_time);
+            launch_ship_from_planet(
+                &mut ship_controller,
+                water_planet_position(world_time),
+                WATER_PLANET_RADIUS,
+            );
             window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
             println!("Regreso al sistema solar");
         }
@@ -4042,7 +4080,17 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 }
             }
             GameMode::Racing => {
-                race_track.update(&mut ship_controller, &input, delta_time);
+                let race_input = race_track::RaceInput {
+                    accelerate: window.is_key_down(Key::W) || window.is_key_down(Key::Up),
+                    brake: window.is_key_down(Key::S) || window.is_key_down(Key::Down),
+                    steering: yaw_input,
+                    drift: window.is_key_down(Key::Space),
+                    boost: window.is_key_down(Key::LeftShift)
+                        || window.is_key_down(Key::RightShift),
+                    pause: crate::input::pressed(Key::P),
+                    confirm: crate::input::pressed(Key::Enter),
+                };
+                race_track.update(&mut ship_controller, race_input, delta_time);
                 race_track.render(
                     &mut scene_framebuffer, &mut triangle_batch,
                     race_vehicles[selected_ship].0, &ship_controller,
@@ -4090,8 +4138,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     game_mode = GameMode::FreeWorld;
                     bubble_emitter.clear();
                     ship_controller = ShipController::new(ship_spec);
-                    place_ship_near_water_planet(&mut ship_controller, world_time);
-                    window.set_title("Sistema solar | Nivel completado");
+                    launch_ship_from_planet(
+                        &mut ship_controller,
+                        water_planet_position(world_time),
+                        WATER_PLANET_RADIUS,
+                    );
+                    window.set_title("Sistema solar | Nivel completado | Vuelo libre");
                     println!("Nivel submarino completado");
                 }
             }
@@ -4115,15 +4167,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 );
                 if action == GuardianAction::Exit {
                     game_mode = GameMode::FreeWorld;
-                    if guardian_fight.is_victory() {
-                        launch_ship_after_guardian_victory(&mut ship_controller, world_time);
-                        window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
-                    } else {
-                        place_ship_near_spiky_planet(&mut ship_controller, world_time);
-                        window.set_title(
-                            "Planeta rosado | Enter: Guardián del Núcleo | Backspace: salir",
-                        );
-                    }
+                    launch_ship_after_guardian_exit(&mut ship_controller, world_time);
+                    window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
                 }
                 guardian_fight.render_scene(
                     &mut scene_framebuffer,
@@ -4173,7 +4218,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             draw_selection_label(&mut framebuffer, &geometry, 600, 108, 1, 0xc6d8ff);
         }
         if game_mode == GameMode::Racing {
-            race_track.hud(&mut framebuffer, ship_controller.ship.position);
+            race_track.hud(&mut framebuffer, &ship_controller);
         }
 
         if game_mode == GameMode::CoreGuardian {
@@ -4230,14 +4275,16 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             } else {
                 ship_spec.name
             };
-            draw_selection_label(
-                &mut framebuffer,
-                &form.to_ascii_uppercase(),
-                600,
-                22,
-                2,
-                0x99e226,
-            );
+            if game_mode != GameMode::Racing {
+                draw_selection_label(
+                    &mut framebuffer,
+                    &form.to_ascii_uppercase(),
+                    600,
+                    22,
+                    2,
+                    0x99e226,
+                );
+            }
             if game_mode == GameMode::WaterLevel {
                 let enemy_counter = format!(
                     "ENEMIGOS: {}/{}",
@@ -4246,14 +4293,16 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 );
                 draw_selection_label(&mut framebuffer, &enemy_counter, 1035, 24, 2, 0x65dfea);
             }
-            draw_selection_label(
-                &mut framebuffer,
-                "ESC: PAUSA   F1: CONTROLES",
-                600,
-                766,
-                2,
-                0xffffff,
-            );
+            if game_mode != GameMode::Racing {
+                draw_selection_label(
+                    &mut framebuffer,
+                    "ESC: PAUSA   F1: CONTROLES",
+                    600,
+                    766,
+                    2,
+                    0xffffff,
+                );
+            }
             if active_galaxy == Galaxy::Home && game_mode == GameMode::FreeWorld {
                 draw_selection_label(
                     &mut framebuffer,
