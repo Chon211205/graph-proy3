@@ -207,6 +207,7 @@ fn upscale_scene(source: &Framebuffer, target: &mut Framebuffer) {
     }
 }
 
+#[derive(Clone, Copy)]
 struct Camera {
     position: Vec3,
     forward: Vec3,
@@ -2687,6 +2688,7 @@ fn render_scene(
         turbo_power,
         fire_charge,
         true,
+        1.0,
     );
     batch.flush(framebuffer);
     draw_wormhole_energy(framebuffer, &camera, wormhole_center, world_time);
@@ -2705,18 +2707,19 @@ fn render_ship_components(
     turbo_power: f32,
     fire_charge: f32,
     show_turbo: bool,
+    model_scale_multiplier: f32,
 ) {
     let (forward, right, up) = ship.basis();
     let pulse = 0.9 + (world_time * 28.0).sin() * 0.1;
-    let plume_length = (1.3 + turbo_power * 5.5) * pulse;
-    let plume_radius = 0.16 + turbo_power * 0.16;
+    let plume_length = (1.3 + turbo_power * 5.5) * pulse * model_scale_multiplier;
+    let plume_radius = (0.16 + turbo_power * 0.16) * model_scale_multiplier;
     if show_turbo {
         for side in ship.spec.turbo_sides {
             let emitter = ship
                 .position
-                .sub(forward.mul(ship.spec.turbo_back))
-                .add(right.mul(*side * ship.spec.turbo_side))
-                .sub(up.mul(ship.spec.turbo_down));
+                .sub(forward.mul(ship.spec.turbo_back * model_scale_multiplier))
+                .add(right.mul(*side * ship.spec.turbo_side * model_scale_multiplier))
+                .sub(up.mul(ship.spec.turbo_down * model_scale_multiplier));
             queue_model(
                 turbo_plume,
                 batch,
@@ -2781,7 +2784,9 @@ fn render_ship_components(
         batch,
         camera,
         |vertex| {
-            let local = vertex.sub(ship_center).mul(ship.spec.model_scale);
+            let local = vertex
+                .sub(ship_center)
+                .mul(ship.spec.model_scale * model_scale_multiplier);
             ship.position
                 .add(ship.spec.model_to_world(local, forward, right, up))
         },
@@ -3063,6 +3068,7 @@ fn render_water_level(
         turbo_power,
         fire_charge,
         false,
+        1.0,
     );
     batch.flush(framebuffer);
     apply_underwater_lighting(framebuffer, world_time);
@@ -3461,12 +3467,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mcqueen_car_center = model_center(&mcqueen_car_model);
     let mut race_track = race_track::RaceTrack::load()?;
     let race_vehicles = [
-        (&arwing_model, &ARWING_SPEC),
-        (&kirby_model, &KIRBY_SPEC),
-        (&astra_model, &ASTRA_SPEC),
-        (&cowboyb_model, &COWBOYB_SPEC),
-        (&buzz_variants[0], &BUZZ_SPEC),
-        (&mcqueen_model, &MCQUEEN_SPEC),
+        None,
+        None,
+        Some((&astra_car_model, &ASTRA_CAR_SPEC)),
+        Some((&cowboyb_car_model, &COWBOYB_CAR_SPEC)),
+        Some((&buzz_variants[1], &BUZZ_CAR_SPEC)),
+        Some((&mcqueen_car_model, &MCQUEEN_CAR_SPEC)),
     ];
     let choices = [
         (&arwing_model, &ARWING_SPEC),
@@ -3598,6 +3604,16 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let sun_path = "assets/planets/sol_detallado.obj";
     let sun = load_obj(sun_path)
         .map_err(|error| format!("Error al cargar {sun_path}: {error}"))?;
+    let race_sky = race_track::RaceSky {
+        water_planet: &planet,
+        water_center: planet_center,
+        water_scale: planet_scale,
+        pink_planet: &spiky_planet,
+        pink_center: spiky_planet_center,
+        pink_scale: spiky_planet_scale,
+        sun: &sun,
+        sun_center: model_center(&sun),
+    };
     let wormhole = make_wormhole_sphere(22.0, 18, 28);
     let turbo_plume = make_turbo_plume(12);
     let laser_bolt = make_laser_bolt();
@@ -3643,13 +3659,46 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut performance_hud = false;
 
     while window.is_open() {
-        if crate::input::pressed(Key::Escape) {
-            if game_mode == GameMode::Racing {
-                race_track.pause();
-                previous = Instant::now();
-                crate::input::clear();
-                continue;
+        if game_mode == GameMode::Racing
+            && (crate::input::pressed(Key::Escape) || crate::input::pressed(Key::P))
+        {
+            race_track.pause();
+            match menu::show(&mut window, &mut framebuffer, true)? {
+                menu::Action::Quit => return Ok(false),
+                menu::Action::Play => race_track.resume(),
+                menu::Action::Hangar => {
+                    if let Some((new_selection, _)) = select_ship(
+                        &mut window,
+                        &mut framebuffer,
+                        &choices,
+                        &ship_forms,
+                        selected_ship,
+                    )? {
+                        if let Some((_, car_spec)) = race_vehicles[new_selection] {
+                            selected_ship = new_selection;
+                            (ship_model, ship_spec) = choices[new_selection];
+                            base_center = model_center(ship_model);
+                            car_mode = false;
+                            ship_controller = ShipController::new(car_spec);
+                            race_track.enter(
+                                &mut ship_controller,
+                                selected_ship,
+                                &race_vehicles,
+                            );
+                        } else {
+                            println!(
+                                "No hay variante de carro para {}. Agrega el OBJ de carro antes de seleccionarla.",
+                                choices[new_selection].1.name
+                            );
+                        }
+                    }
+                }
             }
+            previous = Instant::now();
+            crate::input::clear();
+            continue;
+        }
+        if crate::input::pressed(Key::Escape) {
             match menu::show(&mut window, &mut framebuffer, true)? {
                 menu::Action::Quit => return Ok(false),
                 menu::Action::Hangar => {
@@ -3832,11 +3881,24 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             && crate::input::pressed(Key::Enter)
         {
             if ship_controller.ship.race_planet_locked {
-                ship_controller = ShipController::new(race_vehicles[selected_ship].1);
-                race_track.enter(&mut ship_controller);
-                game_mode = GameMode::Racing;
-                entered_level = true;
-                window.set_title("Jardin Rust | W acelerar | A/D girar | Backspace: espacio");
+                if let Some((_, car_spec)) = race_vehicles[selected_ship] {
+                    ship_controller = ShipController::new(car_spec);
+                    if race_track.enter(&mut ship_controller, selected_ship, &race_vehicles) {
+                        game_mode = GameMode::Racing;
+                        entered_level = true;
+                        window.set_title(
+                            "Gran Premio Orbital | W acelerar | A/D girar | Backspace: espacio",
+                        );
+                    }
+                } else {
+                    let missing_model = match selected_ship {
+                        0 => "assets/vehicles/arwing/arwing2_carro.obj",
+                        1 => "assets/vehicles/kirby/kirby_carro.obj",
+                        _ => "variante carro no disponible",
+                    };
+                    window.set_title("Carrera: esta nave aún no tiene modelo de carro");
+                    println!("Falta un OBJ de carro para esta nave: {missing_model}");
+                }
             } else if ship_controller.ship.spiky_planet_locked {
                 guardian_fight = CoreGuardian::new();
                 game_mode = GameMode::CoreGuardian;
@@ -4082,18 +4144,26 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::Racing => {
                 let race_input = race_track::RaceInput {
                     accelerate: window.is_key_down(Key::W) || window.is_key_down(Key::Up),
-                    brake: window.is_key_down(Key::S) || window.is_key_down(Key::Down),
-                    steering: yaw_input,
+                    reverse: window.is_key_down(Key::S) || window.is_key_down(Key::Down),
+                    brake: false,
+                    steering: -yaw_input,
                     drift: window.is_key_down(Key::Space),
                     boost: window.is_key_down(Key::LeftShift)
                         || window.is_key_down(Key::RightShift),
-                    pause: crate::input::pressed(Key::P),
+                    pause: false,
                     confirm: crate::input::pressed(Key::Enter),
                 };
-                race_track.update(&mut ship_controller, race_input, delta_time);
+                if race_input.confirm && race_track.is_finished() {
+                    if let Some((_, car_spec)) = race_vehicles[selected_ship] {
+                        ship_controller = ShipController::new(car_spec);
+                        race_track.enter(&mut ship_controller, selected_ship, &race_vehicles);
+                    }
+                } else {
+                    race_track.update(&mut ship_controller, race_input, delta_time);
+                }
                 race_track.render(
                     &mut scene_framebuffer, &mut triangle_batch,
-                    race_vehicles[selected_ship].0, &ship_controller,
+                    &race_vehicles, &race_sky, &ship_controller,
                     &turbo_plume, &laser_bolt, world_time,
                 );
             }
@@ -4255,7 +4325,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             );
         } else {
             let form = if game_mode == GameMode::Racing {
-                race_vehicles[selected_ship].1.name
+                race_vehicles[selected_ship]
+                    .map(|(_, spec)| spec.name)
+                    .unwrap_or("CARRO")
             } else if selected_ship == 4 {
                 if game_mode == GameMode::WaterLevel {
                     "BUZZ - SUBMARINO"

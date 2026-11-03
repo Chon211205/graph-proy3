@@ -200,7 +200,7 @@ pub(super) fn draw(
         RacePhase::Driving => {
             label(
                 frame,
-                "W ACELERA  S FRENA  A/D O FLECHAS GIRA  SPACE DERRAPE  SHIFT TURBO  P PAUSA",
+                "W ADELANTE  S RETROCESO  A IZQUIERDA  D DERECHA  SPACE DERRAPE  SHIFT TURBO  P PAUSA",
                 600,
                 HEIGHT as i32 - 24,
                 1,

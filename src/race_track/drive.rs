@@ -14,6 +14,7 @@ const TURBO_RECHARGE: f32 = 0.38;
 #[derive(Clone, Copy, Default)]
 pub(crate) struct RaceInput {
     pub accelerate: bool,
+    pub reverse: bool,
     pub brake: bool,
     pub steering: i8,
     pub drift: bool,
@@ -69,6 +70,12 @@ impl DriveState {
 
         if input.accelerate {
             self.speed += ACCELERATION * if on_road { 1.0 } else { 0.52 } * dt;
+        } else if input.reverse {
+            self.speed = if self.speed > 0.0 {
+                (self.speed - BRAKING * dt).max(0.0)
+            } else {
+                (self.speed - ACCELERATION * 0.68 * dt).max(-MAX_REVERSE)
+            };
         } else if input.brake {
             if self.speed > 0.0 {
                 self.speed = (self.speed - BRAKING * dt).max(0.0);
@@ -217,5 +224,29 @@ mod tests {
             );
         }
         assert_eq!(drive.speed, MAX_SPEED);
+    }
+
+    #[test]
+    fn reverse_input_brakes_forward_motion_then_drives_backwards() {
+        let course = RaceCourse::new();
+        let start = course.sample_at(0.0);
+        let mut controller = ShipController::new(&ASTRA_CAR_SPEC);
+        controller.ship.position = start.position.add(crate::obj_loader::Vec3::new(0.0, 1.2, 0.0));
+        controller.ship.yaw = (-start.tangent.z).atan2(-start.tangent.x);
+        let mut drive = DriveState::new();
+        drive.speed = 20.0;
+
+        for _ in 0..150 {
+            drive.update(
+                &mut controller.ship,
+                &course,
+                RaceInput {
+                    reverse: true,
+                    ..RaceInput::default()
+                },
+                1.0 / 60.0,
+            );
+        }
+        assert!(drive.speed < 0.0);
     }
 }
