@@ -1130,6 +1130,24 @@ fn procedural_surface_color(
                 1.0 / brightness.max(0.01),
             )
         }
+        SurfaceShader::Sun => {
+            let direction = point.normalize();
+            let flow_a = (direction.x * 17.0 + direction.z * 9.0 + time * 0.72).sin();
+            let flow_b = (direction.y * 23.0 - direction.x * 11.0 - time * 0.93).sin();
+            let granulation = ((direction.x + direction.y - direction.z) * 61.0
+                + (time * 1.4).sin() * 2.0)
+                .sin()
+                .abs();
+            let plasma = (flow_a * 0.5 + flow_b * 0.35 + granulation * 0.4)
+                .clamp(-0.7, 1.0);
+            let pulse = 0.94 + (time * 2.1 + direction.y * 8.0).sin() * 0.06;
+            (
+                255.0 * pulse,
+                (126.0 + plasma * 72.0 + granulation * 38.0) * pulse,
+                (18.0 + plasma.max(0.0) * 38.0 + fresnel * 32.0) * pulse,
+                1.0 / brightness.max(0.01),
+            )
+        }
         SurfaceShader::Flat => (220.0, 230.0, 238.0, 1.0),
     };
 
@@ -2479,7 +2497,7 @@ fn render_scene(
             batch,
             &camera,
             |vertex| vertex.add(sun_position),
-            None,
+            Some(world_time),
             None,
         );
         let water_lod = planet_lod_states[0].update(projected_planet_radius(
@@ -3500,7 +3518,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         SPIKY_PLANET_RADIUS / model_radius(&spiky_planet, spiky_planet_center).max(0.001);
     let planet_surface_radius = material_radius(&planet, planet_center, "Oceano") * planet_scale;
     let object_colliders = build_object_colliders(&planet, planet_center, planet_scale);
-    let sun = make_sphere(55.0, 18, 28, true);
+    let sun_path = "assets/planets/sol_detallado.obj";
+    let sun = load_obj(sun_path)
+        .map_err(|error| format!("Error al cargar {sun_path}: {error}"))?;
     let wormhole = make_wormhole_sphere(22.0, 18, 28);
     let wormhole_ring = make_wormhole_ring(30.0, 3.2);
     let turbo_plume = make_turbo_plume(12);
@@ -5209,6 +5229,26 @@ mod tests {
                     "missing Arwing material {material}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn blender_sun_asset_has_plasma_corona_and_valid_scale() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let sun = load_obj(root.join("assets/planets/sol_detallado.obj")).unwrap();
+        assert!(sun.vertices.len() > 3_500);
+        assert!(sun.faces.len() > 7_000);
+        let radius = model_radius(&sun, model_center(&sun));
+        assert!((55.0..75.0).contains(&radius), "unexpected sun radius {radius}");
+        for material in [
+            "sun_hot_plasma",
+            "sun_bright_cells",
+            "sun_dark_cells",
+            "sun_corona_flare",
+        ] {
+            assert!(sun.faces.iter().any(|face| {
+                face.material == material && face.shader == SurfaceShader::Sun
+            }));
         }
     }
 

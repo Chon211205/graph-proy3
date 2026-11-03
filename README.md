@@ -73,6 +73,13 @@ cargo test --locked
 
 ## Modelado con Blender mediante MCP
 
+El sol detallado se conserva como `assets/planets/sol_detallado.blend` y se
+exporta a OBJ para el juego. Para reconstruirlo con Blender 4.x:
+
+```powershell
+blender --background --python scripts/create_sun_blender.py
+```
+
 `blender_mcp/` permite que un cliente MCP controle Blender para crear modelos a
 partir de cubos, esferas, cilindros, conos y toros, inspeccionar la escena y
 exportar OBJ/MTL directamente a `assets/`. La comunicacion es local
