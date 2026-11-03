@@ -2,11 +2,21 @@
 
 ## Planeta de carreras en la galaxia inicial
 
-En el sistema solar inicial encontrarás un planeta verde con cinturón de pista a cuadros. Acércate hasta entrar en órbita y pulsa **Enter** para recorrer **Jardín Rust**, el mapa predeterminado de `ZyroBad/kart_racer`. La tecla **3** te lleva junto al planeta para entrar más rápido.
+En el sistema solar inicial encontrarás un planeta verde con cinturón de pista a cuadros. Acércate hasta entrar en órbita y pulsa **Enter** para correr **Jardín Rust**, el circuito de `ZyroBad/kart_racer`. La tecla **3** te lleva junto al planeta para entrar más rápido. La carrera usa el modelo espacial de la nave elegida en el hangar y tiene cuenta regresiva, tres vueltas, checkpoints, colisiones, derrape, turbo, minimapa y pantalla de resultados.
 
-Se conserva nuestro controlador: **A/D o flechas izquierda/derecha** para girar, **Espacio** para acelerar, **Ctrl** para frenar, **Enter** para disparar, **R** para reiniciar y **Esc** para pausar. El vehículo permanece sobre la pista; ASTRA, Swordfish, Buzz y Rayo usan su versión carro y los demás conservan su nave. **Backspace** regresa a la órbita del planeta en el sistema solar inicial.
+| Tecla | Acción en la carrera |
+| --- | --- |
+| W / arriba | Acelerar |
+| S / abajo | Frenar o ir en reversa |
+| A/D o flechas izquierda/derecha | Girar |
+| Espacio | Derrapar en una curva |
+| Shift | Activar turbo cargado por derrape |
+| R | Volver al último checkpoint |
+| P / Esc | Pausar o continuar |
+| Enter | Reintentar al terminar |
+| Backspace | Salir del planeta y volver al espacio libre |
 
-Se integró únicamente el mapa, sin las mecánicas de carrera del otro proyecto. La cuadrícula original, conversión a OBJ y procedencia están documentadas en `assets/levels/kart_racer/SOURCE.md`.
+Backspace también devuelve al espacio libre al salir del nivel acuático o de Guardián del Núcleo. La carrera no incluye el menú ni el audio del proyecto de referencia. La cuadrícula original, conversión a OBJ y procedencia están documentadas en `assets/levels/kart_racer/SOURCE.md`; las mecánicas se implementan dentro de `src/race_track/` con el renderizador y los modelos de nave de este proyecto.
 
 Juego 3D en Rust con renderizado por software. Ejecuta los comandos desde la raíz del repositorio para encontrar `assets/`.
 
