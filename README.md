@@ -61,6 +61,37 @@ Se necesita Rust con soporte para edición 2024 y las herramientas nativas de co
 
 Completa el recorrido submarino esquivando obstáculos. Buzz cambia automáticamente a submarino en ese nivel y recupera su forma anterior al salir. La forma carro es una transformación visual con los controles del vuelo libre; no incorpora un circuito terrestre ni física de conducción.
 
+El recorrido submarino sigue la estructura **Ruinas Acuáticas**: caverna de
+entrada, corredor de ruinas, campo minado, túnel de alta velocidad con anillos
+de impulso, arena abierta y combate final contra un tiburón mecánico. El avance
+se detiene en la última arena hasta destruir al jefe con **Enter**; los disparos
+cargados causan más daño.
+
+Después del jefe se abre una séptima sección: el santuario final. Una esfera
+del dragón naranja de cuatro estrellas flota sobre un pedestal energético. Hay
+que acercarse para recogerla; hasta entonces, la salida y el final del nivel
+permanecen bloqueados.
+
+El santuario es una cámara cerrada con suelo, techo, paredes y un único acceso.
+La compuerta permanece bloqueada durante el combate y la explosión del tiburón;
+después se eleva durante 1.8 segundos y permite entrar al cuarto de recompensa.
+Al recoger la esfera, el submarino queda inmóvil y aparece la pantalla de
+**MISIÓN CUMPLIDA** durante 3.4 segundos. Al terminar, el jugador regresa
+automáticamente al vuelo libre junto al planeta acuático.
+
+Los enemigos avanzan en formaciones de cuña, diamante, línea y muro de minas.
+Tiburones y medusas disparan por turnos contra el submarino; el jefe lanza
+ráfagas triples. El casco soporta seis impactos y, al agotarse, devuelve al
+jugador al tramo anterior con una breve protección de reaparición.
+
+Todos los modos de juego comparten un HUD de combate: escudo, objetivo
+contextual, puntuación, altitud, impulso, carga del bláster, retícula, radar y
+barra de vida para los jefes. Vuelo libre, Ruinas Acuáticas, Jardín Rust y el
+Guardián del Núcleo también reutilizan la apariencia y los colores del bláster
+de la nave inicial seleccionada. En el combate del Guardián se usa además la
+misma mecánica: una pulsación corta dispara el tiro doble normal y mantener para
+soltar después genera un proyectil cargado más grande, luminoso y potente.
+
 ## Rayo McQueen
 
 En el hangar, selecciona Rayo McQueen y pulsa **V** para alternar nave/carro/submarino. **Enter** inicia con la forma de Rayo que estés viendo; si eliges submarino, empiezas directamente en el nivel acuático. Durante el vuelo libre, **T** alterna nave/carro conservando posición y velocidad. El carro usa los controles de vuelo existentes, sin física terrestre.
@@ -99,6 +130,14 @@ regenerar con:
 
 ```powershell
 blender --background --python scripts/create_racing_planet_blender.py
+```
+
+Los enemigos de **Ruinas Acuáticas** también tienen una fuente Blender editable:
+la mina globo blindada, el tiburón dron (usado además como jefe) y la medusa
+robótica. Para regenerar sus OBJ y MTL optimizados:
+
+```powershell
+blender --background --python scripts/create_aquatic_enemies_blender.py
 ```
 
 `blender_mcp/` permite que un cliente MCP controle Blender para crear modelos a

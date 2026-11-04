@@ -52,9 +52,13 @@ impl CoreGuardian {
             }
         }
         draw_obstacles(framebuffer, &self.obstacles, self.elapsed);
-        draw_projectiles_3d(framebuffer, &self.player_shots, &self.seeds, self.elapsed);
-        let (_, boss_y) = self.boss_center();
-        draw_reticle(framebuffer, (self.player_x * width, boss_y * height));
+        draw_projectiles_3d(
+            framebuffer,
+            &self.player_shots,
+            &self.seeds,
+            self.elapsed,
+            ship_spec,
+        );
         let (player_x, player_y) = self.player_screen_position();
         let damage = STARTING_SHIELDS - self.shields;
         draw_damage_smoke(
@@ -304,24 +308,6 @@ fn rotate_around_axis(point: Vec3, pivot: Vec3, axis: Vec3, angle: f32) -> Vec3 
         .add(axis.mul(axis.dot(offset) * (1.0 - cos)))
 }
 
-fn draw_reticle(framebuffer: &mut Framebuffer, center: (f32, f32)) {
-    let arm = 18.0;
-    let gap = 7.0;
-    let outer = 0xfff4ec;
-    let shadow = 0x54213f;
-    let segments = [
-        ((center.0 - arm, center.1), (center.0 - gap, center.1)),
-        ((center.0 + gap, center.1), (center.0 + arm, center.1)),
-        ((center.0, center.1 - arm), (center.0, center.1 - gap)),
-        ((center.0, center.1 + gap), (center.0, center.1 + arm)),
-    ];
-    for (from, to) in segments {
-        line(framebuffer, from, to, 4.0, shadow);
-        line(framebuffer, from, to, 2.0, outer);
-    }
-    circle(framebuffer, center.0, center.1, 3.0, outer);
-}
-
 fn draw_boss_spheres(
     framebuffer: &mut Framebuffer,
     screen_center: (f32, f32),
@@ -500,6 +486,7 @@ fn draw_projectiles_3d(
     shots: &[super::PlayerShot],
     seeds: &[super::Seed],
     elapsed: f32,
+    ship_spec: &ShipSpec,
 ) {
     let camera = scene_camera();
     let bolt = GUARDIAN_PLAYER_BOLT.get_or_init(player_bolt_model);
@@ -510,10 +497,36 @@ fn draw_projectiles_3d(
             bolt,
             framebuffer,
             &camera,
-            |vertex| position.add(vertex),
+            |vertex| position.add(vertex.mul(shot.scale)),
             None,
-            None,
+            Some(ship_spec),
         );
+        let screen_x = (shot.x * framebuffer.width as f32) as i32;
+        let screen_y = (shot.y * framebuffer.height as f32) as i32;
+        let glow_radius = (5.0 + shot.scale * 3.5) as i32;
+        for dy in -glow_radius..=glow_radius {
+            for dx in -glow_radius..=glow_radius {
+                let distance = ((dx * dx + dy * dy) as f32).sqrt();
+                if distance > glow_radius as f32 {
+                    continue;
+                }
+                let x = screen_x + dx;
+                let y = screen_y + dy;
+                if x < 0 || y < 0 || x >= framebuffer.width as i32 || y >= framebuffer.height as i32 {
+                    continue;
+                }
+                let strength = (1.0 - distance / glow_radius as f32).powf(2.0) * 0.65;
+                let index = y as usize * framebuffer.width + x as usize;
+                let old = framebuffer.pixels[index];
+                let add = |channel: u32, color: u8| {
+                    (channel as f32 + color as f32 * strength).min(255.0) as u32
+                };
+                framebuffer.pixels[index] =
+                    (add((old >> 16) & 255, ship_spec.laser_color[0]) << 16)
+                        | (add((old >> 8) & 255, ship_spec.laser_color[1]) << 8)
+                        | add(old & 255, ship_spec.laser_color[2]);
+            }
+        }
     }
 
     let seed_model = GUARDIAN_ENEMY_SEED.get_or_init(enemy_seed_model);
@@ -555,12 +568,11 @@ fn player_bolt_model() -> Model {
         .into_iter()
         .enumerate()
         .map(|(index, indices)| {
-            let mut face = Face::new(indices, "guardian_laser", "player_bolt");
-            face.color = MaterialColor::Fixed(if index % 2 == 0 {
-                [255, 238, 154]
-            } else {
-                [255, 190, 54]
-            });
+            let face = Face::new(
+                indices,
+                if index % 2 == 0 { "laser_core" } else { "laser_glow" },
+                "player_bolt",
+            );
             face
         })
         .collect();
@@ -938,29 +950,6 @@ fn append_spine_segment(
         );
         face.color = MaterialColor::Fixed(shade);
         faces.push(face);
-    }
-}
-
-fn line(
-    framebuffer: &mut Framebuffer,
-    from: (f32, f32),
-    to: (f32, f32),
-    thickness: f32,
-    color: u32,
-) {
-    let dx = to.0 - from.0;
-    let dy = to.1 - from.1;
-    let length = (dx * dx + dy * dy).sqrt().max(1.0);
-    let steps = (length / 3.0).ceil() as usize;
-    for step in 0..=steps {
-        let t = step as f32 / steps.max(1) as f32;
-        circle(
-            framebuffer,
-            from.0 + dx * t,
-            from.1 + dy * t,
-            thickness * 0.5,
-            color,
-        );
     }
 }
 

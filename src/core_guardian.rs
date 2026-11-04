@@ -11,8 +11,9 @@ const VICTORY_EXPLOSION_DURATION: f32 = 2.2;
 const PLAYER_SPEED: f32 = 0.98;
 const PLAYER_VERTICAL_SPEED: f32 = 1.35;
 const PLAYER_VERTICAL_SCREEN_SCALE: f32 = 0.20;
-const PLAYER_SHOT_INTERVAL: f32 = 0.12;
 const PLAYER_SHOT_SPEED: f32 = 1.7;
+const PLAYER_CHARGED_THRESHOLD: f32 = 0.42;
+const PLAYER_MAX_CHARGE: f32 = 1.25;
 const SEED_SPEED: f32 = 0.42;
 const OBSTACLE_SPEED: f32 = 0.30;
 const OBSTACLE_SPAWN_INTERVAL: f32 = 1.9;
@@ -54,6 +55,8 @@ struct PlayerShot {
     y: f32,
     previous_x: f32,
     previous_y: f32,
+    scale: f32,
+    damage: u32,
     alive: bool,
 }
 
@@ -100,7 +103,8 @@ pub struct CoreGuardian {
     velocity_x: f32,
     velocity_y: f32,
     roll: f32,
-    fire_timer: f32,
+    fire_charge: f32,
+    fire_was_down: bool,
     attack_timer: f32,
     obstacle_timer: f32,
     open_plate: usize,
@@ -129,7 +133,8 @@ impl CoreGuardian {
             velocity_x: 0.0,
             velocity_y: 0.0,
             roll: 0.0,
-            fire_timer: 0.0,
+            fire_charge: 0.0,
+            fire_was_down: false,
             attack_timer: 1.0,
             obstacle_timer: 2.0,
             open_plate: 0,
@@ -270,22 +275,33 @@ impl CoreGuardian {
     }
 
     fn update_player_shots(&mut self, dt: f32, fire: bool, width: usize, height: usize) {
-        self.fire_timer -= dt;
-        if fire && self.fire_timer <= 0.0 {
-            let shot = PlayerShot {
-                x: self.player_x,
-                y: player_screen_y(self.player_y),
-                previous_x: self.player_x,
-                previous_y: player_screen_y(self.player_y),
-                alive: true,
-            };
-            if let Some(slot) = self.player_shots.iter_mut().find(|item| !item.alive) {
-                *slot = shot;
-            } else if self.player_shots.len() < MAX_PLAYER_SHOTS {
-                self.player_shots.push(shot);
+        if fire {
+            self.fire_charge = (self.fire_charge + dt).min(PLAYER_MAX_CHARGE);
+        } else if self.fire_was_down {
+            let charged = self.fire_charge >= PLAYER_CHARGED_THRESHOLD;
+            let charge_ratio = (self.fire_charge / PLAYER_MAX_CHARGE).clamp(0.0, 1.0);
+            let scale = if charged { 1.5 + charge_ratio * 2.5 } else { 1.0 };
+            let damage = if charged { 1 + (charge_ratio * 2.0).ceil() as u32 } else { 1 };
+            let muzzle_offsets: &[f32] = if charged { &[0.0] } else { &[-0.018, 0.018] };
+            for offset in muzzle_offsets {
+                let shot = PlayerShot {
+                    x: self.player_x + offset,
+                    y: player_screen_y(self.player_y),
+                    previous_x: self.player_x + offset,
+                    previous_y: player_screen_y(self.player_y),
+                    scale,
+                    damage,
+                    alive: true,
+                };
+                if let Some(slot) = self.player_shots.iter_mut().find(|item| !item.alive) {
+                    *slot = shot;
+                } else if self.player_shots.len() < MAX_PLAYER_SHOTS {
+                    self.player_shots.push(shot);
+                }
             }
-            self.fire_timer = PLAYER_SHOT_INTERVAL;
+            self.fire_charge = 0.0;
         }
+        self.fire_was_down = fire;
 
         let (boss_x, boss_y) = self.boss_center();
         let core_radius = 0.052;
@@ -301,7 +317,7 @@ impl CoreGuardian {
                 shot.alive = false;
                 self.hit_flash = 0.16;
                 if self.phase == Phase::Exposed {
-                    self.boss_health = self.boss_health.saturating_sub(1);
+                    self.boss_health = self.boss_health.saturating_sub(shot.damage);
                     if self.boss_health == 0 {
                         boss_defeated = true;
                     }
@@ -545,12 +561,25 @@ impl CoreGuardian {
         self.boss_health as f32 / BOSS_HEALTH as f32
     }
 
+    pub fn shield_ratio(&self) -> f32 {
+        self.shields as f32 / STARTING_SHIELDS as f32
+    }
+
+    pub fn weapon_charge_ratio(&self) -> f32 {
+        (self.fire_charge / PLAYER_MAX_CHARGE).clamp(0.0, 1.0)
+    }
+
     pub fn is_exposed(&self) -> bool {
         self.phase == Phase::Exposed
     }
 
     pub fn player_screen_position(&self) -> (f32, f32) {
         (self.player_x, player_screen_y(self.player_y))
+    }
+
+    pub fn aim_screen_position(&self) -> (f32, f32) {
+        let (_, boss_y) = self.boss_center();
+        (self.player_x, boss_y)
     }
 }
 
@@ -614,11 +643,15 @@ mod tests {
                 800,
             );
         }
+        fight.update(0.05, GuardianInput::default(), 1200, 800);
+        for _ in 0..10 {
+            fight.update(0.05, GuardianInput::default(), 1200, 800);
+        }
         assert!(fight.boss_health < BOSS_HEALTH);
     }
 
     #[test]
-    fn holding_fire_repeats_without_an_ammo_limit() {
+    fn holding_and_releasing_fire_creates_a_charged_shot() {
         let mut fight = CoreGuardian::new();
         fight.set_phase(Phase::Closed);
         for _ in 0..12 {
@@ -632,11 +665,33 @@ mod tests {
                 800,
             );
         }
-        assert!(
-            fight.fire_timer < 0.05,
-            "held fire should use the rapid repeat interval"
+        assert!(fight.weapon_charge_ratio() > 0.4);
+        assert!(fight.player_shots.is_empty());
+        fight.update(0.05, GuardianInput::default(), 1200, 800);
+        assert_eq!(fight.player_shots.len(), 1);
+        assert!(fight.player_shots[0].scale > 2.0);
+        assert!(fight.player_shots[0].damage > 1);
+    }
+
+    #[test]
+    fn guardian_pointer_matches_the_real_shot_line() {
+        let mut fight = CoreGuardian::new();
+        fight.set_phase(Phase::Closed);
+        fight.player_x = 0.72;
+        let aim = fight.aim_screen_position();
+        fight.update(
+            0.05,
+            GuardianInput {
+                fire: true,
+                ..GuardianInput::default()
+            },
+            1200,
+            800,
         );
-        assert!(fight.player_shots.len() <= MAX_PLAYER_SHOTS);
+        fight.update(0.05, GuardianInput::default(), 1200, 800);
+        assert_eq!(fight.player_shots.len(), 2);
+        assert!((fight.player_shots[0].x - aim.0).abs() < 0.03);
+        assert!((fight.player_shots[1].x - aim.0).abs() < 0.03);
     }
 
     #[test]
@@ -682,6 +737,10 @@ mod tests {
             1200,
             800,
         );
+        fight.update(0.05, GuardianInput::default(), 1200, 800);
+        for _ in 0..3 {
+            fight.update(0.05, GuardianInput::default(), 1200, 800);
+        }
         assert_eq!(fight.shields, STARTING_SHIELDS);
         assert!(!fight.obstacles[0].alive);
     }

@@ -8,7 +8,7 @@ mod scenery;
 use std::f32::consts::TAU;
 
 use crate::{
-    Camera, TriangleBatch,
+    Camera, TriangleBatch, draw_projectile_glow,
     framebuffer::Framebuffer,
     obj_loader::{Model, Vec3, load_obj},
     queue_model, render_ship_components,
@@ -368,6 +368,14 @@ impl RaceTrack {
         }
         batch.flush(frame);
         apply_distant_mist(frame);
+        draw_projectile_glow(
+            frame,
+            &controller.projectiles,
+            &camera,
+            time,
+            controller.ship.spec.laser_color,
+            1.65,
+        );
     }
 
     pub fn hud(&self, frame: &mut Framebuffer, controller: &ShipController) {
