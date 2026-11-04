@@ -57,6 +57,7 @@ const WATER_BOSS_EXPLOSION_DURATION: f32 = 2.8;
 const WATER_REWARD_PROGRESS: f32 = 532.0;
 const WATER_REWARD_DOOR_PROGRESS: f32 = 502.0;
 const WATER_REWARD_DOOR_OPEN_TIME: f32 = 1.8;
+const WATER_REWARD_DOOR_PASSABLE: f32 = 0.98;
 const WATER_MISSION_COMPLETE_TIME: f32 = 3.4;
 const WATER_SUBMARINE_MAX_HEALTH: i32 = 6;
 const WATER_ENEMY_SHOT_SPEED: f32 = 24.0;
@@ -588,7 +589,10 @@ impl WaterLevelState {
     }
 
     fn stage(&self) -> WaterStage {
-        if self.boss_defeated && self.reward_door_open >= 0.82 && self.progress >= 475.0 {
+        if self.boss_defeated
+            && self.reward_door_open >= WATER_REWARD_DOOR_PASSABLE
+            && self.progress >= 475.0
+        {
             return WaterStage::RewardChamber;
         }
         match self.progress {
@@ -643,7 +647,7 @@ impl WaterLevelState {
         self.progress += ship.speed * WATER_LEVEL_SPEED_FACTOR * speed_boost * delta_time;
         if !self.boss_defeated || self.boss_explosion_timer > 0.0 {
             self.progress = self.progress.min(WATER_BOSS_ARENA_START);
-        } else if self.reward_door_open < 0.82 {
+        } else if self.reward_door_open < WATER_REWARD_DOOR_PASSABLE {
             self.progress = self.progress.min(WATER_REWARD_DOOR_PROGRESS - 4.0);
         } else if !self.dragon_ball_collected {
             self.progress = self.progress.min(WATER_REWARD_PROGRESS);
@@ -663,6 +667,27 @@ impl WaterLevelState {
             .clamp(-WATER_LEVEL_HALF_WIDTH, WATER_LEVEL_HALF_WIDTH);
         self.height = (self.height + input.pitch as f32 * 15.0 * delta_time)
             .clamp(WATER_LEVEL_MIN_HEIGHT, WATER_LEVEL_MAX_HEIGHT);
+
+        // Funnel the on-rails movement through the physical doorway. If the
+        // submarine reaches the frame while outside the safe aperture, hold it
+        // in front of the door and gently recenter instead of clipping/sticking.
+        let approaching_door = self.progress >= WATER_REWARD_DOOR_PROGRESS - 7.0
+            && self.progress <= WATER_REWARD_DOOR_PROGRESS + 3.0;
+        if approaching_door {
+            let aperture_clear = self.lateral.abs() <= 3.7 && self.height <= 8.0;
+            if self.reward_door_open < WATER_REWARD_DOOR_PASSABLE || !aperture_clear {
+                self.progress = self.progress.min(WATER_REWARD_DOOR_PROGRESS - 4.0);
+                let recenter = (delta_time * 3.8).clamp(0.0, 1.0);
+                self.lateral += (0.0 - self.lateral) * recenter;
+                self.height += (5.8 - self.height) * recenter;
+            }
+        }
+
+        // The reward chamber has narrower walls than the outdoor arena.
+        if self.progress > WATER_REWARD_DOOR_PROGRESS + 2.0 {
+            self.lateral = self.lateral.clamp(-11.7, 11.7);
+            self.height = self.height.clamp(2.4, 11.4);
+        }
 
         let (route_curve, route_height) = water_route(self.progress);
         ship.position = Vec3::new(
@@ -936,6 +961,12 @@ fn resolve_level_collisions(
     ship: &mut Ship,
     level: &LevelSpatialIndex,
 ) {
+    // The final chamber supplies its own walls and doorway constraints. The
+    // extended source level may still contain legacy obstacle colliders here,
+    // which otherwise push the submarine into the new door frame.
+    if state.progress >= WATER_REWARD_DOOR_PROGRESS - 8.0 {
+        return;
+    }
     for collider in level.nearby_colliders(state.progress) {
         let closest = Vec3::new(
             ship.position.x.clamp(collider.min.x, collider.max.x),
@@ -5364,7 +5395,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     let boss_status = if water_level_state.boss_defeated {
                         if water_level_state.boss_explosion_timer > 0.0 {
                             "DESTRUCCION DEL TIBURON - MANTEN DISTANCIA".to_string()
-                        } else if water_level_state.reward_door_open < 0.82 {
+                        } else if water_level_state.reward_door_open
+                            < WATER_REWARD_DOOR_PASSABLE
+                        {
                             "COMPUERTA DEL SANTUARIO ABRIENDOSE".to_string()
                         } else {
                             "TIBURON DESTRUIDO - SALIDA ABIERTA".to_string()
@@ -6582,10 +6615,22 @@ mod tests {
             &ShipInput::default(),
             WATER_REWARD_DOOR_OPEN_TIME,
         );
-        assert!(state.reward_door_open >= 0.82);
+        assert!(state.reward_door_open >= WATER_REWARD_DOOR_PASSABLE);
         state.update(&mut ship, &ShipInput::default(), 0.2);
         assert!(state.progress > WATER_REWARD_DOOR_PROGRESS - 4.0);
         assert_eq!(state.stage(), WaterStage::RewardChamber);
+
+        let mut misaligned = WaterLevelState::new();
+        misaligned.boss_defeated = true;
+        misaligned.reward_door_open = 1.0;
+        misaligned.progress = WATER_REWARD_DOOR_PROGRESS - 2.0;
+        misaligned.lateral = 10.0;
+        misaligned.height = 10.5;
+        let previous_lateral = misaligned.lateral;
+        misaligned.update(&mut ship, &ShipInput::default(), 0.1);
+        assert_eq!(misaligned.progress, WATER_REWARD_DOOR_PROGRESS - 4.0);
+        assert!(misaligned.lateral.abs() < previous_lateral);
+        assert!(misaligned.height < 10.5);
     }
 
     #[test]
