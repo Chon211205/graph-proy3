@@ -1990,12 +1990,12 @@ fn make_turbo_plume(segments: usize) -> Model {
 
 fn make_laser_bolt() -> Model {
     let vertices = vec![
-        Vec3::new(1.4, 0.0, 0.0),
-        Vec3::new(-1.4, 0.0, 0.0),
-        Vec3::new(0.0, 0.16, 0.0),
-        Vec3::new(0.0, 0.0, 0.16),
-        Vec3::new(0.0, -0.16, 0.0),
-        Vec3::new(0.0, 0.0, -0.16),
+        Vec3::new(1.8, 0.0, 0.0),
+        Vec3::new(-1.8, 0.0, 0.0),
+        Vec3::new(0.0, 0.24, 0.0),
+        Vec3::new(0.0, 0.0, 0.24),
+        Vec3::new(0.0, -0.24, 0.0),
+        Vec3::new(0.0, 0.0, -0.24),
     ];
     let mut faces = Vec::new();
     for side in 0..4 {
@@ -2008,6 +2008,30 @@ fn make_laser_bolt() -> Model {
         };
         faces.push(Face::new([0, current, next], material, "laser"));
         faces.push(Face::new([1, next, current], material, "laser"));
+    }
+    Model::new(vertices, faces)
+}
+
+fn make_enemy_laser_bolt() -> Model {
+    let vertices = vec![
+        Vec3::new(2.1, 0.0, 0.0),
+        Vec3::new(-2.1, 0.0, 0.0),
+        Vec3::new(0.0, 0.34, 0.0),
+        Vec3::new(0.0, 0.0, 0.34),
+        Vec3::new(0.0, -0.34, 0.0),
+        Vec3::new(0.0, 0.0, -0.34),
+    ];
+    let mut faces = Vec::new();
+    for side in 0..4 {
+        let current = 2 + side;
+        let next = 2 + (side + 1) % 4;
+        let material = if side % 2 == 0 {
+            "enemy_laser_core"
+        } else {
+            "enemy_laser_glow"
+        };
+        faces.push(Face::new([0, current, next], material, "enemy_laser"));
+        faces.push(Face::new([1, next, current], material, "enemy_laser"));
     }
     Model::new(vertices, faces)
 }
@@ -3069,6 +3093,14 @@ fn render_scene(
     );
     batch.flush(framebuffer);
     draw_wormhole_energy(framebuffer, &camera, wormhole_center, world_time);
+    draw_projectile_glow(
+        framebuffer,
+        projectiles,
+        &camera,
+        world_time,
+        ship.spec.laser_color,
+        1.65,
+    );
 }
 
 fn render_ship_components(
@@ -3405,6 +3437,64 @@ fn render_enemy_projectiles(
     }
 }
 
+fn draw_projectile_glow(
+    framebuffer: &mut Framebuffer,
+    projectiles: &[Projectile],
+    camera: &Camera,
+    time: f32,
+    glow_color: [u8; 3],
+    radius_multiplier: f32,
+) {
+    let focal = framebuffer.height as f32 / (VERTICAL_FOV * 0.5).tan() * 0.5;
+    for projectile in projectiles.iter().filter(|shot| shot.lifetime > 0.0) {
+        let relative = projectile.position.sub(camera.position);
+        let depth = relative.dot(camera.forward);
+        if depth <= NEAR_PLANE {
+            continue;
+        }
+        let center_x = framebuffer.width as f32 * 0.5 + relative.dot(camera.right) * focal / depth;
+        let center_y = framebuffer.height as f32 * 0.5 - relative.dot(camera.up) * focal / depth;
+        let pulse = 0.9 + (time * 13.0 + projectile.position.x).sin() * 0.1;
+        let radius = (focal * projectile.scale * radius_multiplier / depth)
+            .clamp(5.0, 32.0)
+            * pulse;
+        let min_x = (center_x - radius).floor().max(0.0) as usize;
+        let max_x = (center_x + radius)
+            .ceil()
+            .min(framebuffer.width.saturating_sub(1) as f32) as usize;
+        let min_y = (center_y - radius).floor().max(0.0) as usize;
+        let max_y = (center_y + radius)
+            .ceil()
+            .min(framebuffer.height.saturating_sub(1) as f32) as usize;
+        if min_x > max_x || min_y > max_y {
+            continue;
+        }
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                let dx = x as f32 + 0.5 - center_x;
+                let dy = y as f32 + 0.5 - center_y;
+                let distance = (dx * dx + dy * dy).sqrt();
+                if distance > radius {
+                    continue;
+                }
+                let intensity = (1.0 - distance / radius).powf(2.2);
+                let index = y * framebuffer.width + x;
+                let old = framebuffer.pixels[index];
+                let red = (((old >> 16) & 255) as f32
+                    + glow_color[0] as f32 * intensity * 0.72)
+                    .min(255.0) as u32;
+                let green = (((old >> 8) & 255) as f32
+                    + glow_color[1] as f32 * intensity * 0.72)
+                    .min(255.0) as u32;
+                let blue = ((old & 255) as f32
+                    + glow_color[2] as f32 * intensity * 0.72)
+                    .min(255.0) as u32;
+                framebuffer.pixels[index] = (red << 16) | (green << 8) | blue;
+            }
+        }
+    }
+}
+
 fn render_water_level(
     level: &LevelSpatialIndex,
     enemy_models: &[Model; 3],
@@ -3420,6 +3510,7 @@ fn render_water_level(
     ship_center: Vec3,
     turbo_plume: &Model,
     laser_bolt: &Model,
+    enemy_laser_bolt: &Model,
     projectiles: &[Projectile],
     framebuffer: &mut Framebuffer,
     batch: &mut TriangleBatch,
@@ -3519,7 +3610,7 @@ fn render_water_level(
             );
         }
     }
-    render_enemy_projectiles(&state.enemy_projectiles, laser_bolt, batch, &camera);
+    render_enemy_projectiles(&state.enemy_projectiles, enemy_laser_bolt, batch, &camera);
     for bubble in bubbles.iter().filter(|bubble| bubble.lifetime > 0.0) {
         queue_model(
             bubble_model,
@@ -3546,6 +3637,22 @@ fn render_water_level(
     );
     batch.flush(framebuffer);
     apply_underwater_lighting(framebuffer, world_time);
+    draw_projectile_glow(
+        framebuffer,
+        &state.enemy_projectiles,
+        &camera,
+        world_time,
+        [255, 68, 24],
+        1.45,
+    );
+    draw_projectile_glow(
+        framebuffer,
+        projectiles,
+        &camera,
+        world_time,
+        ship.spec.laser_color,
+        1.65,
+    );
 }
 
 fn draw_selection_panel(
@@ -4079,6 +4186,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let wormhole = make_wormhole_sphere(22.0, 18, 28);
     let turbo_plume = make_turbo_plume(12);
     let laser_bolt = make_laser_bolt();
+    let enemy_laser_bolt = make_enemy_laser_bolt();
     let bubble_model = make_bubble_model();
     let underwater_boost_ring = make_underwater_boost_ring();
     let four_star_dragon_ball = make_four_star_dragon_ball();
@@ -4588,6 +4696,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     level_ship_center,
                     &turbo_plume,
                     &laser_bolt,
+                    &enemy_laser_bolt,
                     &ship_controller.projectiles,
                     &mut scene_framebuffer,
                     &mut triangle_batch,

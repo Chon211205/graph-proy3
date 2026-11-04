@@ -200,7 +200,9 @@ impl Model {
 }
 
 fn classify_surface(name: &str) -> SurfaceShader {
-    if name == "casco_blanco" {
+    if name.starts_with("enemy_laser_") {
+        SurfaceShader::AstraRedEmission
+    } else if name == "casco_blanco" {
         SurfaceShader::ArwingHull
     } else if name == "titanio" {
         SurfaceShader::ArwingMetal
