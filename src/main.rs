@@ -1827,15 +1827,14 @@ fn make_sphere(radius: f32, stacks: usize, slices: usize, sun: bool) -> Model {
     Model::new(vertices, faces)
 }
 
-fn make_four_star_dragon_ball() -> Model {
+fn make_dragon_ball(star_centers: &[(f32, f32)]) -> Model {
     let radius = 2.2;
     let mut model = make_sphere(radius, 14, 22, false);
     for face in &mut model.faces {
         *face = Face::new(face.indices, "race_rgb_244_132_22", "dragon_ball");
     }
 
-    let star_centers = [(-0.62, -0.62), (0.62, -0.62), (-0.62, 0.62), (0.62, 0.62)];
-    for (star_index, (y, z)) in star_centers.into_iter().enumerate() {
+    for (star_index, &(y, z)) in star_centers.iter().enumerate() {
         let x = (radius * radius - y * y - z * z).sqrt() + 0.055;
         let center_index = model.vertices.len();
         model.vertices.push(Vec3::new(x, y, z));
@@ -1859,6 +1858,14 @@ fn make_four_star_dragon_ball() -> Model {
     model.recalculate_bounds();
     model.recalculate_normals();
     model
+}
+
+fn make_four_star_dragon_ball() -> Model {
+    make_dragon_ball(&[(-0.62, -0.62), (0.62, -0.62), (-0.62, 0.62), (0.62, 0.62)])
+}
+
+fn make_one_star_dragon_ball() -> Model {
+    make_dragon_ball(&[(0.0, 0.0)])
 }
 
 fn make_reward_pedestal() -> Model {
@@ -4830,6 +4837,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let bubble_model = make_bubble_model();
     let underwater_boost_ring = make_underwater_boost_ring();
     let four_star_dragon_ball = make_four_star_dragon_ball();
+    let one_star_dragon_ball = make_one_star_dragon_ball();
     let reward_pedestal = make_reward_pedestal();
     let reward_chamber = make_reward_chamber();
     let reward_door = make_reward_door();
@@ -5368,11 +5376,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     pause: false,
                     confirm: crate::input::pressed(Key::Enter),
                 };
-                if race_input.confirm && race_track.is_finished() {
+                if race_track.reward_complete() {
                     game_mode = GameMode::FreeWorld;
                     ship_controller = ShipController::new(ship_spec);
                     race_track.leave(&mut ship_controller);
-                    window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
+                    window.set_title("Sistema solar | Esfera de 1 estrella obtenida");
                 } else {
                     race_track.update(&mut ship_controller, race_input, delta_time);
                     race_track.render(
@@ -5383,6 +5391,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         &ship_controller,
                         &turbo_plume,
                         &laser_bolt,
+                        &one_star_dragon_ball,
                         world_time,
                     );
                 }
@@ -6863,6 +6872,21 @@ mod tests {
             WATER_MISSION_COMPLETE_TIME,
         );
         assert_eq!(state.mission_complete_timer, 0.0);
+    }
+
+    #[test]
+    fn race_reward_is_a_one_star_dragon_ball() {
+        let reward = make_one_star_dragon_ball();
+        assert_eq!(
+            reward
+                .faces
+                .iter()
+                .filter(|face| face.group.starts_with("dragon_star_"))
+                .count(),
+            10
+        );
+        assert!(reward.faces.iter().any(|face| face.group == "dragon_star_0"));
+        assert!(!reward.faces.iter().any(|face| face.group == "dragon_star_1"));
     }
 
     #[test]

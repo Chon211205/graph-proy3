@@ -22,6 +22,8 @@ pub(super) fn draw(
     place: usize,
     phase: RacePhase,
     countdown: f32,
+    reward_received: bool,
+    reward_remaining: f32,
 ) {
     let racer_count = rivals.map_or(1, |racers| racers.len() + 1);
     draw_space_panel(frame, 24, 14, 248, 176, 0x4ddfff);
@@ -119,6 +121,11 @@ pub(super) fn draw(
             label(frame, "BACKSPACE: SALIR AL ESPACIO", 600, 442, 2, 0xffdf6b);
         }
         RacePhase::Finished => {
+            if !reward_received {
+                label(frame, "RECOMPENSA DE CARRERA", 600, 110, 2, 0xffd15c);
+                label(frame, "RECIBIENDO ESFERA DEL DRAGON", 600, 142, 1, 0xffa62b);
+                return;
+            }
             panel(frame, 300, 250, 900, 555, true);
             label(
                 frame,
@@ -140,9 +147,16 @@ pub(super) fn draw(
                 2,
                 0xffdf6b,
             );
-            label(frame, "4 VUELTAS COMPLETADAS", 600, 400, 2, 0x9fffd2);
-            label(frame, "ENTER: SALIR AL ESPACIO", 600, 475, 2, 0x8feaff);
-            label(frame, "LA NAVE REGRESARA A VUELO LIBRE", 600, 515, 1, 0xffdf6b);
+            label(frame, "ESFERA DE 1 ESTRELLA OBTENIDA", 600, 400, 2, 0xffa62b);
+            label(frame, "4 VUELTAS COMPLETADAS", 600, 440, 2, 0x9fffd2);
+            label(
+                frame,
+                &format!("REGRESO AL MUNDO LIBRE EN {}", reward_remaining.ceil() as u32),
+                600,
+                495,
+                1,
+                0x8feaff,
+            );
         }
         RacePhase::Driving => {
             label(
