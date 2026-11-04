@@ -340,17 +340,17 @@ fn classify_color(name: &str) -> MaterialColor {
             _ => [238, 242, 248],
         }
     } else if name == "casco_blanco" {
-        [228, 234, 241]
+        [238, 244, 250]
     } else if name == "grafito" {
-        [53, 61, 74]
+        [28, 35, 48]
     } else if name == "titanio" {
-        [136, 150, 166]
+        [104, 124, 148]
     } else if name == "luz_blanca" {
         [255, 255, 255]
     } else if name == "luz_cian" {
-        [40, 220, 240]
+        [40, 205, 255]
     } else if name == "luz_roja" {
-        [240, 44, 52]
+        [255, 35, 42]
     } else if name == "luz_verde" || name == "verde_marca" {
         [64, 188, 112]
     } else if name == "magenta_marca" {

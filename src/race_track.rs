@@ -1,6 +1,6 @@
 //! Jardín Rust geometry with the project's existing vehicle controller/rendering.
 use crate::{
-    chase_camera, draw_selection_label,
+    chase_camera, draw_projectile_glow, draw_selection_label,
     framebuffer::Framebuffer,
     obj_loader::{load_obj, Model, Vec3},
     queue_model, render_ship_components,
@@ -125,6 +125,14 @@ impl RaceTrack {
             false,
         );
         batch.flush(frame);
+        draw_projectile_glow(
+            frame,
+            &controller.projectiles,
+            &camera,
+            time,
+            controller.ship.spec.laser_color,
+            1.65,
+        );
     }
 
     pub fn hud(&self, frame: &mut Framebuffer, position: Vec3) {

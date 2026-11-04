@@ -58,10 +58,25 @@ del dragón naranja de cuatro estrellas flota sobre un pedestal energético. Hay
 que acercarse para recogerla; hasta entonces, la salida y el final del nivel
 permanecen bloqueados.
 
+El santuario es una cámara cerrada con suelo, techo, paredes y un único acceso.
+La compuerta permanece bloqueada durante el combate y la explosión del tiburón;
+después se eleva durante 1.8 segundos y permite entrar al cuarto de recompensa.
+Al recoger la esfera, el submarino queda inmóvil y aparece la pantalla de
+**MISIÓN CUMPLIDA** durante 3.4 segundos. Al terminar, el jugador regresa
+automáticamente al vuelo libre junto al planeta acuático.
+
 Los enemigos avanzan en formaciones de cuña, diamante, línea y muro de minas.
 Tiburones y medusas disparan por turnos contra el submarino; el jefe lanza
 ráfagas triples. El casco soporta seis impactos y, al agotarse, devuelve al
 jugador al tramo anterior con una breve protección de reaparición.
+
+Todos los modos de juego comparten un HUD de combate: escudo, objetivo
+contextual, puntuación, altitud, impulso, carga del bláster, retícula, radar y
+barra de vida para los jefes. Vuelo libre, Ruinas Acuáticas, Jardín Rust y el
+Guardián del Núcleo también reutilizan la apariencia y los colores del bláster
+de la nave inicial seleccionada. En el combate del Guardián se usa además la
+misma mecánica: una pulsación corta dispara el tiro doble normal y mantener para
+soltar después genera un proyectil cargado más grande, luminoso y potente.
 
 ## Rayo McQueen
 
