@@ -1,8 +1,8 @@
 use crate::obj_loader::Vec3;
 
-use super::course::RaceCourse;
+use super::course::{HALF_ROAD, RaceCourse};
 
-pub(super) const TOTAL_LAPS: u8 = 3;
+pub(super) const TOTAL_LAPS: u8 = 4;
 const CHECKPOINT_COUNT: usize = 12;
 
 #[derive(Clone, Copy, Debug)]
@@ -43,7 +43,7 @@ impl RaceProgress {
             checkpoints.push(Checkpoint {
                 center: sample.position,
                 tangent: sample.tangent,
-                half_width: 12.0,
+                half_width: HALF_ROAD + 1.5,
                 course_distance: distance,
             });
         }
@@ -51,7 +51,7 @@ impl RaceProgress {
         checkpoints.push(Checkpoint {
             center: start.position,
             tangent: start.tangent,
-            half_width: 12.0,
+            half_width: HALF_ROAD + 1.5,
             course_distance: course.length,
         });
         Self::from_checkpoints(checkpoints)
@@ -151,18 +151,6 @@ impl RaceProgress {
         self.race_time
     }
 
-    pub fn lap_time(&self) -> f32 {
-        self.lap_time
-    }
-
-    pub fn best_lap_time(&self) -> Option<f32> {
-        self.best_lap_time
-    }
-
-    pub fn last_lap_time(&self) -> Option<f32> {
-        self.last_lap_time
-    }
-
     pub fn is_finished(&self) -> bool {
         self.finished
     }
@@ -247,10 +235,14 @@ mod tests {
         assert_eq!(progress.update(ahead, behind, 1.0), None);
         assert_eq!(
             progress.update(behind, ahead, 3.0),
-            Some(ProgressEvent::FinalLap)
+            Some(ProgressEvent::Lap)
         );
         assert_eq!(
             progress.update(behind, ahead, 4.0),
+            Some(ProgressEvent::FinalLap)
+        );
+        assert_eq!(
+            progress.update(behind, ahead, 5.0),
             Some(ProgressEvent::Finished)
         );
         assert!(progress.is_finished());
@@ -279,9 +271,9 @@ mod tests {
     #[test]
     fn finish_gate_covers_the_full_drivable_road_width() {
         let mut gate = one_gate();
-        gate.half_width = 12.0;
-        let previous = Vec3::new(-1.0, 0.0, 10.8);
-        let current = Vec3::new(1.0, 0.0, 10.8);
+        gate.half_width = HALF_ROAD + 1.5;
+        let previous = Vec3::new(-1.0, 0.0, HALF_ROAD + 0.8);
+        let current = Vec3::new(1.0, 0.0, HALF_ROAD + 0.8);
         assert!(crosses_gate_forward(previous, current, gate));
     }
 
@@ -290,7 +282,7 @@ mod tests {
         let mut progress = RaceProgress::from_checkpoints(vec![one_gate()]);
         let behind = Vec3::new(-1.0, 0.0, 0.0);
         let ahead = Vec3::new(1.0, 0.0, 0.0);
-        for _ in 0..2 {
+        for _ in 0..TOTAL_LAPS - 1 {
             progress.update(behind, ahead, 1.0);
             progress.update(ahead, behind, 0.1);
         }

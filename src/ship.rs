@@ -242,13 +242,13 @@ pub static MCQUEEN_SPEC: ShipSpec = ShipSpec {
 };
 
 pub static MCQUEEN_CAR_SPEC: ShipSpec = ShipSpec {
-    model_scale: 0.38,
-    turbo_back: 1.54052,
-    turbo_side: 0.342,
-    turbo_down: 0.1957,
-    muzzle_forward: 1.45,
-    muzzle_side: 0.43,
-    muzzle_down: 0.05,
+    model_scale: 0.367288,
+    turbo_back: 1.48899,
+    turbo_side: 0.33056,
+    turbo_down: 0.18915,
+    muzzle_forward: 1.40149,
+    muzzle_side: 0.41562,
+    muzzle_down: 0.04833,
     ..MCQUEEN_SPEC
 };
 
@@ -282,11 +282,12 @@ pub static BUZZ_SPEC: ShipSpec = ShipSpec {
 
 pub static BUZZ_CAR_SPEC: ShipSpec = ShipSpec {
     name: "Buzz Lightyear Carro",
-    turbo_back: 1.0298,
-    turbo_side: 0.2376,
-    turbo_down: 0.0756,
-    muzzle_forward: 1.05,
-    muzzle_side: 0.42,
+    model_scale: 0.390220,
+    turbo_back: 1.48833,
+    turbo_side: 0.34339,
+    turbo_down: 0.10926,
+    muzzle_forward: 1.51752,
+    muzzle_side: 0.60701,
     ..BUZZ_SPEC
 };
 
@@ -302,12 +303,13 @@ pub static BUZZ_SUBMARINE_SPEC: ShipSpec = ShipSpec {
 
 pub static ASTRA_CAR_SPEC: ShipSpec = ShipSpec {
     name: "ASTRA Carro",
-    turbo_back: 0.713,
-    turbo_side: 0.1656,
-    turbo_down: 0.1127,
-    muzzle_forward: 0.72,
-    muzzle_side: 0.17,
-    muzzle_down: 0.03,
+    model_scale: 0.479233,
+    turbo_back: 1.48562,
+    turbo_side: 0.34505,
+    turbo_down: 0.23482,
+    muzzle_forward: 1.50021,
+    muzzle_side: 0.35422,
+    muzzle_down: 0.06251,
     ..ASTRA_SPEC
 };
 
@@ -337,10 +339,13 @@ pub static COWBOYB_SUBMARINE_SPEC: ShipSpec = ShipSpec {
 
 pub static COWBOYB_CAR_SPEC: ShipSpec = ShipSpec {
     name: "Swordfish II",
+    model_scale: 0.464396,
     model_axes: ModelAxes::Astra,
-    turbo_back: 0.896,
-    turbo_side: 0.1848,
-    turbo_down: 0.1484,
+    turbo_back: 1.48607,
+    turbo_side: 0.30650,
+    turbo_down: 0.24613,
+    muzzle_forward: 2.57076,
+    muzzle_side: 1.36002,
     ..COWBOYB_SPEC
 };
 
@@ -358,14 +363,14 @@ pub static ARWING_SUBMARINE_SPEC: ShipSpec = ShipSpec {
 
 pub static ARWING_CAR_SPEC: ShipSpec = ShipSpec {
     name: "Arwing Carro",
-    model_scale: 0.38,
+    model_scale: 0.345486,
     model_axes: ModelAxes::Astra,
-    turbo_back: 1.521,
-    turbo_side: 0.2964,
-    turbo_down: 0.1045,
-    muzzle_forward: 0.86,
-    muzzle_side: 0.97,
-    muzzle_down: 0.04,
+    turbo_back: 1.38285,
+    turbo_side: 0.26948,
+    turbo_down: 0.09501,
+    muzzle_forward: 0.78189,
+    muzzle_side: 0.88190,
+    muzzle_down: 0.03637,
     ..ARWING_SPEC
 };
 
@@ -384,14 +389,14 @@ pub static KIRBY_SUBMARINE_SPEC: ShipSpec = ShipSpec {
 
 pub static KIRBY_CAR_SPEC: ShipSpec = ShipSpec {
     name: "Kirby Carro",
-    model_scale: 0.44,
+    model_scale: 0.472441,
     model_axes: ModelAxes::Astra,
-    turbo_back: 1.2232,
-    turbo_side: 0.2992,
-    turbo_down: 0.1969,
-    muzzle_forward: 1.15,
-    muzzle_side: 0.65,
-    muzzle_down: 0.05,
+    turbo_back: 1.33465,
+    turbo_side: 0.32126,
+    turbo_down: 0.21142,
+    muzzle_forward: 1.23479,
+    muzzle_side: 0.69792,
+    muzzle_down: 0.05369,
     ..KIRBY_SPEC
 };
 

@@ -50,6 +50,7 @@ const COLLISION_MARGIN: f32 = 4.0;
 const AVOIDANCE_DISTANCE: f32 = 52.0;
 const ORBIT_LIMIT_RADIUS: f32 = 60.0;
 const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
+#[cfg(test)]
 const WATER_LEVEL_LENGTH: f32 = 562.0;
 const WATER_BOSS_ARENA_START: f32 = 450.0;
 const WATER_BOSS_POSITION_PROGRESS: f32 = 486.0;
@@ -1826,15 +1827,14 @@ fn make_sphere(radius: f32, stacks: usize, slices: usize, sun: bool) -> Model {
     Model::new(vertices, faces)
 }
 
-fn make_four_star_dragon_ball() -> Model {
+fn make_dragon_ball(star_centers: &[(f32, f32)]) -> Model {
     let radius = 2.2;
     let mut model = make_sphere(radius, 14, 22, false);
     for face in &mut model.faces {
         *face = Face::new(face.indices, "race_rgb_244_132_22", "dragon_ball");
     }
 
-    let star_centers = [(-0.62, -0.62), (0.62, -0.62), (-0.62, 0.62), (0.62, 0.62)];
-    for (star_index, (y, z)) in star_centers.into_iter().enumerate() {
+    for (star_index, &(y, z)) in star_centers.iter().enumerate() {
         let x = (radius * radius - y * y - z * z).sqrt() + 0.055;
         let center_index = model.vertices.len();
         model.vertices.push(Vec3::new(x, y, z));
@@ -1858,6 +1858,18 @@ fn make_four_star_dragon_ball() -> Model {
     model.recalculate_bounds();
     model.recalculate_normals();
     model
+}
+
+fn make_four_star_dragon_ball() -> Model {
+    make_dragon_ball(&[(-0.62, -0.62), (0.62, -0.62), (-0.62, 0.62), (0.62, 0.62)])
+}
+
+fn make_one_star_dragon_ball() -> Model {
+    make_dragon_ball(&[(0.0, 0.0)])
+}
+
+fn make_three_star_dragon_ball() -> Model {
+    make_dragon_ball(&[(-0.62, -0.48), (0.62, -0.48), (0.0, 0.62)])
 }
 
 fn make_reward_pedestal() -> Model {
@@ -4273,6 +4285,28 @@ fn draw_mission_complete_overlay(framebuffer: &mut Framebuffer, remaining: f32) 
     );
 }
 
+fn draw_guardian_reward_overlay(framebuffer: &mut Framebuffer, remaining: u32) {
+    hud_rect(framebuffer, 250, 245, 700, 285);
+    hud_rect(framebuffer, 275, 270, 650, 235);
+    draw_selection_label(framebuffer, "GUARDIAN DERROTADO", 600, 305, 4, 0xffd34e);
+    draw_selection_label(
+        framebuffer,
+        "ESFERA DE 3 ESTRELLAS OBTENIDA",
+        600,
+        400,
+        2,
+        0xffa62b,
+    );
+    draw_selection_label(
+        framebuffer,
+        &format!("REGRESO AL MUNDO LIBRE EN {remaining}"),
+        600,
+        468,
+        2,
+        0x75efff,
+    );
+}
+
 fn draw_selection_panel(
     framebuffer: &mut Framebuffer,
     left: usize,
@@ -4829,6 +4863,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let bubble_model = make_bubble_model();
     let underwater_boost_ring = make_underwater_boost_ring();
     let four_star_dragon_ball = make_four_star_dragon_ball();
+    let one_star_dragon_ball = make_one_star_dragon_ball();
+    let three_star_dragon_ball = make_three_star_dragon_ball();
     let reward_pedestal = make_reward_pedestal();
     let reward_chamber = make_reward_chamber();
     let reward_door = make_reward_door();
@@ -5367,11 +5403,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     pause: false,
                     confirm: crate::input::pressed(Key::Enter),
                 };
-                if race_input.confirm && race_track.is_finished() {
+                if race_track.reward_complete() {
                     game_mode = GameMode::FreeWorld;
                     ship_controller = ShipController::new(ship_spec);
                     race_track.leave(&mut ship_controller);
-                    window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
+                    window.set_title("Sistema solar | Esfera de 1 estrella obtenida");
                 } else {
                     race_track.update(&mut ship_controller, race_input, delta_time);
                     race_track.render(
@@ -5382,6 +5418,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         &ship_controller,
                         &turbo_plume,
                         &laser_bolt,
+                        &one_star_dragon_ball,
                         world_time,
                     );
                 }
@@ -5470,6 +5507,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     active_model,
                     ship_center,
                     ship_controller.ship.spec,
+                    &three_star_dragon_ball,
                 );
             }
         }
@@ -5520,7 +5558,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             guardian_fight.draw_hud(&mut framebuffer);
             draw_selection_label(&mut framebuffer, "GUARDIAN DEL NUCLEO", 600, 8, 2, 0xffe2ed);
             let message = if guardian_fight.is_victory() {
-                "JEFE DESTRUIDO - SALIENDO AL ESPACIO"
+                if guardian_fight.reward_received() {
+                    "ESFERA DE 3 ESTRELLAS OBTENIDA"
+                } else {
+                    "JEFE DESTRUIDO - RECIBIENDO RECOMPENSA"
+                }
             } else if guardian_fight.is_defeat() {
                 "DERROTA  R: REINTENTAR  BACKSPACE: SALIR"
             } else if guardian_fight.is_exposed() {
@@ -5745,30 +5787,40 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
             _ => None,
         };
-        draw_unified_combat_hud(
-            &mut framebuffer,
-            objective,
-            shield_ratio,
-            score,
-            ship_controller.turbo_power(ship_controller.ship.speed),
-            if game_mode == GameMode::CoreGuardian {
-                guardian_fight.weapon_charge_ratio()
-            } else {
-                ship_controller.charge_ratio()
-            },
-            ship_controller.ship.position.y,
-            contacts,
-            boss_hud,
-            if game_mode == GameMode::CoreGuardian {
-                guardian_fight.aim_screen_position()
-            } else {
-                (0.5, 0.5)
-            },
-        );
+        // Racing has its own purpose-built HUD. Do not layer the combat
+        // reticle, blaster charge, shields, contacts or combat objective over it.
+        if game_mode != GameMode::Racing {
+            draw_unified_combat_hud(
+                &mut framebuffer,
+                objective,
+                shield_ratio,
+                score,
+                ship_controller.turbo_power(ship_controller.ship.speed),
+                if game_mode == GameMode::CoreGuardian {
+                    guardian_fight.weapon_charge_ratio()
+                } else {
+                    ship_controller.charge_ratio()
+                },
+                ship_controller.ship.position.y,
+                contacts,
+                boss_hud,
+                if game_mode == GameMode::CoreGuardian {
+                    guardian_fight.aim_screen_position()
+                } else {
+                    (0.5, 0.5)
+                },
+            );
+        }
         if game_mode == GameMode::WaterLevel && water_level_state.dragon_ball_collected {
             draw_mission_complete_overlay(
                 &mut framebuffer,
                 water_level_state.mission_complete_timer,
+            );
+        }
+        if game_mode == GameMode::CoreGuardian && guardian_fight.reward_received() {
+            draw_guardian_reward_overlay(
+                &mut framebuffer,
+                guardian_fight.reward_seconds_remaining(),
             );
         }
         if crate::input::pressed(Key::P) {
@@ -6861,6 +6913,41 @@ mod tests {
     }
 
     #[test]
+    fn race_reward_is_a_one_star_dragon_ball() {
+        let reward = make_one_star_dragon_ball();
+        assert_eq!(
+            reward
+                .faces
+                .iter()
+                .filter(|face| face.group.starts_with("dragon_star_"))
+                .count(),
+            10
+        );
+        assert!(reward.faces.iter().any(|face| face.group == "dragon_star_0"));
+        assert!(!reward.faces.iter().any(|face| face.group == "dragon_star_1"));
+    }
+
+    #[test]
+    fn guardian_reward_is_a_three_star_dragon_ball() {
+        let reward = make_three_star_dragon_ball();
+        assert_eq!(
+            reward
+                .faces
+                .iter()
+                .filter(|face| face.group.starts_with("dragon_star_"))
+                .count(),
+            30
+        );
+        for star in 0..3 {
+            assert!(reward
+                .faces
+                .iter()
+                .any(|face| face.group == format!("dragon_star_{star}")));
+        }
+        assert!(!reward.faces.iter().any(|face| face.group == "dragon_star_3"));
+    }
+
+    #[test]
     fn mission_complete_overlay_covers_the_gameplay_view() {
         let mut frame = Framebuffer::new(WIDTH, HEIGHT);
         frame.clear(0xffffff);
@@ -7140,7 +7227,7 @@ mod tests {
         assert!(car.faces.len() > 1_600);
         assert!(car.faces.iter().any(|face| face.smooth));
         let radius = model_radius(&car, model_center(&car)) * ARWING_CAR_SPEC.model_scale;
-        assert!((1.6..2.5).contains(&radius), "unexpected car radius {radius}");
+        assert!((1.45..2.5).contains(&radius), "unexpected car radius {radius}");
 
         for group in [
             "Arwing_Car_FrontWheel_L_Tire",
@@ -7267,6 +7354,57 @@ mod tests {
         assert!((actual.0 - KIRBY_CAR_SPEC.turbo_back).abs() < 0.02, "{actual:?}");
         assert!((actual.1 - KIRBY_CAR_SPEC.turbo_side).abs() < 0.02, "{actual:?}");
         assert!((actual.2 - KIRBY_CAR_SPEC.turbo_down).abs() < 0.02, "{actual:?}");
+    }
+
+    #[test]
+    fn race_cars_share_the_same_visual_length() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let cars = [
+            (
+                "assets/vehicles/arwing/arwing2_carro_detallado.obj",
+                &ARWING_CAR_SPEC,
+            ),
+            (
+                "assets/vehicles/kirby/kirby_carro_detallado.obj",
+                &KIRBY_CAR_SPEC,
+            ),
+            (
+                "assets/vehicles/astra/astra_carro_detallado.obj",
+                &ASTRA_CAR_SPEC,
+            ),
+            (
+                "assets/vehicles/cowboy/cb_carro_detallado.obj",
+                &COWBOYB_CAR_SPEC,
+            ),
+            (
+                "assets/vehicles/buzz/buzz_carro_detallado.obj",
+                &BUZZ_CAR_SPEC,
+            ),
+            (
+                "assets/vehicles/mcqueen/mcqueen_carro_detallado.obj",
+                &MCQUEEN_CAR_SPEC,
+            ),
+        ];
+
+        for (path, spec) in cars {
+            let model = load_obj(root.join(path)).unwrap();
+            let min = model
+                .vertices
+                .iter()
+                .map(|vertex| vertex.z)
+                .fold(f32::INFINITY, f32::min);
+            let max = model
+                .vertices
+                .iter()
+                .map(|vertex| vertex.z)
+                .fold(f32::NEG_INFINITY, f32::max);
+            let visual_length = (max - min) * spec.model_scale;
+            assert!(
+                (visual_length - 3.0).abs() < 0.001,
+                "{} has visual length {visual_length}",
+                spec.name
+            );
+        }
     }
 
     #[test]

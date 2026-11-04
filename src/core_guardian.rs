@@ -8,6 +8,9 @@ const WARNING_DURATION: f32 = 0.55;
 const EXPOSED_DURATION: f32 = 1.8;
 const CLOSING_DURATION: f32 = 0.45;
 const VICTORY_EXPLOSION_DURATION: f32 = 2.2;
+const VICTORY_REWARD_COLLECT_TIME: f32 = 4.2;
+const VICTORY_REWARD_RECEIVE_TIME: f32 = 4.75;
+const VICTORY_SEQUENCE_DURATION: f32 = 7.5;
 const PLAYER_SPEED: f32 = 0.98;
 const PLAYER_VERTICAL_SPEED: f32 = 1.35;
 const PLAYER_VERTICAL_SCREEN_SCALE: f32 = 0.20;
@@ -165,7 +168,7 @@ impl CoreGuardian {
             return GuardianAction::Exit;
         }
         if matches!(self.phase, Phase::Won | Phase::Lost) {
-            if self.phase == Phase::Won && self.phase_time >= VICTORY_EXPLOSION_DURATION {
+            if self.phase == Phase::Won && self.phase_time >= VICTORY_SEQUENCE_DURATION {
                 return GuardianAction::Exit;
             }
             if input.confirm && self.phase == Phase::Lost {
@@ -553,6 +556,14 @@ impl CoreGuardian {
         self.phase == Phase::Won
     }
 
+    pub fn reward_received(&self) -> bool {
+        self.phase == Phase::Won && self.phase_time >= VICTORY_REWARD_RECEIVE_TIME
+    }
+
+    pub fn reward_seconds_remaining(&self) -> u32 {
+        (VICTORY_SEQUENCE_DURATION - self.phase_time).max(0.0).ceil() as u32
+    }
+
     pub fn is_defeat(&self) -> bool {
         self.phase == Phase::Lost
     }
@@ -783,5 +794,25 @@ mod tests {
         assert_eq!(fight.phase, Phase::Arrival);
         assert_eq!(fight.shields, STARTING_SHIELDS);
         assert_eq!(fight.boss_health, BOSS_HEALTH);
+    }
+
+    #[test]
+    fn victory_waits_for_the_dragon_ball_reward_before_exiting() {
+        let mut fight = CoreGuardian::new();
+        fight.phase = Phase::Won;
+        fight.phase_time = VICTORY_REWARD_RECEIVE_TIME - 0.1;
+        assert!(!fight.reward_received());
+        assert_eq!(
+            fight.update(0.05, GuardianInput::default(), 1200, 800),
+            GuardianAction::Stay
+        );
+
+        fight.phase_time = VICTORY_REWARD_RECEIVE_TIME;
+        assert!(fight.reward_received());
+        fight.phase_time = VICTORY_SEQUENCE_DURATION;
+        assert_eq!(
+            fight.update(0.05, GuardianInput::default(), 1200, 800),
+            GuardianAction::Exit
+        );
     }
 }

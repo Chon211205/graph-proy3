@@ -31,6 +31,10 @@ pub(crate) const PLANET_POSITION: Vec3 = Vec3 {
     z: -100.0,
 };
 pub(crate) const PLANET_RADIUS: f32 = 28.0;
+const RIVAL_COUNT: usize = 12;
+const REWARD_DURATION: f32 = 5.5;
+const REWARD_COLLECT_TIME: f32 = 2.8;
+const REWARD_RECEIVE_TIME: f32 = 3.35;
 pub(crate) type RaceVehicles<'a> = [Option<(&'a Model, &'static ShipSpec)>; 6];
 
 pub(crate) struct RaceSky<'a> {
@@ -58,13 +62,15 @@ pub(crate) struct RaceTrack {
     scenery: RaceScenery,
     drive: DriveState,
     progress: RaceProgress,
-    rivals: Option<[Rival; 3]>,
+    rivals: Option<Vec<Rival>>,
     selected_vehicle: usize,
     finish_position: usize,
     camera: Option<Camera>,
     last_render_time: f32,
     phase: RacePhase,
     countdown: f32,
+    reward_elapsed: f32,
+    reward_position: Vec3,
     safe_position: Vec3,
     safe_yaw: f32,
 }
@@ -87,6 +93,8 @@ impl RaceTrack {
             last_render_time: 0.0,
             phase: RacePhase::Countdown,
             countdown: 0.0,
+            reward_elapsed: 0.0,
+            reward_position: Vec3::default(),
             safe_position: Vec3::new(72.0, 1.2, 207.0),
             safe_yaw: std::f32::consts::PI,
         })
@@ -101,13 +109,12 @@ impl RaceTrack {
         let Some((_, _)) = vehicles.get(selected_vehicle).copied().flatten() else {
             return false;
         };
-        let rival_vehicle_indices = [2, 3, 4, 5]
-            .into_iter()
-            .filter(|&index| index != selected_vehicle)
+        let rival_vehicle_indices = vehicles
+            .iter()
+            .enumerate()
+            .filter_map(|(index, vehicle)| vehicle.map(|_| index))
             .collect::<Vec<_>>();
-        if rival_vehicle_indices.len() < 3
-            || rival_vehicle_indices.iter().any(|&i| vehicles[i].is_none())
-        {
+        if rival_vehicle_indices.is_empty() {
             return false;
         }
         controller.reset();
@@ -126,16 +133,24 @@ impl RaceTrack {
         self.finish_position = 1;
         self.camera = None;
         self.last_render_time = 0.0;
-        self.rivals = Some(std::array::from_fn(|rival_index| {
-            let vehicle_index = rival_vehicle_indices[rival_index];
+        self.rivals = Some((0..RIVAL_COUNT).map(|rival_index| {
+            // Twelve rivals means every one of the six available cars appears
+            // exactly twice, including the model selected by the player.
+            let vehicle_index = rival_vehicle_indices[rival_index % rival_vehicle_indices.len()];
             let (_, spec) = vehicles[vehicle_index].expect("validated rival vehicle");
-            let grid = [22.0, 38.0, 54.0][rival_index];
-            let lane = [-4.2, 4.2, 0.0][rival_index];
-            let skill = [0.96, 0.91, 0.99][rival_index];
+            let row = rival_index / 3;
+            let grid = 16.0 + row as f32 * 13.0;
+            let lane = [-5.8, 0.0, 5.8][rival_index % 3];
+            let skill = [
+                0.99, 0.94, 0.97, 0.91, 1.00, 0.95,
+                0.98, 0.92, 0.96, 0.90, 0.97, 0.93,
+            ][rival_index];
             Rival::new(&self.course, vehicle_index, spec, grid, lane, skill)
-        }));
+        }).collect());
         self.phase = RacePhase::Countdown;
         self.countdown = 3.25;
+        self.reward_elapsed = 0.0;
+        self.reward_position = controller.ship.position;
         self.safe_position = controller.ship.position;
         self.safe_yaw = controller.ship.yaw;
         true
@@ -179,8 +194,8 @@ impl RaceTrack {
         }
     }
 
-    pub fn is_finished(&self) -> bool {
-        self.phase == RacePhase::Finished
+    pub fn reward_complete(&self) -> bool {
+        self.phase == RacePhase::Finished && self.reward_elapsed >= REWARD_DURATION
     }
 
     pub fn update(&mut self, controller: &mut ShipController, input: RaceInput, dt: f32) {
@@ -199,10 +214,10 @@ impl RaceTrack {
                 return;
             }
             RacePhase::Finished => {
-                if input.confirm {
-                    // The caller re-enters with the selected car table so all
-                    // race participants are reset together.
-                }
+                self.reward_elapsed = (self.reward_elapsed + dt).min(REWARD_DURATION);
+                controller.ship.position = self.reward_position;
+                controller.ship.speed = 0.0;
+                self.drive.speed = 0.0;
                 return;
             }
             RacePhase::Driving => {
@@ -229,6 +244,8 @@ impl RaceTrack {
             }
             if event == ProgressEvent::Finished {
                 self.finish_position = self.player_position(controller);
+                self.reward_position = controller.ship.position;
+                self.reward_elapsed = 0.0;
                 self.phase = RacePhase::Finished;
             }
         }
@@ -253,6 +270,7 @@ impl RaceTrack {
         controller: &ShipController,
         plume: &Model,
         laser: &Model,
+        dragon_ball: &Model,
         time: f32,
     ) {
         draw_race_sky(frame, time);
@@ -366,6 +384,38 @@ impl RaceTrack {
                 );
             }
         }
+        if self.phase == RacePhase::Finished {
+            let descent = (self.reward_elapsed / 2.2).clamp(0.0, 1.0);
+            let descent = descent * descent * (3.0 - 2.0 * descent);
+            let hover = (self.reward_elapsed * 3.2).sin() * 0.22;
+            let position = self
+                .reward_position
+                .add(Vec3::new(0.0, 13.0 - descent * 8.0 + hover, 0.0));
+            let center = crate::model_center(dragon_ball);
+            let rotation = self.reward_elapsed * 1.8;
+            let (sin, cos) = rotation.sin_cos();
+            let collect_scale =
+                (1.0 - (self.reward_elapsed - REWARD_COLLECT_TIME).max(0.0) / 0.55)
+                    .clamp(0.0, 1.0);
+            if collect_scale > 0.0 {
+                queue_model(
+                    dragon_ball,
+                    batch,
+                    &camera,
+                    |vertex| {
+                        let local = vertex.sub(center).mul(collect_scale);
+                        Vec3::new(
+                            local.x * cos - local.z * sin,
+                            local.y,
+                            local.x * sin + local.z * cos,
+                        )
+                        .add(position)
+                    },
+                    None,
+                    None,
+                );
+            }
+        }
         batch.flush(frame);
         apply_distant_mist(frame);
         draw_projectile_glow(
@@ -391,10 +441,12 @@ impl RaceTrack {
             &self.drive,
             controller.ship.position,
             controller.ship.yaw,
-            self.rivals.as_ref(),
+            self.rivals.as_deref(),
             place,
             self.phase,
             self.countdown,
+            self.reward_elapsed >= REWARD_RECEIVE_TIME,
+            (REWARD_DURATION - self.reward_elapsed).max(0.0),
         );
     }
 
@@ -477,7 +529,7 @@ fn queue_sky_planet(
 fn resolve_racer_contacts(
     controller: &mut ShipController,
     player_drive: &mut DriveState,
-    rivals: &mut [Rival; 3],
+    rivals: &mut [Rival],
 ) {
     for rival in rivals.iter_mut() {
         let offset = Vec3::new(
@@ -605,6 +657,60 @@ fn apply_distant_mist(frame: &mut Framebuffer) {
 #[cfg(test)]
 mod standings_tests {
     use super::*;
+    use crate::ship::{
+        ARWING_CAR_SPEC, ASTRA_CAR_SPEC, BUZZ_CAR_SPEC, COWBOYB_CAR_SPEC,
+        KIRBY_CAR_SPEC, MCQUEEN_CAR_SPEC,
+    };
+
+    #[test]
+    fn race_grid_has_twelve_rivals_and_uses_every_available_car_twice() {
+        let dummy = Model::new(Vec::new(), Vec::new());
+        let vehicles: RaceVehicles<'_> = [
+            Some((&dummy, &ARWING_CAR_SPEC)),
+            Some((&dummy, &KIRBY_CAR_SPEC)),
+            Some((&dummy, &ASTRA_CAR_SPEC)),
+            Some((&dummy, &COWBOYB_CAR_SPEC)),
+            Some((&dummy, &BUZZ_CAR_SPEC)),
+            Some((&dummy, &MCQUEEN_CAR_SPEC)),
+        ];
+        let mut track = RaceTrack::load().unwrap();
+        let mut controller = ShipController::new(&ARWING_CAR_SPEC);
+        assert!(track.enter(&mut controller, 0, &vehicles));
+
+        let rivals = track.rivals.as_ref().unwrap();
+        assert_eq!(rivals.len(), RIVAL_COUNT);
+        for vehicle_index in 0..vehicles.len() {
+            assert_eq!(
+                rivals
+                    .iter()
+                    .filter(|rival| rival.vehicle_index == vehicle_index)
+                    .count(),
+                2
+            );
+        }
+    }
+
+    #[test]
+    fn finished_race_freezes_the_car_until_the_reward_animation_completes() {
+        let mut track = RaceTrack::load().unwrap();
+        let mut controller = ShipController::new(&ARWING_CAR_SPEC);
+        let reward_position = Vec3::new(12.0, 1.2, 34.0);
+        track.phase = RacePhase::Finished;
+        track.reward_position = reward_position;
+        controller.ship.position = Vec3::new(99.0, 8.0, -20.0);
+        controller.ship.speed = 40.0;
+        track.drive.speed = 40.0;
+
+        track.update(&mut controller, RaceInput::default(), REWARD_DURATION * 0.5);
+        assert!(controller.ship.position.sub(reward_position).dot(
+            controller.ship.position.sub(reward_position)
+        ) < 0.0001);
+        assert_eq!(controller.ship.speed, 0.0);
+        assert!(!track.reward_complete());
+
+        track.update(&mut controller, RaceInput::default(), REWARD_DURATION);
+        assert!(track.reward_complete());
+    }
 
     #[test]
     fn standings_use_laps_and_checkpoint_progress_then_finish_time() {

@@ -1,4 +1,7 @@
-use super::{CoreGuardian, Phase, STARTING_SHIELDS, VICTORY_EXPLOSION_DURATION};
+use super::{
+    CoreGuardian, Phase, STARTING_SHIELDS, VICTORY_EXPLOSION_DURATION,
+    VICTORY_REWARD_COLLECT_TIME,
+};
 use crate::framebuffer::Framebuffer;
 use crate::obj_loader::{Face, MaterialColor, Model, Vec3};
 use crate::ship::ShipSpec;
@@ -29,13 +32,18 @@ impl CoreGuardian {
         ship_model: &Model,
         ship_center: Vec3,
         ship_spec: &ShipSpec,
+        dragon_ball: &Model,
     ) {
         let width = framebuffer.width as f32;
         let height = framebuffer.height as f32;
         draw_cavern(framebuffer, self.elapsed);
         let (boss_x, boss_y) = self.boss_center();
         if self.phase == Phase::Won {
-            draw_boss_explosion(framebuffer, (boss_x, boss_y), self.phase_time);
+            if self.phase_time <= VICTORY_EXPLOSION_DURATION {
+                draw_boss_explosion(framebuffer, (boss_x, boss_y), self.phase_time);
+            } else {
+                draw_guardian_reward(framebuffer, dragon_ball, self.phase_time);
+            }
         } else {
             draw_boss_tentacles(framebuffer, (boss_x, boss_y), self.elapsed);
             draw_boss_spheres(
@@ -120,6 +128,33 @@ impl CoreGuardian {
             ship_health_color,
         );
     }
+}
+
+fn draw_guardian_reward(framebuffer: &mut Framebuffer, dragon_ball: &Model, phase_time: f32) {
+    let reward_time = phase_time - VICTORY_EXPLOSION_DURATION;
+    let descent = (reward_time / 1.7).clamp(0.0, 1.0);
+    let descent = descent * descent * (3.0 - 2.0 * descent);
+    let screen_y = 0.16 + descent * 0.31 + (reward_time * 3.0).sin() * 0.008;
+    let position = scene_position(framebuffer, (0.5, screen_y), 10.0);
+    let rotation = reward_time * 1.9;
+    let center = crate::model_center(dragon_ball);
+    let collect_scale =
+        (1.0 - (phase_time - VICTORY_REWARD_COLLECT_TIME).max(0.0) / 0.55).clamp(0.0, 1.0);
+    if collect_scale <= 0.0 {
+        return;
+    }
+    let camera = scene_camera();
+    render_model(
+        dragon_ball,
+        framebuffer,
+        &camera,
+        |vertex| {
+            let local = vertex.sub(center).mul(collect_scale);
+            position.add(rotate_y(local, rotation))
+        },
+        None,
+        None,
+    );
 }
 
 fn draw_damage_smoke(
