@@ -18,7 +18,7 @@ pub(super) fn draw(
     drive: &DriveState,
     position: Vec3,
     yaw: f32,
-    rivals: Option<&[Rival; 3]>,
+    rivals: Option<&[Rival]>,
     place: usize,
     phase: RacePhase,
     countdown: f32,
@@ -224,7 +224,7 @@ fn draw_minimap(
     progress: &RaceProgress,
     position: Vec3,
     yaw: f32,
-    rivals: Option<&[Rival; 3]>,
+    rivals: Option<&[Rival]>,
 ) {
     const MAP_WIDTH: usize = 150;
     const MAP_HEIGHT: usize = 98;
@@ -266,7 +266,7 @@ fn draw_minimap(
             LEFT as i32 + x,
             TOP as i32 + y,
             4,
-            [0xff6d53, 0xffc94e, 0xc177ff][index],
+            rival_marker_color(index),
         );
     }
     let (x, y) = map_point(position);
@@ -283,6 +283,32 @@ fn draw_minimap(
         py + (-sin * 8.0) as i32,
         0xffffff,
     );
+}
+
+fn rival_marker_color(index: usize) -> u32 {
+    // One color per available vehicle model. With twelve rivals the six-car
+    // palette repeats safely for the second copy of each vehicle.
+    const COLORS: [u32; 6] = [
+        0x70b9ff, // Arwing
+        0xff72b7, // Kirby
+        0x65e39b, // ASTRA
+        0xffa052, // Swordfish
+        0xb985ff, // Buzz
+        0xff5b5b, // McQueen
+    ];
+    COLORS[index % COLORS.len()]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rival_marker_color;
+
+    #[test]
+    fn marker_palette_supports_all_twelve_rivals() {
+        let colors = (0..12).map(rival_marker_color).collect::<Vec<_>>();
+        assert_eq!(colors.len(), 12);
+        assert_eq!(&colors[..6], &colors[6..]);
+    }
 }
 
 fn map_point(position: Vec3) -> (i32, i32) {
