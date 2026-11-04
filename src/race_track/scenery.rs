@@ -4,6 +4,7 @@ use super::course::{CURB_WIDTH, HALF_ROAD, RaceCourse};
 
 pub(super) struct RaceScenery {
     pub forests: Vec<Model>,
+    pub forest_lods: Vec<Model>,
     pub arches: Vec<Model>,
     pub terrain: Model,
     pub hills: Model,
@@ -13,8 +14,12 @@ impl RaceScenery {
     pub fn new(course: &RaceCourse) -> Self {
         let mut forests = Vec::new();
         let mut arches = Vec::new();
-        let chunk_size = (course.samples.len() / 6).max(1);
-        for chunk in 0..6 {
+        // Small spatial chunks let the renderer reject most vegetation before
+        // transforming its detailed smooth geometry. This matters especially
+        // in fullscreen where rasterization has less CPU headroom.
+        const SCENERY_CHUNKS: usize = 18;
+        let chunk_size = course.samples.len().div_ceil(SCENERY_CHUNKS);
+        for chunk in 0..SCENERY_CHUNKS {
             let start = chunk * chunk_size;
             let end = ((chunk + 1) * chunk_size).min(course.samples.len());
             let mut forest = MeshBuilder::default();
@@ -49,7 +54,7 @@ impl RaceScenery {
 
             let mut arch = MeshBuilder::default();
             let center_index = (start + end) / 2;
-            if chunk % 2 == 1 {
+            if chunk % 6 == 3 {
                 arch.stone_arch(course.samples[center_index]);
             }
             arches.push(arch.finish());
@@ -59,13 +64,39 @@ impl RaceScenery {
         hills.hills(course);
         let mut terrain = MeshBuilder::default();
         terrain.terrain();
+        let forest_lods = forests
+            .iter()
+            .map(|forest| reduced_model(forest, 3))
+            .collect();
         Self {
             forests,
+            forest_lods,
             arches,
             terrain: terrain.finish(),
             hills: hills.finish(),
         }
     }
+}
+
+fn reduced_model(model: &Model, stride: usize) -> Model {
+    let mut remap = vec![usize::MAX; model.vertices.len()];
+    let mut vertices = Vec::new();
+    let mut faces = Vec::new();
+    for source in model.faces.iter().step_by(stride.max(1)) {
+        let indices = source.indices.map(|old| {
+            if remap[old] == usize::MAX {
+                remap[old] = vertices.len();
+                vertices.push(model.vertices[old]);
+            }
+            remap[old]
+        });
+        let mut face = Face::new(indices, source.material.clone(), source.group.clone());
+        face.shader = source.shader;
+        face.color = source.color;
+        face.smooth = source.smooth;
+        faces.push(face);
+    }
+    Model::new(vertices, faces)
 }
 
 fn safe_offset_from_course(
@@ -481,16 +512,21 @@ impl MeshBuilder {
     }
 
     fn terrain(&mut self) {
-        let width = 620.0;
-        let depth = 380.0;
-        let columns = 36;
-        let rows = 24;
+        // Extend well beyond the playable route so the chase camera never
+        // exposes the sky background through the edges of the ground plane.
+        // Tile count stays moderate; the extra coverage does not add objects.
+        let width = 1_100.0;
+        let depth = 900.0;
+        let origin_x = -350.0;
+        let origin_z = -300.0;
+        let columns = 44;
+        let rows = 36;
         for row in 0..rows {
             for column in 0..columns {
-                let x0 = column as f32 * width / columns as f32 - 110.0;
-                let x1 = (column + 1) as f32 * width / columns as f32 - 110.0;
-                let z0 = row as f32 * depth / rows as f32 - 60.0;
-                let z1 = (row + 1) as f32 * depth / rows as f32 - 60.0;
+                let x0 = column as f32 * width / columns as f32 + origin_x;
+                let x1 = (column + 1) as f32 * width / columns as f32 + origin_x;
+                let z0 = row as f32 * depth / rows as f32 + origin_z;
+                let z1 = (row + 1) as f32 * depth / rows as f32 + origin_z;
                 let variation = ((column * 37 + row * 19) % 5) as u8;
                 let green = 78 + variation * 5;
                 let color = [38 + variation * 2, green, 62 + variation * 3];
@@ -536,6 +572,12 @@ mod tests {
     fn forest_and_hill_geometry_stays_clear_of_the_drivable_surface() {
         let course = RaceCourse::new();
         let scenery = RaceScenery::new(&course);
+        assert_eq!(scenery.forests.len(), 18);
+        assert_eq!(scenery.forest_lods.len(), scenery.forests.len());
+        assert_eq!(scenery.arches.len(), 18);
+        for (detailed, lod) in scenery.forests.iter().zip(&scenery.forest_lods) {
+            assert!(lod.faces.len() <= detailed.faces.len().div_ceil(3));
+        }
         for model in scenery.forests.iter().chain(std::iter::once(&scenery.hills)) {
             for vertex in &model.vertices {
                 let (_, distance, _) = course.nearest(*vertex);
@@ -544,6 +586,36 @@ mod tests {
                     "scenery intrudes into road clearance at {vertex:?} (distance {distance})"
                 );
             }
+        }
+        let terrain_min_x = scenery
+            .terrain
+            .vertices
+            .iter()
+            .map(|vertex| vertex.x)
+            .fold(f32::INFINITY, f32::min);
+        let terrain_max_x = scenery
+            .terrain
+            .vertices
+            .iter()
+            .map(|vertex| vertex.x)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let terrain_min_z = scenery
+            .terrain
+            .vertices
+            .iter()
+            .map(|vertex| vertex.z)
+            .fold(f32::INFINITY, f32::min);
+        let terrain_max_z = scenery
+            .terrain
+            .vertices
+            .iter()
+            .map(|vertex| vertex.z)
+            .fold(f32::NEG_INFINITY, f32::max);
+        for sample in &course.samples {
+            assert!(sample.position.x - terrain_min_x > 240.0);
+            assert!(terrain_max_x - sample.position.x > 240.0);
+            assert!(sample.position.z - terrain_min_z > 240.0);
+            assert!(terrain_max_z - sample.position.z > 240.0);
         }
         assert!(scenery
             .forests

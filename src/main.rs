@@ -138,6 +138,19 @@ impl DynamicResolution {
         false
     }
 
+    fn prefer_racing_resolution(&mut self) -> bool {
+        if self.enabled && self.scale_index == 0 {
+            self.scale_index = 1;
+            self.low_time = 0.0;
+            self.high_time = 0.0;
+            self.cooldown = 1.5;
+            self.status = "CARRERA";
+            true
+        } else {
+            false
+        }
+    }
+
     fn update(&mut self, frame_time: f32, previous_render: RenderStats) -> bool {
         // Ignore extreme pause/debugger spikes without hiding sustained load.
         let frame_time = frame_time.clamp(0.000_1, 0.1);
@@ -214,13 +227,36 @@ fn upscale_scene(source: &Framebuffer, target: &mut Framebuffer) {
         target.pixels.copy_from_slice(&source.pixels);
         return;
     }
+    let scale_x = (source.width.saturating_sub(1)) as f32
+        / (target.width.saturating_sub(1)).max(1) as f32;
+    let scale_y = (source.height.saturating_sub(1)) as f32
+        / (target.height.saturating_sub(1)).max(1) as f32;
     for y in 0..target.height {
-        let source_y = y * source.height / target.height;
+        let source_y = y as f32 * scale_y;
+        let y0 = source_y.floor() as usize;
+        let y1 = (y0 + 1).min(source.height - 1);
+        let fy = source_y - y0 as f32;
         let target_row = y * target.width;
-        let source_row = source_y * source.width;
         for x in 0..target.width {
-            let source_x = x * source.width / target.width;
-            target.pixels[target_row + x] = source.pixels[source_row + source_x];
+            let source_x = x as f32 * scale_x;
+            let x0 = source_x.floor() as usize;
+            let x1 = (x0 + 1).min(source.width - 1);
+            let fx = source_x - x0 as f32;
+            let colors = [
+                source.pixels[y0 * source.width + x0],
+                source.pixels[y0 * source.width + x1],
+                source.pixels[y1 * source.width + x0],
+                source.pixels[y1 * source.width + x1],
+            ];
+            let interpolate = |shift: u32| {
+                let channel = |color: u32| ((color >> shift) & 255_u32) as f32;
+                let top = channel(colors[0]) + (channel(colors[1]) - channel(colors[0])) * fx;
+                let bottom =
+                    channel(colors[2]) + (channel(colors[3]) - channel(colors[2])) * fx;
+                (top + (bottom - top) * fy).round() as u32
+            };
+            target.pixels[target_row + x] =
+                (interpolate(16) << 16) | (interpolate(8) << 8) | interpolate(0);
         }
     }
 }
@@ -2191,6 +2227,9 @@ fn draw_wormhole_energy(
         return;
     }
     let extent = radius * 1.55;
+    if !circle_intersects_frame(framebuffer, center_x, center_y, extent) {
+        return;
+    }
     let width = framebuffer.width;
     let height = framebuffer.height;
     let min_x = (center_x - extent).floor().max(0.0) as usize;
@@ -2773,6 +2812,87 @@ struct TriangleCommand {
     style: TriangleStyle,
 }
 
+const OCCLUSION_BLOCK_SIZE: usize = 16;
+
+struct CoarseOcclusion {
+    minimum_depth: Vec<f32>,
+    blocks_x: usize,
+    blocks_y: usize,
+    region_y: usize,
+    region_height: usize,
+}
+
+impl CoarseOcclusion {
+    fn build(depth: &[f32], width: usize, region_y: usize, region_height: usize) -> Self {
+        let blocks_x = width.div_ceil(OCCLUSION_BLOCK_SIZE);
+        let blocks_y = region_height.div_ceil(OCCLUSION_BLOCK_SIZE);
+        let mut minimum_depth = vec![f32::INFINITY; blocks_x * blocks_y];
+        for local_y in 0..region_height {
+            let block_y = local_y / OCCLUSION_BLOCK_SIZE;
+            for x in 0..width {
+                let block_x = x / OCCLUSION_BLOCK_SIZE;
+                let block = block_y * blocks_x + block_x;
+                minimum_depth[block] = minimum_depth[block].min(depth[local_y * width + x]);
+            }
+        }
+        Self {
+            minimum_depth,
+            blocks_x,
+            blocks_y,
+            region_y,
+            region_height,
+        }
+    }
+
+    fn hides(&self, vertices: [ScreenVertex; 3], width: usize) -> bool {
+        let min_x = vertices
+            .iter()
+            .map(|vertex| vertex.x)
+            .fold(f32::INFINITY, f32::min)
+            .floor()
+            .max(0.0) as usize;
+        let max_x = vertices
+            .iter()
+            .map(|vertex| vertex.x)
+            .fold(f32::NEG_INFINITY, f32::max)
+            .ceil()
+            .min(width.saturating_sub(1) as f32) as usize;
+        let min_y = vertices
+            .iter()
+            .map(|vertex| vertex.y)
+            .fold(f32::INFINITY, f32::min)
+            .floor()
+            .max(self.region_y as f32) as usize;
+        let region_end = self.region_y + self.region_height;
+        let max_y = vertices
+            .iter()
+            .map(|vertex| vertex.y)
+            .fold(f32::NEG_INFINITY, f32::max)
+            .ceil()
+            .min(region_end.saturating_sub(1) as f32) as usize;
+        if min_x > max_x || min_y > max_y || min_y >= region_end || max_y < self.region_y {
+            return true;
+        }
+
+        let closest_depth = vertices
+            .iter()
+            .map(|vertex| vertex.z)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let first_block_x = min_x / OCCLUSION_BLOCK_SIZE;
+        let last_block_x = max_x / OCCLUSION_BLOCK_SIZE;
+        let first_block_y = (min_y - self.region_y) / OCCLUSION_BLOCK_SIZE;
+        let last_block_y = (max_y - self.region_y) / OCCLUSION_BLOCK_SIZE;
+        for block_y in first_block_y..=last_block_y.min(self.blocks_y.saturating_sub(1)) {
+            for block_x in first_block_x..=last_block_x.min(self.blocks_x.saturating_sub(1)) {
+                if self.minimum_depth[block_y * self.blocks_x + block_x] < closest_depth {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 struct RenderStats {
     models_visible: usize,
@@ -2894,8 +3014,24 @@ impl TriangleBatch {
             {
                 let region_y = tile_index * tile_height;
                 scope.spawn(move || {
-                    for command in commands {
+                    let region_height = tile_depth.len() / width;
+                    let mut occlusion = None;
+                    for (command_index, command) in commands.iter().enumerate() {
+                        if command_index == 256 || command_index == 1024 {
+                            occlusion = Some(CoarseOcclusion::build(
+                                tile_depth,
+                                width,
+                                region_y,
+                                region_height,
+                            ));
+                        }
                         let [a, b, c] = command.vertices;
+                        if occlusion
+                            .as_ref()
+                            .is_some_and(|grid| grid.hides([a, b, c], width))
+                        {
+                            continue;
+                        }
                         match &command.style {
                             TriangleStyle::Flat(color) => draw_triangle_shaded_region(
                                 tile_pixels,
@@ -3769,6 +3905,9 @@ fn draw_projectile_glow(
         let radius = (focal * projectile.scale * radius_multiplier / depth)
             .clamp(5.0, 32.0)
             * pulse;
+        if !circle_intersects_frame(framebuffer, center_x, center_y, radius) {
+            continue;
+        }
         let min_x = (center_x - radius).floor().max(0.0) as usize;
         let max_x = (center_x + radius)
             .ceil()
@@ -3825,6 +3964,9 @@ fn draw_boss_explosion_glow(
     let center_y = framebuffer.height as f32 * 0.5 - relative.dot(camera.up) * focal / depth;
     let envelope = (progress * PI).sin().max(0.0);
     let radius = (18.0 + progress * 105.0) * (0.72 + envelope * 0.28);
+    if !circle_intersects_frame(framebuffer, center_x, center_y, radius) {
+        return;
+    }
     let min_x = (center_x - radius).floor().max(0.0) as usize;
     let max_x = (center_x + radius)
         .ceil()
@@ -3855,6 +3997,18 @@ fn draw_boss_explosion_glow(
             framebuffer.pixels[index] = (red << 16) | (green << 8) | blue;
         }
     }
+}
+
+fn circle_intersects_frame(
+    framebuffer: &Framebuffer,
+    center_x: f32,
+    center_y: f32,
+    radius: f32,
+) -> bool {
+    center_x + radius >= 0.0
+        && center_y + radius >= 0.0
+        && center_x - radius < framebuffer.width as f32
+        && center_y - radius < framebuffer.height as f32
 }
 
 fn render_water_level(
@@ -5135,6 +5289,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     ship_controller = ShipController::new(car_spec);
                     if race_track.enter(&mut ship_controller, selected_ship, &race_vehicles) {
                         game_mode = GameMode::Racing;
+                        if dynamic_resolution.prefer_racing_resolution() {
+                            let (render_width, render_height) = dynamic_resolution.dimensions();
+                            scene_framebuffer = Framebuffer::new(render_width, render_height);
+                            triangle_batch.resize(render_width, render_height);
+                        }
                         entered_level = true;
                         window.set_title(
                             "Gran Premio Orbital | W acelerar | A/D girar | Backspace: espacio",
@@ -6327,6 +6486,14 @@ mod tests {
             None,
             None,
         );
+        render_model(
+            &test_triangle(5.0),
+            &mut framebuffer,
+            &camera,
+            |vertex| vertex.add(Vec3::new(100.0, 0.0, 0.0)),
+            None,
+            None,
+        );
         assert!(framebuffer.pixels.iter().all(|&pixel| pixel == 0));
     }
 
@@ -6361,6 +6528,50 @@ mod tests {
         assert_eq!(stats.triangles_submitted, 1);
         assert!(stats.geometry_ms.is_finite());
         assert!(stats.raster_ms.is_finite());
+    }
+
+    #[test]
+    fn offscreen_projectile_effects_do_not_touch_the_framebuffer() {
+        let camera = test_camera();
+        let mut framebuffer = Framebuffer::new(320, 200);
+        framebuffer.clear(0x102030);
+        let projectile = Projectile {
+            position: Vec3::new(10_000.0, 0.0, 10.0),
+            direction: Vec3::new(0.0, 0.0, 1.0),
+            lifetime: 1.0,
+            scale: 2.0,
+        };
+        draw_projectile_glow(
+            &mut framebuffer,
+            &[projectile],
+            &camera,
+            0.0,
+            [255, 255, 255],
+            1.65,
+        );
+        assert!(framebuffer.pixels.iter().all(|&pixel| pixel == 0x102030));
+    }
+
+    #[test]
+    fn hierarchical_occlusion_rejects_only_fully_hidden_triangles() {
+        let width = 32;
+        let height = 32;
+        let covered = vec![0.5; width * height];
+        let grid = CoarseOcclusion::build(&covered, width, 0, height);
+        let triangle = |depth| {
+            [
+                ScreenVertex { x: 2.0, y: 2.0, z: depth },
+                ScreenVertex { x: 14.0, y: 2.0, z: depth },
+                ScreenVertex { x: 8.0, y: 14.0, z: depth },
+            ]
+        };
+        assert!(grid.hides(triangle(0.25), width));
+        assert!(!grid.hides(triangle(0.75), width));
+
+        let mut partly_open = covered;
+        partly_open[4 * width + 4] = f32::NEG_INFINITY;
+        let grid = CoarseOcclusion::build(&partly_open, width, 0, height);
+        assert!(!grid.hides(triangle(0.25), width));
     }
 
     #[test]
@@ -6462,6 +6673,14 @@ mod tests {
         }
         assert_eq!(resolution.scale_index, 0);
         assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
+    }
+
+    #[test]
+    fn racing_resolution_starts_at_ninety_percent_when_enabled() {
+        let mut resolution = DynamicResolution::new();
+        assert!(resolution.prefer_racing_resolution());
+        assert_eq!(resolution.percentage(), 90);
+        assert!(!resolution.prefer_racing_resolution());
     }
 
     #[test]
