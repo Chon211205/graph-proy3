@@ -3,7 +3,9 @@ use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
 // Wider surface for the 13-car grid while preserving the authored route.
 pub(super) const HALF_ROAD: f32 = 12.5;
 pub(super) const CURB_WIDTH: f32 = 1.8;
-const SAMPLES_PER_SPAN: usize = 16;
+// Fourteen samples preserve the authored final curve while cutting redundant
+// nearest-point searches and static geometry for all thirteen racers.
+const SAMPLES_PER_SPAN: usize = 14;
 
 const CONTROL_POINTS: [Vec3; 25] = [
     Vec3::new(72.0, 0.0, 207.0),
@@ -45,10 +47,10 @@ pub(super) struct RaceCourse {
     pub samples: Vec<TrackSample>,
     pub cumulative: Vec<f32>,
     pub length: f32,
-    pub road: Model,
-    pub curbs: Model,
-    pub barriers: Model,
-    pub markings: Model,
+    pub road: Vec<Model>,
+    pub curbs: Vec<Model>,
+    pub barriers: Vec<Model>,
+    pub markings: Vec<Model>,
     pub boost_pads: Vec<Vec3>,
 }
 
@@ -124,21 +126,31 @@ impl RaceCourse {
                     stripe_color,
                     "red_white_curbs",
                 );
-                barriers.box_along(
-                    current
-                        .position
-                        .add(side.mul((HALF_ROAD + CURB_WIDTH + 1.0) * direction)),
-                    current.tangent,
-                    3.2,
-                    0.8,
-                    0.65,
-                    if (index / 6).is_multiple_of(2) {
-                        [103, 115, 121]
-                    } else {
-                        [79, 94, 102]
-                    },
-                    "track_barriers",
-                );
+                if index.is_multiple_of(2) {
+                    let barrier_next = samples[(index + 2) % samples.len()];
+                    let delta = barrier_next.position.sub(current.position);
+                    let tangent = delta.normalize();
+                    let barrier_side = Vec3::new(-tangent.z, 0.0, tangent.x);
+                    barriers.box_along(
+                        current
+                            .position
+                            .add(barrier_next.position)
+                            .mul(0.5)
+                            .add(barrier_side.mul(
+                                (HALF_ROAD + CURB_WIDTH + 1.0) * direction,
+                            )),
+                        tangent,
+                        delta.dot(delta).sqrt() * 0.5 + 0.08,
+                        0.8,
+                        0.65,
+                        if (index / 6).is_multiple_of(2) {
+                            [103, 115, 121]
+                        } else {
+                            [79, 94, 102]
+                        },
+                        "track_barriers",
+                    );
+                }
             }
             let boost_cycle = SAMPLES_PER_SPAN * 4;
             if index % boost_cycle == SAMPLES_PER_SPAN
@@ -207,10 +219,10 @@ impl RaceCourse {
             samples,
             cumulative,
             length,
-            road: road.finish(),
-            curbs: curbs.finish(),
-            barriers: barriers.finish(),
-            markings: markings.finish(),
+            road: split_model(road.finish(), 18),
+            curbs: split_model(curbs.finish(), 18),
+            barriers: split_model(barriers.finish(), 18),
+            markings: split_model(markings.finish(), 18),
             boost_pads,
         }
     }
@@ -260,6 +272,34 @@ impl RaceCourse {
         }
         (best_distance, best_distance_sq.sqrt(), best_sample)
     }
+}
+
+fn split_model(model: Model, chunk_count: usize) -> Vec<Model> {
+    let faces_per_chunk = model.faces.len().div_ceil(chunk_count.max(1));
+    model
+        .faces
+        .chunks(faces_per_chunk.max(1))
+        .map(|source_faces| {
+            let mut remap = vec![usize::MAX; model.vertices.len()];
+            let mut vertices = Vec::new();
+            let mut faces = Vec::with_capacity(source_faces.len());
+            for source in source_faces {
+                let indices = source.indices.map(|old| {
+                    if remap[old] == usize::MAX {
+                        remap[old] = vertices.len();
+                        vertices.push(model.vertices[old]);
+                    }
+                    remap[old]
+                });
+                let mut face = Face::new(indices, source.material.clone(), source.group.clone());
+                face.shader = source.shader;
+                face.color = source.color;
+                face.smooth = source.smooth;
+                faces.push(face);
+            }
+            Model::new(vertices, faces)
+        })
+        .collect()
 }
 
 #[derive(Default)]
@@ -364,9 +404,15 @@ mod tests {
         let (distance, lateral_error, _) = course.nearest(start.position);
         assert!(distance < 1.0);
         assert!(lateral_error < 0.1);
-        assert!(!course.road.faces.is_empty());
-        assert!(!course.curbs.faces.is_empty());
-        assert!(!course.barriers.faces.is_empty());
+        assert_eq!(course.road.len(), 18);
+        assert_eq!(course.curbs.len(), 18);
+        assert_eq!(course.barriers.len(), 18);
+        assert!(!course.road.iter().any(|chunk| chunk.faces.is_empty()));
+        assert!(!course.curbs.iter().any(|chunk| chunk.faces.is_empty()));
+        assert_eq!(
+            course.barriers.iter().map(|chunk| chunk.faces.len()).sum::<usize>(),
+            course.samples.len() * 12
+        );
     }
 
     #[test]

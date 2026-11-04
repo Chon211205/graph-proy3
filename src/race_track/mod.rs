@@ -10,7 +10,7 @@ use std::f32::consts::TAU;
 use crate::{
     Camera, TriangleBatch, draw_projectile_glow,
     framebuffer::Framebuffer,
-    obj_loader::{Model, Vec3, load_obj},
+    obj_loader::{Face, MaterialColor, Model, Vec3, load_obj},
     queue_model, render_ship_components,
     ship::{ShipController, ShipSpec},
 };
@@ -35,6 +35,10 @@ const RIVAL_COUNT: usize = 12;
 const REWARD_DURATION: f32 = 5.5;
 const REWARD_COLLECT_TIME: f32 = 2.8;
 const REWARD_RECEIVE_TIME: f32 = 3.35;
+const FOREST_RENDER_DISTANCE: f32 = 320.0;
+const FOREST_FULL_DETAIL_DISTANCE: f32 = 240.0;
+const RIVAL_FULL_DETAIL_DISTANCE: f32 = 85.0;
+const RIVAL_TURBO_DISTANCE: f32 = 105.0;
 pub(crate) type RaceVehicles<'a> = [Option<(&'a Model, &'static ShipSpec)>; 6];
 
 pub(crate) struct RaceSky<'a> {
@@ -64,6 +68,9 @@ pub(crate) struct RaceTrack {
     progress: RaceProgress,
     rivals: Option<Vec<Rival>>,
     selected_vehicle: usize,
+    vehicle_lods: Vec<Option<Model>>,
+    vehicle_centers: Vec<Option<Vec3>>,
+    ai_tick: usize,
     finish_position: usize,
     camera: Option<Camera>,
     last_render_time: f32,
@@ -88,6 +95,9 @@ impl RaceTrack {
             progress,
             rivals: None,
             selected_vehicle: 2,
+            vehicle_lods: (0..6).map(|_| None).collect(),
+            vehicle_centers: vec![None; 6],
+            ai_tick: 0,
             finish_position: 1,
             camera: None,
             last_render_time: 0.0,
@@ -130,6 +140,16 @@ impl RaceTrack {
         self.drive = DriveState::new();
         self.progress = RaceProgress::new(&self.course);
         self.selected_vehicle = selected_vehicle;
+        self.vehicle_lods = vehicles
+            .iter()
+            .enumerate()
+            .map(|(index, vehicle)| vehicle.map(|(_, spec)| distant_vehicle_lod(spec, index)))
+            .collect();
+        self.vehicle_centers = vehicles
+            .iter()
+            .map(|vehicle| vehicle.map(|(model, _)| model.bounds().0))
+            .collect();
+        self.ai_tick = 0;
         self.finish_position = 1;
         self.camera = None;
         self.last_render_time = 0.0;
@@ -250,8 +270,11 @@ impl RaceTrack {
             }
         }
         if let Some(rivals) = &mut self.rivals {
-            for rival in rivals.iter_mut() {
-                rival.update(&self.course, dt);
+            self.ai_tick = self.ai_tick.wrapping_add(1);
+            for (index, rival) in rivals.iter_mut().enumerate() {
+                if index % 2 == self.ai_tick % 2 {
+                    rival.update(&self.course, dt * 2.0);
+                }
             }
             resolve_racer_contacts(controller, &mut self.drive, rivals);
         }
@@ -331,23 +354,47 @@ impl RaceTrack {
         );
         queue_model(&self.scenery.terrain, batch, &camera, |v| v, None, None);
         queue_model(&self.scenery.hills, batch, &camera, |v| v, None, None);
-        for forest in &self.scenery.forests {
-            queue_model(forest, batch, &camera, |v| v, None, None);
+        for (forest, lod) in self
+            .scenery
+            .forests
+            .iter()
+            .zip(&self.scenery.forest_lods)
+        {
+            let distance = forest.bounds().0.sub(camera.position);
+            let distance_sq = distance.dot(distance);
+            if distance_sq < FOREST_RENDER_DISTANCE * FOREST_RENDER_DISTANCE {
+                let visible = if distance_sq
+                    > FOREST_FULL_DETAIL_DISTANCE * FOREST_FULL_DETAIL_DISTANCE
+                {
+                    lod
+                } else {
+                    forest
+                };
+                queue_model(visible, batch, &camera, |v| v, None, None);
+            }
         }
         for arch in &self.scenery.arches {
             queue_model(arch, batch, &camera, |v| v, None, None);
         }
-        queue_model(&self.course.barriers, batch, &camera, |v| v, None, None);
-        queue_model(&self.course.curbs, batch, &camera, |v| v, None, None);
-        queue_model(&self.course.road, batch, &camera, |v| v, None, None);
-        queue_model(&self.course.markings, batch, &camera, |v| v, None, None);
+        for model in &self.course.barriers {
+            queue_model(model, batch, &camera, |v| v, None, None);
+        }
+        for model in &self.course.curbs {
+            queue_model(model, batch, &camera, |v| v, None, None);
+        }
+        for model in &self.course.road {
+            queue_model(model, batch, &camera, |v| v, None, None);
+        }
+        for model in &self.course.markings {
+            queue_model(model, batch, &camera, |v| v, None, None);
+        }
         let speed_power = (self.drive.speed.abs() / self.drive.max_speed()).clamp(0.0, 1.0);
         let turbo = (speed_power * 0.18 + self.drive.boost_flash * 0.68).clamp(0.0, 1.0);
         let (vehicle, _) =
             vehicles[self.selected_vehicle].expect("player car was checked on entry");
         render_ship_components(
             vehicle,
-            crate::model_center(vehicle),
+            self.vehicle_centers[self.selected_vehicle].unwrap_or_else(|| vehicle.bounds().0),
             plume,
             laser,
             &controller.projectiles,
@@ -362,14 +409,29 @@ impl RaceTrack {
         );
         if let Some(rivals) = &self.rivals {
             for rival in rivals {
-                let Some((model, _)) = vehicles[rival.vehicle_index] else {
+                let Some((full_model, _)) = vehicles[rival.vehicle_index] else {
                     continue;
+                };
+                let distance = rival.controller.ship.position.sub(camera.position);
+                let model = if distance.dot(distance)
+                    > RIVAL_FULL_DETAIL_DISTANCE * RIVAL_FULL_DETAIL_DISTANCE
+                {
+                    self.vehicle_lods[rival.vehicle_index]
+                        .as_ref()
+                        .unwrap_or(full_model)
+                } else {
+                    full_model
                 };
                 let speed_power =
                     (rival.drive.speed.abs() / rival.drive.max_speed()).clamp(0.0, 1.0);
                 render_ship_components(
                     model,
-                    crate::model_center(model),
+                    if std::ptr::eq(model, full_model) {
+                        self.vehicle_centers[rival.vehicle_index]
+                            .unwrap_or_else(|| model.bounds().0)
+                    } else {
+                        model.bounds().0
+                    },
                     plume,
                     laser,
                     &[],
@@ -379,7 +441,7 @@ impl RaceTrack {
                     time,
                     (speed_power * 0.12 + rival.drive.boost_flash * 0.5).clamp(0.0, 1.0),
                     0.0,
-                    true,
+                    distance.dot(distance) < RIVAL_TURBO_DISTANCE * RIVAL_TURBO_DISTANCE,
                     1.55,
                 );
             }
@@ -471,6 +533,76 @@ impl RaceTrack {
             })
             .collect::<Vec<_>>();
         place_for_player(player, &rival_standings)
+    }
+}
+
+fn distant_vehicle_lod(spec: &ShipSpec, vehicle_index: usize) -> Model {
+    let colors = [
+        [210, 225, 238],
+        [255, 128, 190],
+        [60, 145, 255],
+        [226, 70, 42],
+        [142, 220, 48],
+        [226, 35, 28],
+    ];
+    let scale = spec.model_scale.max(0.001);
+    let mut vertices = Vec::new();
+    let mut faces = Vec::new();
+    append_lod_box(
+        &mut vertices,
+        &mut faces,
+        Vec3::new(0.0, 0.45 / scale, 0.0),
+        Vec3::new(0.82 / scale, 0.38 / scale, 1.5 / scale),
+        colors[vehicle_index % colors.len()],
+        "distant_car_body",
+    );
+    append_lod_box(
+        &mut vertices,
+        &mut faces,
+        Vec3::new(0.0, 0.92 / scale, 0.12 / scale),
+        Vec3::new(0.55 / scale, 0.26 / scale, 0.70 / scale),
+        [55, 92, 125],
+        "distant_car_cabin",
+    );
+    for x in [-0.82, 0.82] {
+        for z in [-0.92, 0.92] {
+            append_lod_box(
+                &mut vertices,
+                &mut faces,
+                Vec3::new(x / scale, 0.25 / scale, z / scale),
+                Vec3::new(0.18 / scale, 0.27 / scale, 0.31 / scale),
+                [24, 27, 33],
+                "distant_car_wheel",
+            );
+        }
+    }
+    Model::new(vertices, faces)
+}
+
+fn append_lod_box(
+    vertices: &mut Vec<Vec3>,
+    faces: &mut Vec<Face>,
+    center: Vec3,
+    half: Vec3,
+    color: [u8; 3],
+    group: &str,
+) {
+    let base = vertices.len();
+    for y in [-1.0, 1.0] {
+        for z in [-1.0, 1.0] {
+            for x in [-1.0, 1.0] {
+                vertices.push(center.add(Vec3::new(x * half.x, y * half.y, z * half.z)));
+            }
+        }
+    }
+    for indices in [
+        [0, 1, 3], [0, 3, 2], [4, 6, 7], [4, 7, 5],
+        [0, 4, 5], [0, 5, 1], [2, 3, 7], [2, 7, 6],
+        [0, 2, 6], [0, 6, 4], [1, 5, 7], [1, 7, 3],
+    ] {
+        let mut face = Face::new(indices.map(|index| base + index), "race_lod", group);
+        face.color = MaterialColor::Fixed(color);
+        faces.push(face);
     }
 }
 
@@ -626,11 +758,11 @@ fn apply_distant_mist(frame: &mut Framebuffer) {
     let start_y = (height as f32 * 0.36) as usize;
     let end_y = (height as f32 * 0.78) as usize;
     let (pixels, depth) = frame.buffers_mut();
-    for y in start_y..end_y.min(height) {
+    for y in (start_y..end_y.min(height)).step_by(2) {
         let normalized_y = y as f32 / height as f32;
         let vertical_falloff = (1.0 - ((normalized_y - 0.56) / 0.22).abs()).clamp(0.0, 1.0);
         let row = y * width;
-        for x in 0..width {
+        for x in (0..width).step_by(2) {
             let index = row + x;
             let inverse_distance = depth[index];
             if !inverse_distance.is_finite() || inverse_distance <= 0.0 {
@@ -649,7 +781,15 @@ fn apply_distant_mist(frame: &mut Framebuffer) {
             let red = mix((pixel >> 16) & 0xff, 159);
             let green = mix((pixel >> 8) & 0xff, 184);
             let blue = mix(pixel & 0xff, 151);
-            pixels[index] = (red << 16) | (green << 8) | blue;
+            let fogged = (red << 16) | (green << 8) | blue;
+            for block_y in y..(y + 2).min(height) {
+                for block_x in x..(x + 2).min(width) {
+                    let block_index = block_y * width + block_x;
+                    if depth[block_index].is_finite() && depth[block_index] > 0.0 {
+                        pixels[block_index] = fogged;
+                    }
+                }
+            }
         }
     }
 }
@@ -679,6 +819,11 @@ mod standings_tests {
 
         let rivals = track.rivals.as_ref().unwrap();
         assert_eq!(rivals.len(), RIVAL_COUNT);
+        assert_eq!(track.vehicle_lods.iter().filter(|lod| lod.is_some()).count(), 6);
+        assert_eq!(
+            track.vehicle_centers.iter().filter(|center| center.is_some()).count(),
+            6
+        );
         for vehicle_index in 0..vehicles.len() {
             assert_eq!(
                 rivals
@@ -688,6 +833,17 @@ mod standings_tests {
                 2
             );
         }
+    }
+
+    #[test]
+    fn distant_car_lod_is_lightweight_and_keeps_race_dimensions() {
+        let lod = distant_vehicle_lod(&KIRBY_CAR_SPEC, 1);
+        assert_eq!(lod.faces.len(), 72);
+        assert!(lod.vertices.len() < 64);
+        let (center, radius) = lod.bounds();
+        assert!(center.x.is_finite() && center.y.is_finite() && center.z.is_finite());
+        let world_radius = radius * KIRBY_CAR_SPEC.model_scale;
+        assert!((1.5..2.2).contains(&world_radius), "unexpected LOD radius {world_radius}");
     }
 
     #[test]
