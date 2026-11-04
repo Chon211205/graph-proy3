@@ -1,10 +1,11 @@
 use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
 
-pub(super) const HALF_ROAD: f32 = 10.0;
+// Wider surface for the 13-car grid while preserving the authored route.
+pub(super) const HALF_ROAD: f32 = 12.5;
 pub(super) const CURB_WIDTH: f32 = 1.8;
-const SAMPLES_PER_SPAN: usize = 8;
+const SAMPLES_PER_SPAN: usize = 16;
 
-const CONTROL_POINTS: [Vec3; 24] = [
+const CONTROL_POINTS: [Vec3; 25] = [
     Vec3::new(72.0, 0.0, 207.0),
     Vec3::new(120.0, 0.0, 207.0),
     Vec3::new(182.0, 0.0, 207.0),
@@ -26,9 +27,12 @@ const CONTROL_POINTS: [Vec3; 24] = [
     Vec3::new(73.0, 0.0, 105.0),
     Vec3::new(97.0, 0.0, 125.0),
     Vec3::new(105.0, 0.0, 148.0),
-    Vec3::new(83.0, 0.0, 171.0),
-    Vec3::new(58.0, 0.0, 190.0),
-    Vec3::new(45.0, 0.0, 205.0),
+    // Broad final bend: enough radius for the widened track and a tangent
+    // that merges cleanly into the start/finish straight.
+    Vec3::new(55.0, 0.0, 172.0),
+    Vec3::new(38.0, 0.0, 188.0),
+    Vec3::new(38.0, 0.0, 201.0),
+    Vec3::new(55.0, 0.0, 207.0),
 ];
 
 #[derive(Clone, Copy, Debug)]
@@ -136,7 +140,10 @@ impl RaceCourse {
                     "track_barriers",
                 );
             }
-            if index % 32 == 8 || index % 32 == 24 {
+            let boost_cycle = SAMPLES_PER_SPAN * 4;
+            if index % boost_cycle == SAMPLES_PER_SPAN
+                || index % boost_cycle == SAMPLES_PER_SPAN * 3
+            {
                 boost_pads.push(current.position.add(next.position).mul(0.5));
                 for lane in [-1.0, 0.0, 1.0] {
                     let center = current
@@ -168,7 +175,7 @@ impl RaceCourse {
             }
         }
 
-        for lane in -3..=3 {
+        for lane in -4..=4 {
             let offset = lane as f32 * 2.6;
             let station = samples[0].position;
             let side = Vec3::new(-samples[0].tangent.z, 0.0, samples[0].tangent.x);
@@ -360,5 +367,25 @@ mod tests {
         assert!(!course.road.faces.is_empty());
         assert!(!course.curbs.faces.is_empty());
         assert!(!course.barriers.faces.is_empty());
+    }
+
+    #[test]
+    fn final_turn_merges_smoothly_into_the_start_straight() {
+        let course = RaceCourse::new();
+        let final_turn_start = 20 * SAMPLES_PER_SPAN;
+        let mut minimum_alignment = (1.0_f32, final_turn_start);
+        for index in final_turn_start..course.samples.len() {
+            let next = (index + 1) % course.samples.len();
+            let alignment = course.samples[index]
+                .tangent
+                .dot(course.samples[next].tangent);
+            if alignment < minimum_alignment.0 {
+                minimum_alignment = (alignment, index);
+            }
+        }
+        assert!(
+            minimum_alignment.0 > 0.985,
+            "final turn contained a sharp tangent break: {minimum_alignment:?}"
+        );
     }
 }

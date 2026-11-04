@@ -133,7 +133,7 @@ impl RaceTrack {
             let (_, spec) = vehicles[vehicle_index].expect("validated rival vehicle");
             let row = rival_index / 3;
             let grid = 16.0 + row as f32 * 13.0;
-            let lane = [-4.6, 0.0, 4.6][rival_index % 3];
+            let lane = [-5.8, 0.0, 5.8][rival_index % 3];
             let skill = [
                 0.99, 0.94, 0.97, 0.91, 1.00, 0.95,
                 0.98, 0.92, 0.96, 0.90, 0.97, 0.93,

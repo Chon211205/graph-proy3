@@ -1,4 +1,4 @@
-use crate::ship::Ship;
+use crate::{obj_loader::Vec3, ship::Ship};
 
 use super::course::{HALF_ROAD, RaceCourse};
 
@@ -10,6 +10,7 @@ const BRAKING: f32 = 56.0;
 const FRICTION: f32 = 8.0;
 const TURBO_CAPACITY: f32 = 3.2;
 const TURBO_RECHARGE: f32 = 0.38;
+const SAFE_EDGE_MARGIN: f32 = 0.2;
 
 #[derive(Clone, Copy, Default)]
 pub(crate) struct RaceInput {
@@ -144,16 +145,29 @@ impl DriveState {
         let movement = forward.mul(self.speed * dt);
         let steps = (movement.dot(movement).sqrt() / 1.0).ceil().max(1.0) as usize;
         let step = movement.mul(1.0 / steps as f32);
+        let mut touched_boundary = false;
         for _ in 0..steps {
             let next = ship.position.add(step);
-            let (_, distance_from_road, _) = course.nearest(next);
+            let (_, distance_from_road, nearest) = course.nearest(next);
             if distance_from_road <= HALF_ROAD + 0.8 {
                 ship.position = next;
             } else {
-                self.speed *= 0.55;
-                self.collision_flash = 0.8;
-                break;
+                // Project onto the safe edge instead of cancelling movement.
+                // The longitudinal part of the step is preserved, so cars
+                // slide along the grey barrier and cannot become wedged in it.
+                let side = Vec3::new(-nearest.tangent.z, 0.0, nearest.tangent.x);
+                let signed_lateral = next.sub(nearest.position).dot(side);
+                let safe_edge = HALF_ROAD + 0.8 - SAFE_EDGE_MARGIN;
+                ship.position = nearest
+                    .position
+                    .add(side.mul(signed_lateral.clamp(-safe_edge, safe_edge)))
+                    .add(Vec3::new(0.0, 1.2, 0.0));
+                touched_boundary = true;
             }
+        }
+        if touched_boundary {
+            self.speed *= 0.82;
+            self.collision_flash = 0.65;
         }
 
         if self.boost_pad_cooldown <= 0.0
@@ -248,5 +262,33 @@ mod tests {
             );
         }
         assert!(drive.speed < 0.0);
+    }
+
+    #[test]
+    fn road_edge_projects_cars_inside_instead_of_trapping_them() {
+        let course = RaceCourse::new();
+        let sample = course.sample_at(course.length * 0.93);
+        let side = crate::obj_loader::Vec3::new(-sample.tangent.z, 0.0, sample.tangent.x);
+        let outside = sample
+            .position
+            .add(side.mul(HALF_ROAD + 5.0))
+            .add(crate::obj_loader::Vec3::new(0.0, 1.2, 0.0));
+        let (_, _, nearest) = course.nearest(outside);
+        let nearest_side = crate::obj_loader::Vec3::new(
+            -nearest.tangent.z,
+            0.0,
+            nearest.tangent.x,
+        );
+        let safe_edge = HALF_ROAD + 0.8 - SAFE_EDGE_MARGIN;
+        let corrected = nearest
+            .position
+            .add(nearest_side.mul(
+                outside
+                    .sub(nearest.position)
+                    .dot(nearest_side)
+                    .clamp(-safe_edge, safe_edge),
+            ));
+        let (_, corrected_distance, _) = course.nearest(corrected);
+        assert!(corrected_distance <= safe_edge + 0.05);
     }
 }
