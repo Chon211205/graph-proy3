@@ -1,12 +1,26 @@
 # Aventura espacial
 
-## Planeta de carreras en la galaxia inicial
+## Planeta de carreras: Gran Premio Orbital
 
-En el sistema solar inicial encontrarás un planeta verde con cinturón de pista a cuadros. Acércate hasta entrar en órbita y pulsa **Enter** para recorrer **Jardín Rust**, el mapa predeterminado de `ZyroBad/kart_racer`. La tecla **3** te lleva junto al planeta para entrar más rápido.
+En el sistema solar inicial encontrarás el planeta de carreras con su cinturón a cuadros. Acércate hasta entrar en órbita y pulsa **Enter** para correr **Gran Premio Orbital**. La tecla **3** te lleva junto al planeta para entrar más rápido. La carrera carga el modelo OBJ del carro asociado a la nave seleccionada, cuenta regresiva, circuito cerrado, tres rivales, checkpoints ordenados y tres vueltas.
 
-Se conserva nuestro controlador: **A/D o flechas izquierda/derecha** para girar, **Espacio** para acelerar, **Ctrl** para frenar, **Enter** para disparar, **R** para reiniciar y **Esc** para pausar. El vehículo permanece sobre la pista; ASTRA, Swordfish, Buzz y Rayo usan su versión carro y los demás conservan su nave. **Backspace** regresa a la órbita del planeta en el sistema solar inicial.
+El escenario tiene carretera oscura, pianos rojos y blancos, bandas turbo, barreras, vegetación alienígena, árboles grandes, helechos, arcos musgosos, colinas y un planeta anillado al fondo. El circuito y su decoración se generan una vez desde los módulos de `src/race_track/`; se usa el renderizador de software del proyecto.
 
-Se integró únicamente el mapa, sin las mecánicas de carrera del otro proyecto. La cuadrícula original, conversión a OBJ y procedencia están documentadas en `assets/levels/kart_racer/SOURCE.md`.
+Hay variantes carro para ASTRA, Swordfish II, Buzz Lightyear y Rayo McQueen. Arwing y Kirby todavía no tienen modelo carro, así que el juego no los sustituye por un modelo genérico. Los archivos que faltan son `assets/vehicles/arwing/arwing2_carro.obj` y `assets/vehicles/kirby/kirby_carro.obj`.
+
+| Tecla | Acción en la carrera |
+| --- | --- |
+| W / arriba | Acelerar |
+| S / abajo | Frenar o ir en reversa |
+| A/D o flechas izquierda/derecha | Girar |
+| Espacio | Freno de mano y derrape |
+| Shift | Consumir reserva de turbo |
+| R | Volver al último checkpoint |
+| P / Esc | Pausar o continuar |
+| Enter | Reintentar al terminar |
+| Backspace | Salir del planeta y volver al espacio libre |
+
+Shift consume la reserva y se recarga al soltarlo; derrapar de forma controlada y cruzar una banda turbo da una recarga breve. Los resultados indican posición, tiempo total y mejor vuelta. Backspace regresa al espacio libre. La carrera no incluye el menú principal ni la música del proyecto de referencia; la lógica, IA y geometría están adaptadas a la estructura y al renderizador de este proyecto.
 
 Juego 3D en Rust con renderizado por software. Ejecuta los comandos desde la raíz del repositorio para encontrar `assets/`.
 
