@@ -43,7 +43,7 @@ impl RaceProgress {
             checkpoints.push(Checkpoint {
                 center: sample.position,
                 tangent: sample.tangent,
-                half_width: 9.0,
+                half_width: 12.0,
                 course_distance: distance,
             });
         }
@@ -51,7 +51,7 @@ impl RaceProgress {
         checkpoints.push(Checkpoint {
             center: start.position,
             tangent: start.tangent,
-            half_width: 9.0,
+            half_width: 12.0,
             course_distance: course.length,
         });
         Self::from_checkpoints(checkpoints)
@@ -274,6 +274,15 @@ mod tests {
             Some(ProgressEvent::Checkpoint)
         );
         assert_eq!(progress.current_checkpoint(), 1);
+    }
+
+    #[test]
+    fn finish_gate_covers_the_full_drivable_road_width() {
+        let mut gate = one_gate();
+        gate.half_width = 12.0;
+        let previous = Vec3::new(-1.0, 0.0, 10.8);
+        let current = Vec3::new(1.0, 0.0, 10.8);
+        assert!(crosses_gate_forward(previous, current, gate));
     }
 
     #[test]

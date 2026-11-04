@@ -149,9 +149,9 @@ pub(super) fn draw(
             label(
                 frame,
                 if place == 1 {
-                    "VICTORIA"
+                    "GANASTE LA CARRERA"
                 } else {
-                    "CARRERA FINALIZADA"
+                    "CARRERA COMPLETADA"
                 },
                 600,
                 294,
@@ -160,7 +160,7 @@ pub(super) fn draw(
             );
             label(
                 frame,
-                &format!("POSICION FINAL {place}/4"),
+                &format!("PUESTO FINAL {place}/4"),
                 600,
                 350,
                 2,
@@ -194,8 +194,8 @@ pub(super) fn draw(
                     0xc7d8ed,
                 );
             }
-            label(frame, "ENTER: REINTENTAR", 600, 475, 2, 0xffffff);
-            label(frame, "BACKSPACE: SALIR AL ESPACIO", 600, 515, 2, 0xffdf6b);
+            label(frame, "ENTER: SALIR AL ESPACIO", 600, 475, 2, 0x8feaff);
+            label(frame, "LA NAVE REGRESARA A VUELO LIBRE", 600, 515, 1, 0xffdf6b);
         }
         RacePhase::Driving => {
             label(

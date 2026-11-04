@@ -4154,18 +4154,23 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     confirm: crate::input::pressed(Key::Enter),
                 };
                 if race_input.confirm && race_track.is_finished() {
-                    if let Some((_, car_spec)) = race_vehicles[selected_ship] {
-                        ship_controller = ShipController::new(car_spec);
-                        race_track.enter(&mut ship_controller, selected_ship, &race_vehicles);
-                    }
+                    game_mode = GameMode::FreeWorld;
+                    ship_controller = ShipController::new(ship_spec);
+                    race_track.leave(&mut ship_controller);
+                    window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
                 } else {
                     race_track.update(&mut ship_controller, race_input, delta_time);
+                    race_track.render(
+                        &mut scene_framebuffer,
+                        &mut triangle_batch,
+                        &race_vehicles,
+                        &race_sky,
+                        &ship_controller,
+                        &turbo_plume,
+                        &laser_bolt,
+                        world_time,
+                    );
                 }
-                race_track.render(
-                    &mut scene_framebuffer, &mut triangle_batch,
-                    &race_vehicles, &race_sky, &ship_controller,
-                    &turbo_plume, &laser_bolt, world_time,
-                );
             }
             GameMode::WaterLevel => {
                 ship_controller.update(&input, delta_time);
