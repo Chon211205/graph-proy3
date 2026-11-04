@@ -1868,6 +1868,10 @@ fn make_one_star_dragon_ball() -> Model {
     make_dragon_ball(&[(0.0, 0.0)])
 }
 
+fn make_three_star_dragon_ball() -> Model {
+    make_dragon_ball(&[(-0.62, -0.48), (0.62, -0.48), (0.0, 0.62)])
+}
+
 fn make_reward_pedestal() -> Model {
     let mut vertices = Vec::new();
     let mut faces = Vec::new();
@@ -4281,6 +4285,28 @@ fn draw_mission_complete_overlay(framebuffer: &mut Framebuffer, remaining: f32) 
     );
 }
 
+fn draw_guardian_reward_overlay(framebuffer: &mut Framebuffer, remaining: u32) {
+    hud_rect(framebuffer, 250, 245, 700, 285);
+    hud_rect(framebuffer, 275, 270, 650, 235);
+    draw_selection_label(framebuffer, "GUARDIAN DERROTADO", 600, 305, 4, 0xffd34e);
+    draw_selection_label(
+        framebuffer,
+        "ESFERA DE 3 ESTRELLAS OBTENIDA",
+        600,
+        400,
+        2,
+        0xffa62b,
+    );
+    draw_selection_label(
+        framebuffer,
+        &format!("REGRESO AL MUNDO LIBRE EN {remaining}"),
+        600,
+        468,
+        2,
+        0x75efff,
+    );
+}
+
 fn draw_selection_panel(
     framebuffer: &mut Framebuffer,
     left: usize,
@@ -4838,6 +4864,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let underwater_boost_ring = make_underwater_boost_ring();
     let four_star_dragon_ball = make_four_star_dragon_ball();
     let one_star_dragon_ball = make_one_star_dragon_ball();
+    let three_star_dragon_ball = make_three_star_dragon_ball();
     let reward_pedestal = make_reward_pedestal();
     let reward_chamber = make_reward_chamber();
     let reward_door = make_reward_door();
@@ -5480,6 +5507,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     active_model,
                     ship_center,
                     ship_controller.ship.spec,
+                    &three_star_dragon_ball,
                 );
             }
         }
@@ -5530,7 +5558,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             guardian_fight.draw_hud(&mut framebuffer);
             draw_selection_label(&mut framebuffer, "GUARDIAN DEL NUCLEO", 600, 8, 2, 0xffe2ed);
             let message = if guardian_fight.is_victory() {
-                "JEFE DESTRUIDO - SALIENDO AL ESPACIO"
+                if guardian_fight.reward_received() {
+                    "ESFERA DE 3 ESTRELLAS OBTENIDA"
+                } else {
+                    "JEFE DESTRUIDO - RECIBIENDO RECOMPENSA"
+                }
             } else if guardian_fight.is_defeat() {
                 "DERROTA  R: REINTENTAR  BACKSPACE: SALIR"
             } else if guardian_fight.is_exposed() {
@@ -5783,6 +5815,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             draw_mission_complete_overlay(
                 &mut framebuffer,
                 water_level_state.mission_complete_timer,
+            );
+        }
+        if game_mode == GameMode::CoreGuardian && guardian_fight.reward_received() {
+            draw_guardian_reward_overlay(
+                &mut framebuffer,
+                guardian_fight.reward_seconds_remaining(),
             );
         }
         if crate::input::pressed(Key::P) {
@@ -6887,6 +6925,26 @@ mod tests {
         );
         assert!(reward.faces.iter().any(|face| face.group == "dragon_star_0"));
         assert!(!reward.faces.iter().any(|face| face.group == "dragon_star_1"));
+    }
+
+    #[test]
+    fn guardian_reward_is_a_three_star_dragon_ball() {
+        let reward = make_three_star_dragon_ball();
+        assert_eq!(
+            reward
+                .faces
+                .iter()
+                .filter(|face| face.group.starts_with("dragon_star_"))
+                .count(),
+            30
+        );
+        for star in 0..3 {
+            assert!(reward
+                .faces
+                .iter()
+                .any(|face| face.group == format!("dragon_star_{star}")));
+        }
+        assert!(!reward.faces.iter().any(|face| face.group == "dragon_star_3"));
     }
 
     #[test]
