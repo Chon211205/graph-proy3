@@ -5746,26 +5746,30 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
             _ => None,
         };
-        draw_unified_combat_hud(
-            &mut framebuffer,
-            objective,
-            shield_ratio,
-            score,
-            ship_controller.turbo_power(ship_controller.ship.speed),
-            if game_mode == GameMode::CoreGuardian {
-                guardian_fight.weapon_charge_ratio()
-            } else {
-                ship_controller.charge_ratio()
-            },
-            ship_controller.ship.position.y,
-            contacts,
-            boss_hud,
-            if game_mode == GameMode::CoreGuardian {
-                guardian_fight.aim_screen_position()
-            } else {
-                (0.5, 0.5)
-            },
-        );
+        // Racing has its own purpose-built HUD. Do not layer the combat
+        // reticle, blaster charge, shields, contacts or combat objective over it.
+        if game_mode != GameMode::Racing {
+            draw_unified_combat_hud(
+                &mut framebuffer,
+                objective,
+                shield_ratio,
+                score,
+                ship_controller.turbo_power(ship_controller.ship.speed),
+                if game_mode == GameMode::CoreGuardian {
+                    guardian_fight.weapon_charge_ratio()
+                } else {
+                    ship_controller.charge_ratio()
+                },
+                ship_controller.ship.position.y,
+                contacts,
+                boss_hud,
+                if game_mode == GameMode::CoreGuardian {
+                    guardian_fight.aim_screen_position()
+                } else {
+                    (0.5, 0.5)
+                },
+            );
+        }
         if game_mode == GameMode::WaterLevel && water_level_state.dragon_ball_collected {
             draw_mission_complete_overlay(
                 &mut framebuffer,

@@ -23,6 +23,7 @@ pub(super) fn draw(
     phase: RacePhase,
     countdown: f32,
 ) {
+    let racer_count = rivals.map_or(1, |racers| racers.len() + 1);
     draw_space_panel(frame, 24, 14, 248, 176, 0x4ddfff);
     draw_space_panel(frame, 438, 8, 324, 62, 0xffd15c);
     draw_space_panel(frame, 970, 14, 216, 42, 0xffd15c);
@@ -40,7 +41,14 @@ pub(super) fn draw(
         2,
         0xffffff,
     );
-    label(frame, &format!("PUESTO {place}/4"), 1078, 23, 1, 0xffdf6b);
+    label(
+        frame,
+        &format!("PUESTO {place}/{racer_count}"),
+        1078,
+        23,
+        1,
+        0xffdf6b,
+    );
     label(
         frame,
         &format!(
@@ -61,42 +69,8 @@ pub(super) fn draw(
         2,
         0x85f1ff,
     );
-    label(
-        frame,
-        &format!("TIEMPO {}", format_time(progress.race_time())),
-        145,
-        112,
-        1,
-        0xffffff,
-    );
-    label(
-        frame,
-        &format!("VUELTA {}", format_time(progress.lap_time())),
-        145,
-        132,
-        1,
-        0xc7d8ed,
-    );
-    if let Some(last) = progress.last_lap_time() {
-        label(
-            frame,
-            &format!("ULTIMA {}", format_time(last)),
-            145,
-            151,
-            1,
-            0xb8d7c8,
-        );
-    }
-    if let Some(best) = progress.best_lap_time() {
-        label(
-            frame,
-            &format!("MEJOR {}", format_time(best)),
-            145,
-            170,
-            1,
-            0xffdf6b,
-        );
-    }
+    label(frame, "CARRERA POR VUELTAS", 145, 116, 1, 0xffffff);
+    label(frame, "META: 4 VUELTAS", 145, 145, 1, 0xffdf6b);
 
     draw_minimap(frame, course, progress, position, yaw, rivals);
     label(frame, "RESERVA TURBO", 112, 675, 1, 0xffd6a0);
@@ -160,40 +134,13 @@ pub(super) fn draw(
             );
             label(
                 frame,
-                &format!("PUESTO FINAL {place}/4"),
+                &format!("PUESTO FINAL {place}/{racer_count}"),
                 600,
                 350,
                 2,
                 0xffdf6b,
             );
-            label(
-                frame,
-                &format!("TIEMPO {}", format_time(progress.race_time())),
-                600,
-                385,
-                2,
-                0xffffff,
-            );
-            if let Some(best) = progress.best_lap_time() {
-                label(
-                    frame,
-                    &format!("MEJOR VUELTA {}", format_time(best)),
-                    600,
-                    420,
-                    2,
-                    0x9fffd2,
-                );
-            }
-            if let Some(last) = progress.last_lap_time() {
-                label(
-                    frame,
-                    &format!("ULTIMA VUELTA {}", format_time(last)),
-                    600,
-                    440,
-                    2,
-                    0xc7d8ed,
-                );
-            }
+            label(frame, "4 VUELTAS COMPLETADAS", 600, 400, 2, 0x9fffd2);
             label(frame, "ENTER: SALIR AL ESPACIO", 600, 475, 2, 0x8feaff);
             label(frame, "LA NAVE REGRESARA A VUELO LIBRE", 600, 515, 1, 0xffdf6b);
         }
@@ -448,14 +395,4 @@ fn event_label(event: ProgressEvent) -> (&'static str, u32) {
         ProgressEvent::FinalLap => ("ULTIMA VUELTA", 0xffb35c),
         ProgressEvent::Finished => ("META", 0x9fffd2),
     }
-}
-
-fn format_time(seconds: f32) -> String {
-    let centiseconds = (seconds.max(0.0) * 100.0) as u32;
-    format!(
-        "{:02}:{:02}.{:02}",
-        centiseconds / 6000,
-        centiseconds / 100 % 60,
-        centiseconds % 100
-    )
 }

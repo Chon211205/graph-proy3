@@ -132,18 +132,18 @@ mod tests {
     use crate::ship::COWBOYB_CAR_SPEC;
 
     #[test]
-    fn rival_completes_three_laps_on_the_course_without_teleporting() {
+    fn rival_completes_four_laps_on_the_course_without_teleporting() {
         let course = RaceCourse::new();
         let mut rival = Rival::new(&course, 3, &COWBOYB_CAR_SPEC, 22.0, 0.0, 0.92);
-        for _ in 0..(180 * 60) {
+        for _ in 0..(240 * 60) {
             rival.update(&course, 1.0 / 60.0);
             if rival.progress.is_finished() {
                 break;
             }
         }
-        assert!(rival.progress.is_finished(), "rival did not finish in 180s");
-        assert!(rival.progress.race_time() >= 90.0);
-        assert!(rival.progress.race_time() <= 180.0);
+        assert!(rival.progress.is_finished(), "rival did not finish in 240s");
+        assert!(rival.progress.race_time() >= 120.0);
+        assert!(rival.progress.race_time() <= 240.0);
         assert!(rival.controller.ship.position.x.is_finite());
         assert!(rival.controller.ship.position.z.is_finite());
     }

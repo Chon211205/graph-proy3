@@ -2,7 +2,7 @@ use crate::obj_loader::Vec3;
 
 use super::course::{HALF_ROAD, RaceCourse};
 
-pub(super) const TOTAL_LAPS: u8 = 3;
+pub(super) const TOTAL_LAPS: u8 = 4;
 const CHECKPOINT_COUNT: usize = 12;
 
 #[derive(Clone, Copy, Debug)]
@@ -151,18 +151,6 @@ impl RaceProgress {
         self.race_time
     }
 
-    pub fn lap_time(&self) -> f32 {
-        self.lap_time
-    }
-
-    pub fn best_lap_time(&self) -> Option<f32> {
-        self.best_lap_time
-    }
-
-    pub fn last_lap_time(&self) -> Option<f32> {
-        self.last_lap_time
-    }
-
     pub fn is_finished(&self) -> bool {
         self.finished
     }
@@ -247,10 +235,14 @@ mod tests {
         assert_eq!(progress.update(ahead, behind, 1.0), None);
         assert_eq!(
             progress.update(behind, ahead, 3.0),
-            Some(ProgressEvent::FinalLap)
+            Some(ProgressEvent::Lap)
         );
         assert_eq!(
             progress.update(behind, ahead, 4.0),
+            Some(ProgressEvent::FinalLap)
+        );
+        assert_eq!(
+            progress.update(behind, ahead, 5.0),
             Some(ProgressEvent::Finished)
         );
         assert!(progress.is_finished());
@@ -290,7 +282,7 @@ mod tests {
         let mut progress = RaceProgress::from_checkpoints(vec![one_gate()]);
         let behind = Vec3::new(-1.0, 0.0, 0.0);
         let ahead = Vec3::new(1.0, 0.0, 0.0);
-        for _ in 0..2 {
+        for _ in 0..TOTAL_LAPS - 1 {
             progress.update(behind, ahead, 1.0);
             progress.update(ahead, behind, 0.1);
         }
