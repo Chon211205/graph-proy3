@@ -7145,7 +7145,7 @@ mod tests {
         assert!(car.faces.len() > 1_600);
         assert!(car.faces.iter().any(|face| face.smooth));
         let radius = model_radius(&car, model_center(&car)) * ARWING_CAR_SPEC.model_scale;
-        assert!((1.6..2.5).contains(&radius), "unexpected car radius {radius}");
+        assert!((1.45..2.5).contains(&radius), "unexpected car radius {radius}");
 
         for group in [
             "Arwing_Car_FrontWheel_L_Tire",
@@ -7272,6 +7272,57 @@ mod tests {
         assert!((actual.0 - KIRBY_CAR_SPEC.turbo_back).abs() < 0.02, "{actual:?}");
         assert!((actual.1 - KIRBY_CAR_SPEC.turbo_side).abs() < 0.02, "{actual:?}");
         assert!((actual.2 - KIRBY_CAR_SPEC.turbo_down).abs() < 0.02, "{actual:?}");
+    }
+
+    #[test]
+    fn race_cars_share_the_same_visual_length() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let cars = [
+            (
+                "assets/vehicles/arwing/arwing2_carro_detallado.obj",
+                &ARWING_CAR_SPEC,
+            ),
+            (
+                "assets/vehicles/kirby/kirby_carro_detallado.obj",
+                &KIRBY_CAR_SPEC,
+            ),
+            (
+                "assets/vehicles/astra/astra_carro_detallado.obj",
+                &ASTRA_CAR_SPEC,
+            ),
+            (
+                "assets/vehicles/cowboy/cb_carro_detallado.obj",
+                &COWBOYB_CAR_SPEC,
+            ),
+            (
+                "assets/vehicles/buzz/buzz_carro_detallado.obj",
+                &BUZZ_CAR_SPEC,
+            ),
+            (
+                "assets/vehicles/mcqueen/mcqueen_carro_detallado.obj",
+                &MCQUEEN_CAR_SPEC,
+            ),
+        ];
+
+        for (path, spec) in cars {
+            let model = load_obj(root.join(path)).unwrap();
+            let min = model
+                .vertices
+                .iter()
+                .map(|vertex| vertex.z)
+                .fold(f32::INFINITY, f32::min);
+            let max = model
+                .vertices
+                .iter()
+                .map(|vertex| vertex.z)
+                .fold(f32::NEG_INFINITY, f32::max);
+            let visual_length = (max - min) * spec.model_scale;
+            assert!(
+                (visual_length - 3.0).abs() < 0.001,
+                "{} has visual length {visual_length}",
+                spec.name
+            );
+        }
     }
 
     #[test]
