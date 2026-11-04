@@ -53,6 +53,16 @@ de impulso, arena abierta y combate final contra un tiburón mecánico. El avanc
 se detiene en la última arena hasta destruir al jefe con **Enter**; los disparos
 cargados causan más daño.
 
+Después del jefe se abre una séptima sección: el santuario final. Una esfera
+del dragón naranja de cuatro estrellas flota sobre un pedestal energético. Hay
+que acercarse para recogerla; hasta entonces, la salida y el final del nivel
+permanecen bloqueados.
+
+Los enemigos avanzan en formaciones de cuña, diamante, línea y muro de minas.
+Tiburones y medusas disparan por turnos contra el submarino; el jefe lanza
+ráfagas triples. El casco soporta seis impactos y, al agotarse, devuelve al
+jugador al tramo anterior con una breve protección de reaparición.
+
 ## Rayo McQueen
 
 En el hangar, selecciona Rayo McQueen y pulsa **V** para alternar nave/carro/submarino. **Enter** inicia con la forma de Rayo que estés viendo; si eliges submarino, empiezas directamente en el nivel acuático. Durante el vuelo libre, **T** alterna nave/carro conservando posición y velocidad. El carro usa los controles de vuelo existentes, sin física terrestre.
@@ -91,6 +101,14 @@ regenerar con:
 
 ```powershell
 blender --background --python scripts/create_racing_planet_blender.py
+```
+
+Los enemigos de **Ruinas Acuáticas** también tienen una fuente Blender editable:
+la mina globo blindada, el tiburón dron (usado además como jefe) y la medusa
+robótica. Para regenerar sus OBJ y MTL optimizados:
+
+```powershell
+blender --background --python scripts/create_aquatic_enemies_blender.py
 ```
 
 `blender_mcp/` permite que un cliente MCP controle Blender para crear modelos a
