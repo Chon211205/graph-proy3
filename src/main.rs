@@ -22,10 +22,11 @@ use galaxy::{
 use minifb::{Key, ScaleMode, Window, WindowOptions};
 use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use ship::{
-    ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_CAR_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC,
+    ARWING_CAR_SPEC, ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_CAR_SPEC, ASTRA_SPEC,
+    ASTRA_SUBMARINE_SPEC,
     BUZZ_CAR_SPEC, BUZZ_SPEC, BUZZ_SUBMARINE_SPEC, COWBOYB_CAR_SPEC, COWBOYB_SPEC,
-    COWBOYB_SUBMARINE_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC, MCQUEEN_CAR_SPEC, MCQUEEN_SPEC,
-    MCQUEEN_SUBMARINE_SPEC, Projectile, Ship, ShipController, ShipInput, ShipSpec,
+    COWBOYB_SUBMARINE_SPEC, KIRBY_CAR_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC, MCQUEEN_CAR_SPEC,
+    MCQUEEN_SPEC, MCQUEEN_SUBMARINE_SPEC, Projectile, Ship, ShipController, ShipInput, ShipSpec,
 };
 use triangle::{ScreenVertex, draw_triangle_shaded_region};
 
@@ -4619,7 +4620,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let arwing_path = "assets/vehicles/arwing/arwing2.obj";
+    let arwing_car_path = "assets/vehicles/arwing/arwing2_carro_detallado.obj";
     let kirby_path = "assets/vehicles/kirby/kirby_detallado.obj";
+    let kirby_car_path = "assets/vehicles/kirby/kirby_carro_detallado.obj";
     let astra_path = "assets/vehicles/Astra.obj";
     let astra_car_path = "assets/vehicles/astra/astra_carro_detallado.obj";
     let cowboyb_path = "assets/vehicles/Swordfish II.obj";
@@ -4630,8 +4633,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let kirby_submarine_path = "assets/vehicles/kirby/kirbysub_detallado.obj";
     let arwing_model =
         load_obj(arwing_path).map_err(|error| format!("Error al cargar {arwing_path}: {error}"))?;
+    let arwing_car_model = load_obj(arwing_car_path)
+        .map_err(|error| format!("Error al cargar {arwing_car_path}: {error}"))?;
     let kirby_model =
         load_obj(kirby_path).map_err(|error| format!("Error al cargar {kirby_path}: {error}"))?;
+    let kirby_car_model = load_obj(kirby_car_path)
+        .map_err(|error| format!("Error al cargar {kirby_car_path}: {error}"))?;
     let astra_model =
         load_obj(astra_path).map_err(|error| format!("Error al cargar {astra_path}: {error}"))?;
     let astra_car_model = load_obj(astra_car_path)
@@ -4665,8 +4672,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mcqueen_car_center = model_center(&mcqueen_car_model);
     let mut race_track = race_track::RaceTrack::load()?;
     let race_vehicles = [
-        None,
-        None,
+        Some((&arwing_car_model, &ARWING_CAR_SPEC)),
+        Some((&kirby_car_model, &KIRBY_CAR_SPEC)),
         Some((&astra_car_model, &ASTRA_CAR_SPEC)),
         Some((&cowboyb_car_model, &COWBOYB_CAR_SPEC)),
         Some((&buzz_variants[1], &BUZZ_CAR_SPEC)),
@@ -4683,10 +4690,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let ship_forms = [
         vec![
             (&arwing_model, &ARWING_SPEC, "MODO ESPACIAL"),
+            (&arwing_car_model, &ARWING_CAR_SPEC, "MODO CARRO"),
             (&arwing_submarine_model, &ARWING_SUBMARINE_SPEC, "SUBMARINO"),
         ],
         vec![
             (&kirby_model, &KIRBY_SPEC, "MODO ESPACIAL"),
+            (&kirby_car_model, &KIRBY_CAR_SPEC, "MODO CARRO"),
             (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC, "SUBMARINO"),
         ],
         vec![
@@ -7118,6 +7127,146 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn detailed_arwing_car_has_four_wheels_smooth_panels_and_aligned_thrusters() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let car = load_obj(
+            root.join("assets/vehicles/arwing/arwing2_carro_detallado.obj"),
+        )
+        .unwrap();
+        assert!(car.vertices.len() > 1_900);
+        assert!(car.faces.len() > 1_600);
+        assert!(car.faces.iter().any(|face| face.smooth));
+        let radius = model_radius(&car, model_center(&car)) * ARWING_CAR_SPEC.model_scale;
+        assert!((1.6..2.5).contains(&radius), "unexpected car radius {radius}");
+
+        for group in [
+            "Arwing_Car_FrontWheel_L_Tire",
+            "Arwing_Car_FrontWheel_R_Tire",
+            "Arwing_Car_RearWheel_L_Tire",
+            "Arwing_Car_RearWheel_R_Tire",
+            "Arwing_Car_Core_L",
+            "Arwing_Car_Core_R",
+        ] {
+            assert!(
+                car.faces.iter().any(|face| face.group == group),
+                "missing Arwing car group {group}"
+            );
+        }
+        for material in [
+            "ArwingCar_HullWhite",
+            "ArwingCar_FinBlue",
+            "ArwingCar_CockpitBlue",
+            "ArwingCar_Tire",
+            "ArwingCar_EngineCyan",
+            "ArwingCar_LaserRed",
+        ] {
+            assert!(
+                car.faces.iter().any(|face| face.material == material),
+                "missing Arwing car material {material}"
+            );
+        }
+
+        let mut points = car
+            .faces
+            .iter()
+            .filter(|face| face.group == "Arwing_Car_Core_L")
+            .flat_map(|face| face.indices)
+            .map(|index| car.vertices[index]);
+        let first = points.next().expect("missing Arwing car engine core");
+        let (mut min, mut max) = (first, first);
+        for point in points {
+            min.x = min.x.min(point.x);
+            min.y = min.y.min(point.y);
+            min.z = min.z.min(point.z);
+            max.x = max.x.max(point.x);
+            max.y = max.y.max(point.y);
+            max.z = max.z.max(point.z);
+        }
+        let core = min.add(max).mul(0.5).sub(model_center(&car));
+        let actual = (
+            -core.z * ARWING_CAR_SPEC.model_scale,
+            core.x.abs() * ARWING_CAR_SPEC.model_scale,
+            -core.y * ARWING_CAR_SPEC.model_scale,
+        );
+        assert!((actual.0 - ARWING_CAR_SPEC.turbo_back).abs() < 0.02, "{actual:?}");
+        assert!((actual.1 - ARWING_CAR_SPEC.turbo_side).abs() < 0.02, "{actual:?}");
+        assert!((actual.2 - ARWING_CAR_SPEC.turbo_down).abs() < 0.02, "{actual:?}");
+    }
+
+    #[test]
+    fn detailed_kirby_car_has_face_four_wheels_star_and_aligned_thrusters() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let car = load_obj(root.join("assets/vehicles/kirby/kirby_carro_detallado.obj")).unwrap();
+        assert!(car.vertices.len() > 13_000);
+        assert!(car.faces.len() > 13_000);
+        assert!(car.faces.iter().any(|face| face.smooth));
+        let radius = model_radius(&car, model_center(&car)) * KIRBY_CAR_SPEC.model_scale;
+        assert!((1.5..2.5).contains(&radius), "unexpected Kirby car radius {radius}");
+
+        for group in [
+            "Kirby_Car_Eye_L",
+            "Kirby_Car_Eye_R",
+            "Kirby_Car_HoodStar",
+            "Kirby_Car_FrontWheel_L_Tire",
+            "Kirby_Car_FrontWheel_R_Tire",
+            "Kirby_Car_RearWheel_L_Tire",
+            "Kirby_Car_RearWheel_R_Tire",
+            "Kirby_Car_Core_L",
+            "Kirby_Car_Core_R",
+            "Kirby_Car_ExhaustStar",
+            "Kirby_Car_Highlight_Roof",
+            "Kirby_Car_InnerCabin",
+            "Kirby_Car_Undertray",
+            "Kirby_Car_FrontWheelWell_L",
+            "Kirby_Car_RearWheelWell_R",
+        ] {
+            assert!(
+                car.faces.iter().any(|face| face.group == group),
+                "missing Kirby car group {group}"
+            );
+        }
+        for material in [
+            "KirbyCar_Pink",
+            "KirbyCar_Red",
+            "KirbyCar_EyeBlue",
+            "KirbyCar_StarMetal",
+            "KirbyCar_Tire",
+            "KirbyCar_CyanGlow",
+        ] {
+            assert!(
+                car.faces.iter().any(|face| face.material == material),
+                "missing Kirby car material {material}"
+            );
+        }
+
+        let mut points = car
+            .faces
+            .iter()
+            .filter(|face| face.group == "Kirby_Car_Core_L")
+            .flat_map(|face| face.indices)
+            .map(|index| car.vertices[index]);
+        let first = points.next().expect("missing Kirby car engine core");
+        let (mut min, mut max) = (first, first);
+        for point in points {
+            min.x = min.x.min(point.x);
+            min.y = min.y.min(point.y);
+            min.z = min.z.min(point.z);
+            max.x = max.x.max(point.x);
+            max.y = max.y.max(point.y);
+            max.z = max.z.max(point.z);
+        }
+        let core = min.add(max).mul(0.5).sub(model_center(&car));
+        let actual = (
+            -core.z * KIRBY_CAR_SPEC.model_scale,
+            core.x.abs() * KIRBY_CAR_SPEC.model_scale,
+            -core.y * KIRBY_CAR_SPEC.model_scale,
+        );
+        assert!((actual.0 - KIRBY_CAR_SPEC.turbo_back).abs() < 0.02, "{actual:?}");
+        assert!((actual.1 - KIRBY_CAR_SPEC.turbo_side).abs() < 0.02, "{actual:?}");
+        assert!((actual.2 - KIRBY_CAR_SPEC.turbo_down).abs() < 0.02, "{actual:?}");
     }
 
     #[test]

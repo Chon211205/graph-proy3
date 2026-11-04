@@ -356,6 +356,19 @@ pub static ARWING_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     ..ARWING_SPEC
 };
 
+pub static ARWING_CAR_SPEC: ShipSpec = ShipSpec {
+    name: "Arwing Carro",
+    model_scale: 0.38,
+    model_axes: ModelAxes::Astra,
+    turbo_back: 1.521,
+    turbo_side: 0.2964,
+    turbo_down: 0.1045,
+    muzzle_forward: 0.86,
+    muzzle_side: 0.97,
+    muzzle_down: 0.04,
+    ..ARWING_SPEC
+};
+
 pub static KIRBY_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     name: "Kirby Submarino",
     model_scale: 0.22,
@@ -366,6 +379,19 @@ pub static KIRBY_SUBMARINE_SPEC: ShipSpec = ShipSpec {
     turbo_sides: DUAL_SIDES,
     muzzle_forward: 1.8,
     muzzle_side: 0.75,
+    ..KIRBY_SPEC
+};
+
+pub static KIRBY_CAR_SPEC: ShipSpec = ShipSpec {
+    name: "Kirby Carro",
+    model_scale: 0.44,
+    model_axes: ModelAxes::Astra,
+    turbo_back: 1.2232,
+    turbo_side: 0.2992,
+    turbo_down: 0.1969,
+    muzzle_forward: 1.15,
+    muzzle_side: 0.65,
+    muzzle_down: 0.05,
     ..KIRBY_SPEC
 };
 

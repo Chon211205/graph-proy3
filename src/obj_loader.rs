@@ -202,6 +202,20 @@ impl Model {
 fn classify_surface(name: &str) -> SurfaceShader {
     if name.starts_with("enemy_laser_") {
         SurfaceShader::AstraRedEmission
+    } else if matches!(name, "kirbycar_cyanglow") {
+        SurfaceShader::BuzzEmission
+    } else if matches!(name, "kirbycar_starmetal") {
+        SurfaceShader::ArwingMetal
+    } else if matches!(name, "kirbycar_black" | "kirbycar_tire") {
+        SurfaceShader::ArwingDarkMetal
+    } else if matches!(name, "kirbycar_eyeblue") {
+        SurfaceShader::AstraDeepBlue
+    } else if matches!(name, "kirbycar_glass") {
+        SurfaceShader::ArwingGlass
+    } else if name.starts_with("kirbycar_") {
+        // Kirby's body colors must remain pastel. The McQueen paint shader
+        // injects a strong red metallic tint and turns the pink shell crimson.
+        SurfaceShader::Flat
     } else if name == "casco_blanco" {
         SurfaceShader::ArwingHull
     } else if name == "titanio" {
@@ -313,7 +327,21 @@ fn classify_color(name: &str) -> MaterialColor {
             return MaterialColor::Fixed([r, g, b]);
         }
     }
-    let fixed = if name.starts_with("mcqueen_") {
+    let fixed = if name.starts_with("kirbycar_") {
+        match name {
+            "kirbycar_pink" => [250, 104, 164],
+            "kirbycar_lightpink" => [255, 170, 205],
+            "kirbycar_red" => [220, 42, 88],
+            "kirbycar_eyeblue" => [38, 92, 204],
+            "kirbycar_black" => [24, 20, 34],
+            "kirbycar_starmetal" => [164, 174, 185],
+            "kirbycar_tire" => [22, 22, 29],
+            "kirbycar_cyanglow" => [40, 205, 255],
+            "kirbycar_white" => [250, 252, 255],
+            "kirbycar_glass" => [24, 68, 104],
+            _ => [250, 104, 164],
+        }
+    } else if name.starts_with("mcqueen_") {
         match name {
             "mcqueen_red" => [225, 26, 35],
             "mcqueen_darkred" => [151, 14, 24],
@@ -736,6 +764,36 @@ mod tests {
                 "unexpected color for {name}"
             );
         }
+    }
+
+    #[test]
+    fn kirby_car_materials_keep_their_character_palette() {
+        for (name, color) in [
+            ("KirbyCar_Pink", [250, 104, 164]),
+            ("KirbyCar_LightPink", [255, 170, 205]),
+            ("KirbyCar_Red", [220, 42, 88]),
+            ("KirbyCar_EyeBlue", [38, 92, 204]),
+            ("KirbyCar_Black", [24, 20, 34]),
+            ("KirbyCar_StarMetal", [164, 174, 185]),
+            ("KirbyCar_Tire", [22, 22, 29]),
+            ("KirbyCar_CyanGlow", [40, 205, 255]),
+            ("KirbyCar_White", [250, 252, 255]),
+            ("KirbyCar_Glass", [24, 68, 104]),
+        ] {
+            assert_eq!(
+                Face::new([0, 1, 2], name, "kirby_car").color,
+                MaterialColor::Fixed(color),
+                "wrong color for {name}"
+            );
+        }
+        assert_eq!(
+            Face::new([0, 1, 2], "KirbyCar_CyanGlow", "kirby_car").shader,
+            SurfaceShader::BuzzEmission
+        );
+        assert_eq!(
+            Face::new([0, 1, 2], "KirbyCar_Pink", "kirby_car").shader,
+            SurfaceShader::Flat
+        );
     }
 
     #[test]
