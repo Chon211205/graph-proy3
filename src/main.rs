@@ -261,6 +261,108 @@ fn upscale_scene(source: &Framebuffer, target: &mut Framebuffer) {
     }
 }
 
+struct HybridRayTracing {
+    history: Vec<u32>,
+    width: usize,
+    height: usize,
+}
+
+impl HybridRayTracing {
+    fn new() -> Self {
+        Self {
+            history: Vec::new(),
+            width: 0,
+            height: 0,
+        }
+    }
+
+    fn apply_high(&mut self, framebuffer: &mut Framebuffer) {
+        let width = framebuffer.width;
+        let height = framebuffer.height;
+        if width < 4 || height < 4 {
+            return;
+        }
+        if self.width != width || self.height != height || self.history.len() != width * height {
+            self.width = width;
+            self.height = height;
+            self.history.clone_from(&framebuffer.pixels);
+        }
+
+        let history = &self.history;
+        let (pixels, depth) = framebuffer.buffers_mut();
+        // Half-resolution rays (one sample per 2x2 block), then spatially
+        // resolve the result across the block. Depth remains full resolution.
+        for y in (2..height - 2).step_by(2) {
+            for x in (2..width - 2).step_by(2) {
+                let index = y * width + x;
+                let surface_depth = depth[index];
+                if !surface_depth.is_finite() || surface_depth <= 0.0 {
+                    continue;
+                }
+
+                let gradient_x = depth[index + 1] - depth[index - 1];
+                let gradient_y = depth[index + width] - depth[index - width];
+                let reflection_x = if gradient_x > 0.0 { -1 } else { 1 };
+                let reflection_y = if gradient_y > 0.0 { -1 } else { 1 };
+
+                let mut shadow = 0.0_f32;
+                for step in 1..=8_i32 {
+                    let ray_x = x as i32 - step * 2;
+                    let ray_y = y as i32 - step;
+                    if ray_x < 0 || ray_y < 0 {
+                        break;
+                    }
+                    let ray_depth = depth[ray_y as usize * width + ray_x as usize];
+                    let expected = surface_depth * (1.0 + step as f32 * 0.012);
+                    if ray_depth.is_finite() && ray_depth > expected + 0.0015 {
+                        shadow = (0.34 - step as f32 * 0.025).max(0.08);
+                        break;
+                    }
+                }
+
+                let mut reflection = None;
+                for step in 2..=10_i32 {
+                    let ray_x = x as i32 + reflection_x * step * 2;
+                    let ray_y = y as i32 + reflection_y * step;
+                    if ray_x < 0 || ray_y < 0 || ray_x >= width as i32 || ray_y >= height as i32 {
+                        break;
+                    }
+                    let ray_index = ray_y as usize * width + ray_x as usize;
+                    let ray_depth = depth[ray_index];
+                    let expected = surface_depth * (1.0 - step as f32 * 0.014);
+                    if ray_depth.is_finite() && ray_depth > expected + 0.001 {
+                        reflection = Some(history[ray_index]);
+                        break;
+                    }
+                }
+
+                let bounce_index = (y.saturating_sub(2) * width + (x + 2).min(width - 1))
+                    .min(history.len() - 1);
+                let bounce = history[bounce_index];
+                let source = pixels[index];
+                let channel = |color: u32, shift: u32| ((color >> shift) & 255_u32) as f32;
+                let shade_channel = |shift: u32| {
+                    let base = channel(source, shift) * (1.0 - shadow);
+                    let indirect = channel(bounce, shift) * 0.055;
+                    let reflected = reflection.map_or(0.0, |color| channel(color, shift) * 0.16);
+                    (base + indirect + reflected).clamp(0.0, 255.0) as u32
+                };
+                let traced =
+                    (shade_channel(16) << 16) | (shade_channel(8) << 8) | shade_channel(0);
+                for block_y in y..(y + 2).min(height) {
+                    for block_x in x..(x + 2).min(width) {
+                        let block_index = block_y * width + block_x;
+                        if depth[block_index].is_finite() && depth[block_index] > 0.0 {
+                            pixels[block_index] = traced;
+                        }
+                    }
+                }
+            }
+        }
+        self.history.copy_from_slice(pixels);
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Camera {
     position: Vec3,
@@ -4987,6 +5089,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut scene_framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     let mut triangle_batch = TriangleBatch::new(WIDTH, HEIGHT);
     let mut dynamic_resolution = DynamicResolution::new();
+    let mut hybrid_ray_tracing = HybridRayTracing::new();
     let level_colliders = build_level_colliders(&water_level);
     let water_level_spatial = LevelSpatialIndex::new(&water_level, level_colliders);
     drop(water_level);
@@ -5683,6 +5786,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             });
         }
 
+        hybrid_ray_tracing.apply_high(&mut scene_framebuffer);
         upscale_scene(&scene_framebuffer, &mut framebuffer);
         if performance_hud {
             let stats = triangle_batch.stats();
@@ -6779,6 +6883,25 @@ mod tests {
         assert_eq!(target.pixels[WIDTH - 1], 2);
         assert_eq!(target.pixels[(HEIGHT - 1) * WIDTH], 3);
         assert_eq!(target.pixels[HEIGHT * WIDTH - 1], 4);
+    }
+
+    #[test]
+    fn high_hybrid_ray_tracing_uses_depth_and_preserves_empty_background() {
+        let mut frame = Framebuffer::new(12, 12);
+        frame.clear(0x102030);
+        for y in 2..10 {
+            for x in 2..10 {
+                let index = y * frame.width + x;
+                frame.pixels[index] = 0x406080;
+                frame.buffers_mut().1[index] = 0.25;
+            }
+        }
+        let background = frame.pixels[0];
+        let surface_before = frame.pixels[6 * frame.width + 6];
+        let mut tracer = HybridRayTracing::new();
+        tracer.apply_high(&mut frame);
+        assert_eq!(frame.pixels[0], background);
+        assert_ne!(frame.pixels[6 * frame.width + 6], surface_before);
     }
 
     #[test]
