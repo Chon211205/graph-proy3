@@ -4499,6 +4499,7 @@ fn render_scene(
     race_planet: &Model,
     planet_lods: [&PlanetLodModels; 3],
     planet_lod_states: &mut [PlanetLodState; 3],
+    vesper_lod_states: &mut [PlanetLodState; 3],
     framebuffer: &mut Framebuffer,
     batch: &mut TriangleBatch,
     ship: &Ship,
@@ -4616,14 +4617,15 @@ fn render_scene(
             None,
         );
     } else {
-        for body in vesper_planets {
+        for (index, body) in vesper_planets.iter().enumerate() {
             let (sin, cos) = (body.rotation_y + world_time * 0.035).sin_cos();
-            let use_low = projected_planet_radius(
+            let lod = vesper_lod_states[index].update(projected_planet_radius(
                 &camera,
                 body.center,
                 body.radius,
                 batch.projection.focal,
-            ) < 36.0;
+            ));
+            let use_low = lod != 0;
             queue_model(
                 if use_low { &body.low } else { &body.model },
                 batch,
@@ -6097,6 +6099,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         make_planet_lods(race_track::PLANET_RADIUS, PlanetVisual::Racing),
     ];
     let mut planet_lod_states = [PlanetLodState::default(); 3];
+    let mut vesper_lod_states = [PlanetLodState::default(); 3];
     let water_level_path = "assets/levels/waterlevel_extendido.obj";
     let mut water_level = load_obj(water_level_path)
         .map_err(|error| format!("Error al cargar {water_level_path}: {error}"))?;
@@ -6698,7 +6701,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         let planet_name = match vesper_orbit_index.unwrap_or(0) {
                             0 => "Reloj Arena",
                             1 => "Farol",
-                            _ => "Caracola",
+                            _ => "Casa Torre",
                         };
                         window.set_title(&format!("{planet_name} | En orbita | Backspace: salir"));
                     } else {
@@ -6733,6 +6736,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &race_track.planet,
                     [&planet_lods[0], &planet_lods[1], &planet_lods[2]],
                     &mut planet_lod_states,
+                    &mut vesper_lod_states,
                     &mut scene_framebuffer,
                     &mut triangle_batch,
                     &ship_controller.ship,
@@ -6896,6 +6900,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 stats.sort_ms,
                 stats.raster_ms,
             );
+            let displayed_lods = if active_galaxy == Galaxy::Vesper {
+                &vesper_lod_states
+            } else {
+                &planet_lod_states
+            };
             let geometry = format!(
                 "MODELOS {} CULL {} VERT {} TRI {} RES {}% DRS {} LOD {}/{}/{}",
                 stats.models_visible,
@@ -6904,9 +6913,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 stats.triangles_submitted,
                 dynamic_resolution.percentage(),
                 dynamic_resolution.status,
-                planet_lod_states[0].level,
-                planet_lod_states[1].level,
-                planet_lod_states[2].level,
+                displayed_lods[0].level,
+                displayed_lods[1].level,
+                displayed_lods[2].level,
             );
             draw_selection_label(&mut framebuffer, &summary, 600, 92, 1, 0x9fffd2);
             draw_selection_label(&mut framebuffer, &geometry, 600, 108, 1, 0xc6d8ff);
