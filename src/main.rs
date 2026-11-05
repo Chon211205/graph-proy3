@@ -2171,10 +2171,39 @@ enum PlanetVisual {
     Water,
     Spiky,
     Racing,
+    VesperClock,
+    VesperLantern,
+    VesperShell,
 }
 
 struct PlanetLodModels {
     low: Model,
+}
+
+struct VesperPlanet {
+    model: Model,
+    low: Model,
+    source_center: Vec3,
+    scale: f32,
+    center: Vec3,
+    radius: f32,
+    rotation_y: f32,
+}
+
+impl VesperPlanet {
+    fn load(
+        path: &str,
+        center: Vec3,
+        radius: f32,
+        rotation_y: f32,
+        low_visual: PlanetVisual,
+    ) -> Result<Self, String> {
+        let model = load_obj(path).map_err(|error| format!("Error al cargar {path}: {error}"))?;
+        let source_center = model_center(&model);
+        let scale = radius / model_radius(&model, source_center).max(0.001);
+        let low = make_planet_lod(radius, 6, 10, low_visual);
+        Ok(Self { model, low, source_center, scale, center, radius, rotation_y })
+    }
 }
 
 #[derive(Clone, Copy, Default)]
@@ -2207,6 +2236,15 @@ fn make_planet_lod(radius: f32, stacks: usize, slices: usize, visual: PlanetVisu
             PlanetVisual::Racing if band == stacks / 2 => "race_rgb_245_208_42",
             PlanetVisual::Racing if index % 3 == 0 => "race_rgb_58_160_107",
             PlanetVisual::Racing => "race_rgb_44_133_88",
+            PlanetVisual::VesperClock if band == stacks / 2 => "race_rgb_228_174_72",
+            PlanetVisual::VesperClock if index % 3 == 0 => "race_rgb_159_110_58",
+            PlanetVisual::VesperClock => "race_rgb_112_79_49",
+            PlanetVisual::VesperLantern if band == stacks / 2 => "race_rgb_248_172_58",
+            PlanetVisual::VesperLantern if index % 3 == 0 => "race_rgb_113_65_159",
+            PlanetVisual::VesperLantern => "race_rgb_78_44_118",
+            PlanetVisual::VesperShell if band < 2 => "race_rgb_239_226_194",
+            PlanetVisual::VesperShell if index % 3 == 0 => "race_rgb_24_112_119",
+            PlanetVisual::VesperShell => "race_rgb_192_204_184",
         };
         *face = Face::new(face.indices, material, "planet_lod");
         face.smooth = true;
@@ -3492,6 +3530,7 @@ fn render_scene(
     wormhole: &Model,
     wormhole_center: Vec3,
     galaxy: Galaxy,
+    vesper_planets: &[VesperPlanet; 3],
     race_planet: &Model,
     planet_lods: [&PlanetLodModels; 3],
     planet_lod_states: &mut [PlanetLodState; 3],
@@ -3611,6 +3650,36 @@ fn render_scene(
             None,
             None,
         );
+    } else {
+        for body in vesper_planets {
+            let (sin, cos) = (body.rotation_y + world_time * 0.035).sin_cos();
+            let use_low = projected_planet_radius(
+                &camera,
+                body.center,
+                body.radius,
+                batch.projection.focal,
+            ) < 36.0;
+            queue_model(
+                if use_low { &body.low } else { &body.model },
+                batch,
+                &camera,
+                |vertex| {
+                    let local = if use_low {
+                        vertex
+                    } else {
+                        vertex.sub(body.source_center).mul(body.scale)
+                    };
+                    Vec3::new(
+                        local.x * cos - local.z * sin,
+                        local.y,
+                        local.x * sin + local.z * cos,
+                    )
+                    .add(body.center)
+                },
+                None,
+                None,
+            );
+        }
     }
 
     queue_model(
@@ -5103,6 +5172,29 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let sun_path = "assets/planets/sol_detallado.obj";
     let sun = load_obj(sun_path)
         .map_err(|error| format!("Error al cargar {sun_path}: {error}"))?;
+    let vesper_planets = [
+        VesperPlanet::load(
+            "assets/planets/reloj_arena.obj",
+            Vec3::new(-70.0, 48.0, 250.0),
+            42.0,
+            0.24,
+            PlanetVisual::VesperClock,
+        )?,
+        VesperPlanet::load(
+            "assets/planets/farol.obj",
+            Vec3::new(-350.0, 48.0, 0.0),
+            36.0,
+            0.0,
+            PlanetVisual::VesperLantern,
+        )?,
+        VesperPlanet::load(
+            "assets/planets/caracola.obj",
+            Vec3::new(210.0, 48.0, 0.0),
+            34.0,
+            0.0,
+            PlanetVisual::VesperShell,
+        )?,
+    ];
     let race_sky = race_track::RaceSky {
         water_planet: &planet,
         water_center: planet_center,
@@ -5153,6 +5245,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         GameMode::FreeWorld
     };
     let mut active_galaxy = Galaxy::Home;
+    let mut vesper_orbit_index: Option<usize> = None;
     let mut galaxy_transition: Option<GalaxyTransit> = None;
     if start_underwater {
         window.set_title("Nivel submarino | Backspace: volver al sistema solar");
@@ -5296,9 +5389,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 active_galaxy = transit.destination;
                 let portal = wormhole_position(active_galaxy);
                 let (exit_offset, exit_yaw) = if active_galaxy == Galaxy::Vesper {
-                    // Keep the return portal visible ahead and to the right,
-                    // while leaving enough lateral clearance for free flight.
-                    (Vec3::new(-70.0, 0.0, 100.0), std::f32::consts::FRAC_PI_2)
+                    // Spawn facing the planet cluster with the return portal to the right.
+                    (Vec3::new(-420.0, 0.0, 0.0), std::f32::consts::FRAC_PI_2)
                 } else {
                     // Arrive beside the portal and fly away from it by default.
                     (Vec3::new(150.0, 0.0, 80.0), 0.0)
@@ -5309,6 +5401,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 ship_controller.ship.planet_locked = false;
                 ship_controller.ship.spiky_planet_locked = false;
                 ship_controller.ship.race_planet_locked = false;
+                vesper_orbit_index = None;
                 ship_controller.ship.orbit_plane_normal = None;
                 ship_controller.ship.orbit_center = None;
                 ship_controller.ship.orbit_camera_blend = 0.0;
@@ -5384,6 +5477,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         };
         let mut entered_level = false;
         if game_mode == GameMode::FreeWorld
+            && active_galaxy == Galaxy::Home
             && ship_controller.ship.planet_locked
             && crate::input::pressed(Key::Enter)
         {
@@ -5509,6 +5603,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     ship.race_planet_locked = false;
                     ship.orbit_release_active = true;
                     ship.orbit_plane_normal = None;
+                    vesper_orbit_index = None;
                     println!("Orbita liberada");
                 }
 
@@ -5559,8 +5654,30 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     } else {
                         ship.spiky_planet_locked = false;
                         ship.race_planet_locked = false;
-                        let (forward, _, _) = ship.movement_basis();
-                        ship.position = ship.position.add(forward.mul(movement));
+                        let nearest = vesper_orbit_index.unwrap_or_else(|| {
+                            vesper_planets
+                                .iter()
+                                .enumerate()
+                                .min_by(|(_, a), (_, b)| {
+                                    let a_offset = ship.position.sub(a.center);
+                                    let b_offset = ship.position.sub(b.center);
+                                    a_offset.dot(a_offset).total_cmp(&b_offset.dot(b_offset))
+                                })
+                                .map(|(index, _)| index)
+                                .unwrap_or(0)
+                        });
+                        let body = &vesper_planets[nearest];
+                        move_around_planet(
+                            ship,
+                            movement,
+                            body.center,
+                            body.radius,
+                            body.rotation_y + world_time * 0.035,
+                            &[],
+                            yaw_input,
+                            pitch_input,
+                        );
+                        vesper_orbit_index = ship.planet_locked.then_some(nearest);
                     }
                 }
                 let camera_target = if ship.orbit_plane_normal.is_some() { 1.0 } else { 0.0 };
@@ -5604,6 +5721,13 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         window.set_title(
                             "Planeta rosado | Enter: Guardián del Núcleo | Backspace: salir",
                         );
+                    } else if active_galaxy == Galaxy::Vesper {
+                        let planet_name = match vesper_orbit_index.unwrap_or(0) {
+                            0 => "Reloj Arena",
+                            1 => "Farol",
+                            _ => "Caracola",
+                        };
+                        window.set_title(&format!("{planet_name} | En orbita | Backspace: salir"));
                     } else {
                         window.set_title(
                             "Planeta acuatico | Enter: iniciar nivel | Backspace: salir",
@@ -5632,6 +5756,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &wormhole,
                     wormhole_position(active_galaxy),
                     active_galaxy,
+                    &vesper_planets,
                     &race_track.planet,
                     [&planet_lods[0], &planet_lods[1], &planet_lods[2]],
                     &mut planet_lod_states,
