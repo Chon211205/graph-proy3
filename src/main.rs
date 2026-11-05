@@ -1552,6 +1552,41 @@ fn blue_metal_texture() -> Option<&'static SurfaceTexture> {
         .as_ref()
 }
 
+struct RaceAsphaltTextures {
+    clean_color: SurfaceTexture,
+    clean_height: SurfaceTexture,
+    asphalt04_color: SurfaceTexture,
+    asphalt04_height: SurfaceTexture,
+}
+
+fn race_asphalt_textures() -> Option<&'static RaceAsphaltTextures> {
+    static TEXTURES: OnceLock<Option<RaceAsphaltTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let clean = "assets/textures/clean_asphalt_1k.blend/textures";
+            let asphalt04 = "assets/textures/asphalt_04_1k.blend/textures";
+            Some(RaceAsphaltTextures {
+                clean_color: SurfaceTexture::load_png(
+                    &format!("{clean}/clean_asphalt_diff_1k.optimized.png"),
+                    256,
+                )?,
+                clean_height: SurfaceTexture::load_png(
+                    &format!("{clean}/clean_asphalt_disp_1k.png"),
+                    256,
+                )?,
+                asphalt04_color: SurfaceTexture::load_png(
+                    &format!("{asphalt04}/asphalt_04_diff_1k.optimized.png"),
+                    256,
+                )?,
+                asphalt04_height: SurfaceTexture::load_png(
+                    &format!("{asphalt04}/asphalt_04_disp_1k.png"),
+                    256,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
 struct GrassTextures {
     color: SurfaceTexture,
     normal: SurfaceTexture,
@@ -1911,6 +1946,27 @@ fn procedural_surface_color(
     brightness: f32,
     fresnel: f32,
 ) -> u32 {
+    if matches!(shader, SurfaceShader::RaceAsphaltClean | SurfaceShader::RaceAsphalt04) {
+        if let Some(textures) = race_asphalt_textures() {
+            let (color_map, height_map, scale, contrast) = match shader {
+                SurfaceShader::RaceAsphaltClean => {
+                    (&textures.clean_color, &textures.clean_height, 0.095, 0.15)
+                }
+                SurfaceShader::RaceAsphalt04 => {
+                    (&textures.asphalt04_color, &textures.asphalt04_height, 0.082, 0.23)
+                }
+                _ => unreachable!(),
+            };
+            let color = color_map.sample(point.x * scale, point.z * scale);
+            let height = height_map.sample(point.x * scale, point.z * scale)[0] / 255.0;
+            let grain = 1.0 + (height - 0.5) * contrast;
+            let edge_sheen = 1.0 + fresnel * (0.07 + (1.0 - height) * 0.05);
+            let rgb = std::array::from_fn(|channel| {
+                (color[channel] * grain).clamp(0.0, 255.0) as u8
+            });
+            return pack(rgb, brightness * edge_sheen);
+        }
+    }
     if shader == SurfaceShader::DragonBallGlass {
         let inner_flow = (point.x * 3.7 + point.y * 4.9 - point.z * 2.8 + time * 1.4).sin();
         let caustic = (point.x * 8.3 - point.y * 5.1 + time * 2.2)
@@ -2417,6 +2473,8 @@ fn procedural_surface_color(
             1.0,
         ),
         SurfaceShader::DragonBallGlass => (244.0, 132.0, 22.0, 1.0),
+        SurfaceShader::RaceAsphaltClean => (48.0 + noise * 8.0, 49.0 + noise * 8.0, 50.0 + noise * 8.0, 1.0),
+        SurfaceShader::RaceAsphalt04 => (40.0 + noise * 12.0, 42.0 + noise * 12.0, 44.0 + noise * 12.0, 1.0),
         SurfaceShader::AstraRedEmission => {
             let pulse = 0.96 + (time * 7.0 + point.z).sin() * 0.04;
             (
@@ -7814,6 +7872,39 @@ mod tests {
             0.0,
         );
         assert_ne!(textured, pack([48, 126, 42], 1.0));
+    }
+
+    #[test]
+    fn race_asphalt_variants_load_and_produce_distinct_surfaces() {
+        let textures = race_asphalt_textures().expect("race asphalt textures must load");
+        for texture in [
+            &textures.clean_color,
+            &textures.clean_height,
+            &textures.asphalt04_color,
+            &textures.asphalt04_height,
+        ] {
+            assert_eq!((texture.width, texture.height), (256, 256));
+        }
+        let point = Vec3::new(108.0, 0.0, 207.0);
+        let clean = procedural_surface_color(
+            SurfaceShader::RaceAsphaltClean,
+            point,
+            0,
+            0,
+            0.0,
+            1.0,
+            0.1,
+        );
+        let asphalt04 = procedural_surface_color(
+            SurfaceShader::RaceAsphalt04,
+            point,
+            0,
+            0,
+            0.0,
+            1.0,
+            0.1,
+        );
+        assert_ne!(clean, asphalt04);
     }
 
     #[test]
