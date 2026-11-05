@@ -1722,6 +1722,118 @@ fn water_earth_textures() -> Option<&'static WaterEarthTextures> {
         .as_ref()
 }
 
+struct AlienEggTextures {
+    color: SurfaceTexture,
+    normal: SurfaceTexture,
+    roughness: SurfaceTexture,
+    ao: SurfaceTexture,
+    emissive: SurfaceTexture,
+}
+
+fn alien_egg_textures() -> Option<&'static AlienEggTextures> {
+    static TEXTURES: OnceLock<Option<AlienEggTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let root = "assets/textures/AlienEggs";
+            Some(AlienEggTextures {
+                color: SurfaceTexture::load_png(
+                    &format!("{root}/AlienEggs_4K_basecolor.optimized.png"),
+                    256,
+                )?,
+                normal: SurfaceTexture::load_png(
+                    &format!("{root}/AlienEggs_4K_normal.optimized.png"),
+                    256,
+                )?,
+                roughness: SurfaceTexture::load_png(
+                    &format!("{root}/AlienEggs_4K_roughness.optimized.png"),
+                    256,
+                )?,
+                ao: SurfaceTexture::load_png(
+                    &format!("{root}/AlienEggs_4K_ambientocclusion.optimized.png"),
+                    256,
+                )?,
+                emissive: SurfaceTexture::load_png(
+                    &format!("{root}/AlienEggs_4K_emissive.optimized.png"),
+                    256,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
+struct AlienTissueTextures {
+    color: SurfaceTexture,
+    normal: SurfaceTexture,
+    roughness: SurfaceTexture,
+    ao: SurfaceTexture,
+}
+
+fn alien_tissue_textures() -> Option<&'static AlienTissueTextures> {
+    static TEXTURES: OnceLock<Option<AlienTissueTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let root = "assets/textures/AlienSkinTissue";
+            Some(AlienTissueTextures {
+                color: SurfaceTexture::load_png(
+                    &format!("{root}/AlienSkinTissue_4K_basecolor.optimized.png"),
+                    256,
+                )?,
+                normal: SurfaceTexture::load_png(
+                    &format!("{root}/AlienSkinTissue_4K_normal.optimized.png"),
+                    256,
+                )?,
+                roughness: SurfaceTexture::load_png(
+                    &format!("{root}/AlienSkinTissue_4K_roughness.optimized.png"),
+                    256,
+                )?,
+                ao: SurfaceTexture::load_png(
+                    &format!("{root}/AlienSkinTissue_4K_ambientocclusion.optimized.png"),
+                    256,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
+struct AlienVeinTextures {
+    color: SurfaceTexture,
+    normal: SurfaceTexture,
+    roughness: SurfaceTexture,
+    ao: SurfaceTexture,
+    emissive: SurfaceTexture,
+}
+
+fn alien_vein_textures() -> Option<&'static AlienVeinTextures> {
+    static TEXTURES: OnceLock<Option<AlienVeinTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let root = "assets/textures/AlienVeinSkin";
+            Some(AlienVeinTextures {
+                color: SurfaceTexture::load_png(
+                    &format!("{root}/AlienVeinSkin_4K_basecolor.optimized.png"),
+                    256,
+                )?,
+                normal: SurfaceTexture::load_png(
+                    &format!("{root}/AlienVeinSkin_4K_normal.optimized.png"),
+                    256,
+                )?,
+                roughness: SurfaceTexture::load_png(
+                    &format!("{root}/AlienVeinSkin_4K_roughness.optimized.png"),
+                    256,
+                )?,
+                ao: SurfaceTexture::load_png(
+                    &format!("{root}/AlienVeinSkin_4K_ambientocclusion.optimized.png"),
+                    256,
+                )?,
+                emissive: SurfaceTexture::load_png(
+                    &format!("{root}/AlienVeinSkin_4K_emissive.optimized.png"),
+                    256,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
 struct BarkTextures {
     color: SurfaceTexture,
     normal: SurfaceTexture,
@@ -1799,6 +1911,69 @@ fn procedural_surface_color(
     brightness: f32,
     fresnel: f32,
 ) -> u32 {
+    if shader == SurfaceShader::CoreGuardianEnvironmentTexture {
+        if let Some(textures) = alien_vein_textures() {
+            let scale = 0.11;
+            let color = textures.color.sample_triplanar(point, scale);
+            let normal = textures.normal.sample_triplanar(point, scale);
+            let roughness = textures.roughness.sample_triplanar(point, scale)[0] / 255.0;
+            let ao = textures.ao.sample_triplanar(point, scale)[0] / 255.0;
+            let emissive = textures.emissive.sample_triplanar(point, scale);
+            let relief = ((normal[0] - 128.0).abs() + (normal[1] - 128.0).abs()) / 255.0;
+            let pulse = 0.68 + (time * 1.8 + point.z * 0.18).sin() * 0.22;
+            let surface_light = brightness
+                * (0.65 + ao * 0.35)
+                * (0.92 + relief * 0.20)
+                * (1.0 + fresnel * (1.0 - roughness) * 0.10);
+            let tint = [0.90, 0.72, 0.92];
+            let channels: [u32; 3] = std::array::from_fn(|channel| {
+                (color[channel] * tint[channel] * surface_light
+                    + emissive[channel] * pulse * 0.55)
+                    .clamp(0.0, 255.0) as u32
+            });
+            return (channels[0] << 16) | (channels[1] << 8) | channels[2];
+        }
+    }
+    if shader == SurfaceShader::WaterMonsterCoreTexture {
+        if let Some(textures) = alien_egg_textures() {
+            let scale = 0.22;
+            let color = textures.color.sample_triplanar(point, scale);
+            let normal = textures.normal.sample_triplanar(point, scale);
+            let roughness = textures.roughness.sample_triplanar(point, scale)[0] / 255.0;
+            let ao = textures.ao.sample_triplanar(point, scale)[0] / 255.0;
+            let emissive = textures.emissive.sample_triplanar(point, scale);
+            let relief = ((normal[0] - 128.0).abs() + (normal[1] - 128.0).abs()) / 255.0;
+            let pulse = 0.78 + (time * 4.5 + point.y * 1.7).sin() * 0.22;
+            let surface_light = brightness
+                * (0.72 + ao * 0.28)
+                * (0.94 + relief * 0.16)
+                * (1.0 + fresnel * (1.0 - roughness) * 0.12);
+            let channels: [u32; 3] = std::array::from_fn(|channel| {
+                (color[channel] * surface_light + emissive[channel] * pulse * 0.72)
+                    .clamp(0.0, 255.0) as u32
+            });
+            return (channels[0] << 16) | (channels[1] << 8) | channels[2];
+        }
+    }
+    if shader == SurfaceShader::WaterMonsterTissueTexture {
+        if let Some(textures) = alien_tissue_textures() {
+            let scale = 0.20;
+            let color = textures.color.sample_triplanar(point, scale);
+            let normal = textures.normal.sample_triplanar(point, scale);
+            let roughness = textures.roughness.sample_triplanar(point, scale)[0] / 255.0;
+            let ao = textures.ao.sample_triplanar(point, scale)[0] / 255.0;
+            let relief = ((normal[0] - 128.0).abs() + (normal[1] - 128.0).abs()) / 255.0;
+            let surface_light = brightness
+                * (0.70 + ao * 0.30)
+                * (0.93 + relief * 0.18)
+                * (1.0 + fresnel * (1.0 - roughness) * 0.14);
+            let tint = [1.12, 0.82, 0.86];
+            let rgb = std::array::from_fn(|channel| {
+                (color[channel] * tint[channel]).clamp(0.0, 255.0) as u8
+            });
+            return pack(rgb, surface_light);
+        }
+    }
     if shader == SurfaceShader::WaterPlanetEarthTexture {
         if let Some(textures) = water_earth_textures() {
             let scale = 0.08;
@@ -2204,6 +2379,24 @@ fn procedural_surface_color(
             170.0 + noise * 16.0,
             169.0 + noise * 14.0,
             126.0 + noise * 11.0,
+            1.0,
+        ),
+        SurfaceShader::WaterMonsterCoreTexture => (
+            112.0 + noise * 20.0,
+            188.0 + noise * 18.0,
+            98.0 + noise * 14.0,
+            1.0,
+        ),
+        SurfaceShader::WaterMonsterTissueTexture => (
+            172.0 + noise * 22.0,
+            42.0 + noise * 10.0,
+            58.0 + noise * 12.0,
+            1.0,
+        ),
+        SurfaceShader::CoreGuardianEnvironmentTexture => (
+            88.0 + noise * 20.0,
+            28.0 + noise * 10.0,
+            76.0 + noise * 17.0,
             1.0,
         ),
         SurfaceShader::AstraRedEmission => {
@@ -2787,14 +2980,17 @@ fn make_planet_lod(radius: f32, stacks: usize, slices: usize, visual: PlanetVisu
                 "water_planet_grass_texture"
             }
             PlanetVisual::Water => "planet_ocean",
-            PlanetVisual::Spiky if hash(index as u32 * 17) % 7 == 0 => "Coral_claro",
-            PlanetVisual::Spiky if index % 2 == 0 => "Fucsia",
-            PlanetVisual::Spiky => "Magenta_sombra",
+            // The distant LOD contains only the spherical shell; authored
+            // tentacles are restored by the detailed model at close range.
+            PlanetVisual::Spiky => "spiky_planet_vein_texture",
             PlanetVisual::Racing if band == stacks / 2 => "race_rgb_245_208_42",
             PlanetVisual::Racing if index % 3 == 0 => "race_rgb_58_160_107",
             PlanetVisual::Racing => "race_rgb_44_133_88",
         };
         *face = Face::new(face.indices, material, "planet_lod");
+        if matches!(visual, PlanetVisual::Spiky) {
+            face.shader = SurfaceShader::CoreGuardianEnvironmentTexture;
+        }
         face.smooth = true;
     }
     model.recalculate_normals();
@@ -7744,6 +7940,73 @@ mod tests {
         assert!(sand
             .iter()
             .all(|face| face.shader == SurfaceShader::WaterLevelSandTexture));
+    }
+
+    #[test]
+    fn guardian_alien_texture_sets_load_optimized() {
+        let egg = alien_egg_textures().expect("AlienEgg textures must load");
+        for texture in [
+            &egg.color,
+            &egg.normal,
+            &egg.roughness,
+            &egg.ao,
+            &egg.emissive,
+        ] {
+            assert_eq!((texture.width, texture.height), (256, 256));
+        }
+        let tissue = alien_tissue_textures().expect("AlienSkinTissue textures must load");
+        for texture in [&tissue.color, &tissue.normal, &tissue.roughness, &tissue.ao] {
+            assert_eq!((texture.width, texture.height), (256, 256));
+        }
+        let veins = alien_vein_textures().expect("AlienVeinSkin textures must load");
+        for texture in [
+            &veins.color,
+            &veins.normal,
+            &veins.roughness,
+            &veins.ao,
+            &veins.emissive,
+        ] {
+            assert_eq!((texture.width, texture.height), (256, 256));
+        }
+    }
+
+    #[test]
+    fn spiky_planet_uses_vein_skin_on_sphere_and_boss_skin_on_tentacles() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let planet = load_obj(root.join("assets/planets/planeta_espinas.obj")).unwrap();
+        let sphere: Vec<_> = planet
+            .faces
+            .iter()
+            .filter(|face| face.material.eq_ignore_ascii_case("Rosa_cuerpo"))
+            .collect();
+        assert!(!sphere.is_empty());
+        assert!(sphere.iter().all(|face| {
+            face.shader == SurfaceShader::CoreGuardianEnvironmentTexture
+        }));
+
+        let tentacle_materials = [
+            "Fucsia",
+            "Magenta_sombra",
+            "Coral_claro",
+            "Durazno",
+            "Crema",
+        ];
+        let tentacles: Vec<_> = planet
+            .faces
+            .iter()
+            .filter(|face| tentacle_materials.iter().any(|material| {
+                face.material.eq_ignore_ascii_case(material)
+            }))
+            .collect();
+        assert!(!tentacles.is_empty());
+        assert!(tentacles.iter().all(|face| {
+            face.shader == SurfaceShader::WaterMonsterTissueTexture
+        }));
+
+        let lod = make_planet_lod(SPIKY_PLANET_RADIUS, 6, 10, PlanetVisual::Spiky);
+        assert!(lod.faces.iter().all(|face| {
+            face.shader == SurfaceShader::CoreGuardianEnvironmentTexture
+        }));
     }
 
     #[test]

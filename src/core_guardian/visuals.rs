@@ -3,7 +3,7 @@ use super::{
     VICTORY_REWARD_COLLECT_TIME,
 };
 use crate::framebuffer::Framebuffer;
-use crate::obj_loader::{Face, MaterialColor, Model, Vec3};
+use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
 use crate::ship::ShipSpec;
 use crate::{Camera, render_model};
 use std::sync::OnceLock;
@@ -315,6 +315,7 @@ fn shell_model(inner_color: [u8; 3], facet_color: [u8; 3]) -> Model {
                 } else {
                     inner_color
                 });
+                face.shader = SurfaceShader::WaterMonsterTissueTexture;
                 face.smooth = true;
                 faces.push(face);
             }
@@ -350,13 +351,41 @@ fn draw_boss_spheres(
     exposed: bool,
     hit_flash: bool,
 ) {
-    let body = GUARDIAN_BODY.get_or_init(|| sphere_model(2.25, [190, 79, 108]));
+    let body = GUARDIAN_BODY.get_or_init(|| {
+        sphere_model_with_shader(
+            2.25,
+            [190, 79, 108],
+            SurfaceShader::WaterMonsterTissueTexture,
+            "guardian_body_tissue",
+        )
+    });
     let core = if hit_flash {
-        GUARDIAN_CORE_HIT.get_or_init(|| sphere_model(0.82, [255, 247, 189]))
+        GUARDIAN_CORE_HIT.get_or_init(|| {
+            sphere_model_with_shader(
+                0.82,
+                [255, 247, 189],
+                SurfaceShader::WaterMonsterCoreTexture,
+                "guardian_alien_egg_core",
+            )
+        })
     } else if exposed {
-        GUARDIAN_CORE_EXPOSED.get_or_init(|| sphere_model(0.82, [255, 190, 44]))
+        GUARDIAN_CORE_EXPOSED.get_or_init(|| {
+            sphere_model_with_shader(
+                0.82,
+                [255, 190, 44],
+                SurfaceShader::WaterMonsterCoreTexture,
+                "guardian_alien_egg_core",
+            )
+        })
     } else {
-        GUARDIAN_CORE_CLOSED.get_or_init(|| sphere_model(0.82, [156, 74, 46]))
+        GUARDIAN_CORE_CLOSED.get_or_init(|| {
+            sphere_model_with_shader(
+                0.82,
+                [156, 74, 46],
+                SurfaceShader::WaterMonsterCoreTexture,
+                "guardian_alien_egg_core",
+            )
+        })
     };
     let body_center = scene_position(framebuffer, screen_center, 14.0);
     let core_center = body_center.add(Vec3::new(0.0, 0.0, -1.45));
@@ -436,10 +465,23 @@ fn boss_tentacle_model() -> Model {
             );
         }
     }
+    for face in &mut faces {
+        face.shader = SurfaceShader::WaterMonsterTissueTexture;
+        face.group = "guardian_tissue_tentacle".to_string();
+    }
     Model::new(vertices, faces)
 }
 
 fn sphere_model(radius: f32, color: [u8; 3]) -> Model {
+    sphere_model_with_shader(radius, color, SurfaceShader::Flat, "guardian_sphere")
+}
+
+fn sphere_model_with_shader(
+    radius: f32,
+    color: [u8; 3],
+    shader: SurfaceShader,
+    group: &str,
+) -> Model {
     let rings = 12;
     let sectors = 24;
     let mut vertices = Vec::with_capacity((rings + 1) * (sectors + 1));
@@ -464,8 +506,9 @@ fn sphere_model(radius: f32, color: [u8; 3]) -> Model {
             let c = a + sectors + 1;
             let d = c + 1;
             for indices in [[a, c, b], [b, c, d]] {
-                let mut face = Face::new(indices, "guardian", "guardian_sphere");
+                let mut face = Face::new(indices, "guardian", group);
                 face.color = MaterialColor::Fixed(color);
+                face.shader = shader;
                 face.smooth = true;
                 faces.push(face);
             }
@@ -510,7 +553,7 @@ fn draw_obstacles(framebuffer: &mut Framebuffer, obstacles: &[super::Obstacle], 
             |vertex| {
                 position.add(rotate_y(rotate_x(vertex, spin * 0.73), spin).mul(obstacle.radius))
             },
-            None,
+            Some(elapsed),
             None,
         );
     }
@@ -685,6 +728,11 @@ fn obstacle_model(variant: usize) -> Model {
             for indices in [[a, c, b], [b, c, d]] {
                 let mut face = Face::new(indices, "guardian_asteroid", "guardian_obstacle");
                 face.color = MaterialColor::Fixed(color);
+                face.shader = if variant % palettes.len() == 2 {
+                    SurfaceShader::WaterMonsterCoreTexture
+                } else {
+                    SurfaceShader::CoreGuardianEnvironmentTexture
+                };
                 faces.push(face);
             }
         }
@@ -825,6 +873,7 @@ fn cavern_tunnel_model() -> Model {
             for indices in [[a, b, c], [b, d, c]] {
                 let mut face = Face::new(indices, "guardian_rock", "cavern_wall");
                 face.color = MaterialColor::Fixed(palette[color_index]);
+                face.shader = SurfaceShader::CoreGuardianEnvironmentTexture;
                 faces.push(face);
             }
         }
@@ -932,6 +981,10 @@ fn cavern_spines_model() -> Model {
             [214, 61, 117],
         );
     }
+    for face in &mut faces {
+        face.shader = SurfaceShader::CoreGuardianEnvironmentTexture;
+        face.group = "cavern_vein_growth".to_string();
+    }
     Model::new(vertices, faces)
 }
 
@@ -1010,5 +1063,74 @@ fn circle(framebuffer: &mut Framebuffer, cx: f32, cy: f32, radius: f32, color: u
                 framebuffer.pixels[y as usize * framebuffer.width + x as usize] = color;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod texture_tests {
+    use super::*;
+
+    #[test]
+    fn guardian_core_body_shell_and_tentacles_use_alien_materials() {
+        let core = sphere_model_with_shader(
+            0.82,
+            [255, 190, 44],
+            SurfaceShader::WaterMonsterCoreTexture,
+            "guardian_alien_egg_core",
+        );
+        assert!(core
+            .faces
+            .iter()
+            .all(|face| face.shader == SurfaceShader::WaterMonsterCoreTexture));
+
+        let body = sphere_model_with_shader(
+            2.25,
+            [190, 79, 108],
+            SurfaceShader::WaterMonsterTissueTexture,
+            "guardian_body_tissue",
+        );
+        let shell = shell_model([190, 79, 108], [213, 103, 125]);
+        let tentacles = boss_tentacle_model();
+        for model in [&body, &shell, &tentacles] {
+            assert!(!model.faces.is_empty());
+            assert!(model
+                .faces
+                .iter()
+                .all(|face| face.shader == SurfaceShader::WaterMonsterTissueTexture));
+        }
+
+        // The boss projectiles remain independent from its organic skin.
+        let seed = enemy_seed_model();
+        assert!(seed.faces.iter().all(|face| {
+            !matches!(
+                face.shader,
+                SurfaceShader::WaterMonsterCoreTexture
+                    | SurfaceShader::WaterMonsterTissueTexture
+            )
+        }));
+
+        let tunnel = cavern_tunnel_model();
+        let growths = cavern_spines_model();
+        for model in [&tunnel, &growths] {
+            assert!(!model.faces.is_empty());
+            assert!(model.faces.iter().all(|face| {
+                face.shader == SurfaceShader::CoreGuardianEnvironmentTexture
+            }));
+        }
+        let crystals = crystal_cluster_model();
+        assert!(crystals.faces.iter().all(|face| {
+            face.shader != SurfaceShader::CoreGuardianEnvironmentTexture
+        }));
+
+        for variant in 0..2 {
+            let rock = obstacle_model(variant);
+            assert!(rock.faces.iter().all(|face| {
+                face.shader == SurfaceShader::CoreGuardianEnvironmentTexture
+            }));
+        }
+        let yellow_rock = obstacle_model(2);
+        assert!(yellow_rock.faces.iter().all(|face| {
+            face.shader == SurfaceShader::WaterMonsterCoreTexture
+        }));
     }
 }

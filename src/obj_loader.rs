@@ -86,6 +86,9 @@ pub enum SurfaceShader {
     WaterPlanetEarthTexture,
     WaterLevelRockTexture,
     WaterLevelSandTexture,
+    WaterMonsterCoreTexture,
+    WaterMonsterTissueTexture,
+    CoreGuardianEnvironmentTexture,
     CowboyYellowPaint,
     CowboyRedPaint,
     CowboyOrangeEmission,
@@ -723,6 +726,22 @@ pub fn load_obj(path: impl AsRef<Path>) -> Result<Model, String> {
                         && normalized_group.contains("_pilar_")
                     {
                         face.shader = SurfaceShader::WaterPlanetPillarTexture;
+                    }
+                    if normalized_group == "planeta_espinas" {
+                        face.shader = if material.eq_ignore_ascii_case("Rosa_cuerpo") {
+                            SurfaceShader::CoreGuardianEnvironmentTexture
+                        } else if matches!(
+                            material.to_ascii_lowercase().as_str(),
+                            "fucsia"
+                                | "magenta_sombra"
+                                | "coral_claro"
+                                | "durazno"
+                                | "crema"
+                        ) {
+                            SurfaceShader::WaterMonsterTissueTexture
+                        } else {
+                            face.shader
+                        };
                     }
                     face.smooth = smooth;
                     model.faces.push(face);
