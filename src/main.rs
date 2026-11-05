@@ -148,16 +148,17 @@ impl DynamicResolution {
     }
 
     fn prefer_racing_resolution(&mut self) -> bool {
-        if self.enabled && self.scale_index == 0 {
-            self.scale_index = 1;
-            self.low_time = 0.0;
-            self.high_time = 0.0;
-            self.cooldown = 1.5;
-            self.status = "CARRERA";
-            true
-        } else {
-            false
-        }
+        self.prefer_native_resolution("HD NATIVO")
+    }
+
+    fn prefer_native_resolution(&mut self, label: &'static str) -> bool {
+        let changed = self.scale_index != 0;
+        self.scale_index = 0;
+        self.low_time = 0.0;
+        self.high_time = 0.0;
+        self.cooldown = 0.0;
+        self.status = if self.enabled { label } else { "OFF" };
+        changed
     }
 
     fn update(&mut self, frame_time: f32, previous_render: RenderStats) -> bool {
@@ -6378,7 +6379,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
         }
 
-        let resolution_changed = dynamic_resolution.update(frame_time, triangle_batch.stats());
+        let mut resolution_changed =
+            dynamic_resolution.update(frame_time, triangle_batch.stats());
+        resolution_changed |= dynamic_resolution.prefer_native_resolution("HD NATIVO");
         let toggled_resolution = if crate::input::pressed(Key::F2) {
             dynamic_resolution.toggle()
         } else {
@@ -7940,10 +7943,11 @@ mod tests {
     }
 
     #[test]
-    fn racing_resolution_starts_at_ninety_percent_when_enabled() {
+    fn racing_resolution_stays_native() {
         let mut resolution = DynamicResolution::new();
-        assert!(resolution.prefer_racing_resolution());
-        assert_eq!(resolution.percentage(), 90);
+        assert!(!resolution.prefer_racing_resolution());
+        assert_eq!(resolution.percentage(), 100);
+        assert_eq!(resolution.status, "HD NATIVO");
         assert!(!resolution.prefer_racing_resolution());
     }
 
@@ -7954,6 +7958,20 @@ mod tests {
         assert!(resolution.toggle());
         assert!(!resolution.enabled);
         assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
+    }
+
+    #[test]
+    fn vesper_hd_restores_and_holds_native_resolution() {
+        let mut resolution = DynamicResolution::new();
+        resolution.scale_index = RESOLUTION_SCALES.len() - 1;
+        resolution.low_time = 0.7;
+
+        assert!(resolution.prefer_native_resolution("VESPER HD"));
+        assert_eq!(resolution.percentage(), 100);
+        assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
+        assert_eq!(resolution.low_time, 0.0);
+        assert_eq!(resolution.status, "VESPER HD");
+        assert!(!resolution.prefer_native_resolution("VESPER HD"));
     }
 
     #[test]
