@@ -286,15 +286,17 @@ fn classify_surface(name: &str) -> SurfaceShader {
         SurfaceShader::ArwingEmission
     } else if name == "warning_yellow" {
         SurfaceShader::ArwingYellow
-    } else if name.contains("sun") {
+    } else if name.contains("sun") || name == "sol" {
         SurfaceShader::Sun
+    } else if name == "cristal" {
+        SurfaceShader::ArwingGlass
     } else if name.contains("oceano") {
         SurfaceShader::Ocean
     } else if name.contains("cascada") {
         SurfaceShader::Waterfall
     } else if name.contains("roca_oscura") || name.contains("deep_cave_rock") {
         SurfaceShader::DarkRock
-    } else if name.contains("roca")
+    } else if name.contains("roca") || name.contains("piedra")
         || name.contains("underwater_rock")
         || name.contains("blue_stone")
     {
@@ -327,7 +329,27 @@ fn classify_color(name: &str) -> MaterialColor {
             return MaterialColor::Fixed([r, g, b]);
         }
     }
-    let fixed = if name.starts_with("kirbycar_") {
+    let fixed = if name == "roca_violeta" {
+        [113, 65, 159]
+    } else if name == "sol" {
+        [255, 180, 60]
+    } else if name == "coral" {
+        [232, 105, 119]
+    } else if name == "ambar" {
+        [245, 157, 47]
+    } else if name == "oro" {
+        [238, 191, 73]
+    } else if name == "raiz" {
+        [99, 61, 43]
+    } else if name == "marfil" {
+        [239, 226, 194]
+    } else if name == "petroleo" {
+        [24, 112, 119]
+    } else if name == "cristal" {
+        [153, 207, 226]
+    } else if name == "piedra" {
+        [132, 108, 105]
+    } else if name.starts_with("kirbycar_") {
         match name {
             "kirbycar_pink" => [250, 104, 164],
             "kirbycar_lightpink" => [255, 170, 205],
