@@ -132,6 +132,15 @@ regenerar con:
 blender --background --python scripts/create_racing_planet_blender.py
 ```
 
+En la galaxia Vesper, la antigua caracola espiral fue reemplazada por el
+planeta-casa de torre. Su fuente editable se guarda como
+`assets/planets/caracola.blend`; el nombre se conserva para no romper la carga
+del juego. Para regenerar el BLEND, OBJ y MTL:
+
+```powershell
+blender --background --python scripts/create_tower_house_planet_blender.py
+```
+
 Los enemigos de **Ruinas Acuáticas** también tienen una fuente Blender editable:
 la mina globo blindada, el tiburón dron (usado además como jefe) y la medusa
 robótica. Para regenerar sus OBJ y MTL optimizados:

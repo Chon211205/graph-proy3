@@ -51,6 +51,14 @@ const COLLISION_MARGIN: f32 = 4.0;
 const AVOIDANCE_DISTANCE: f32 = 52.0;
 const ORBIT_LIMIT_RADIUS: f32 = 60.0;
 const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
+// Each authored Vesper structure has a different visual center and footprint.
+// Use structure-centered horizontal orbits instead of the complete OBJ bounds.
+const VESPER_ORBIT_HEIGHTS: [f32; 3] = [0.0, 3.0, 12.0];
+const VESPER_ORBIT_RADII: [f32; 3] = [30.0, 26.0, 20.0];
+const ORBIT_CAMERA_DISTANCE: f32 = 55.0;
+const ORBIT_CAMERA_HEIGHT: f32 = 16.0;
+const VESPER_ORBIT_CAMERA_DISTANCE: f32 = 115.0;
+const VESPER_ORBIT_CAMERA_HEIGHT: f32 = 32.0;
 #[cfg(test)]
 const WATER_LEVEL_LENGTH: f32 = 562.0;
 const WATER_BOSS_ARENA_START: f32 = 450.0;
@@ -3481,7 +3489,7 @@ fn move_swordfish_wheels_outward(model: &mut Model) {
     }
 }
 
-fn chase_camera(ship: &Ship) -> Camera {
+fn chase_camera(ship: &Ship, vesper_orbit: bool) -> Camera {
     let (forward, ship_right, ship_up) = ship.camera_basis();
     let chase_position = ship
         .position
@@ -3492,9 +3500,28 @@ fn chase_camera(ship: &Ship) -> Camera {
 
     let (orbit_position, orbit_target) = if let Some(planet_center) = ship.orbit_center {
         let radial = ship.position.sub(planet_center).normalize();
+        let orbit_distance = if vesper_orbit {
+            VESPER_ORBIT_CAMERA_DISTANCE
+        } else {
+            ORBIT_CAMERA_DISTANCE
+        };
+        let orbit_height = if vesper_orbit {
+            VESPER_ORBIT_CAMERA_HEIGHT
+        } else {
+            ORBIT_CAMERA_HEIGHT
+        };
+        let target = if vesper_orbit {
+            // Frame the entire authored planet while keeping the orbiting ship
+            // in the foreground, instead of aiming tightly at the ship.
+            planet_center.add(world_up.mul(4.0))
+        } else {
+            ship.position.add(forward.mul(3.0))
+        };
         (
-            planet_center.add(radial.mul(55.0)).add(world_up.mul(16.0)),
-            ship.position.add(forward.mul(3.0)),
+            planet_center
+                .add(radial.mul(orbit_distance))
+                .add(world_up.mul(orbit_height)),
+            target,
         )
     } else {
         (chase_position, chase_target)
@@ -3645,6 +3672,7 @@ fn move_around_planet(
     object_colliders: &[ObjectCollider],
     yaw_input: i8,
     pitch_input: i8,
+    force_horizontal_orbit: bool,
 ) {
     let safe_radius = planet_surface_radius + ship.spec.collision_radius + COLLISION_MARGIN;
     let steps = movement.ceil().max(1.0) as usize;
@@ -3708,22 +3736,40 @@ fn move_around_planet(
 
             // Keep a fixed orbital plane and radius so steering updates cannot
             // accumulate vertical drift and carry the ship away from the planet.
-            let plane_normal = ship.orbit_plane_normal.unwrap_or_else(|| {
-                let initial_tangent = right.sub(normal.mul(right.dot(normal))).normalize();
-                normal.cross(initial_tangent).normalize()
-            });
+            // Vesper always uses the world's vertical axis so its planets are
+            // orbited around the equator instead of from pole to pole.
+            let orbit_normal = if force_horizontal_orbit {
+                let horizontal = Vec3::new(offset.x, 0.0, offset.z);
+                if horizontal.dot(horizontal) > 0.0001 {
+                    horizontal.normalize()
+                } else {
+                    Vec3::new(1.0, 0.0, 0.0)
+                }
+            } else {
+                normal
+            };
+            let plane_normal = if force_horizontal_orbit {
+                Vec3::new(0.0, 1.0, 0.0)
+            } else {
+                ship.orbit_plane_normal.unwrap_or_else(|| {
+                    let initial_tangent = right
+                        .sub(orbit_normal.mul(right.dot(orbit_normal)))
+                        .normalize();
+                    orbit_normal.cross(initial_tangent).normalize()
+                })
+            };
             ship.orbit_plane_normal = Some(plane_normal);
-            let tangent = plane_normal.cross(normal).normalize();
+            let tangent = plane_normal.cross(orbit_normal).normalize();
             let target_radius = safe_radius + ORBIT_FLIGHT_ALTITUDE;
             let angle = step_distance / target_radius;
             let (sin_angle, cos_angle) = angle.sin_cos();
-            let next_normal = normal
+            let next_normal = orbit_normal
                 .mul(cos_angle)
                 .add(tangent.mul(sin_angle))
                 .normalize();
             let orbit_forward = tangent
                 .mul(cos_angle)
-                .sub(normal.mul(sin_angle))
+                .sub(orbit_normal.mul(sin_angle))
                 .normalize();
             ship.position = planet_center.add(next_normal.mul(target_radius));
             let (yaw, pitch) = direction_to_angles(orbit_forward);
@@ -4463,7 +4509,7 @@ fn render_scene(
 ) {
     framebuffer.clear(0);
     draw_skybox(framebuffer, travel, galaxy);
-    let camera = chase_camera(ship);
+    let camera = chase_camera(ship, galaxy == Galaxy::Vesper);
     debug_assert!(batch.commands.is_empty());
     let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let planet_position = water_planet_position(world_time);
@@ -5129,7 +5175,7 @@ fn render_water_level(
 ) {
     framebuffer.clear(0);
     draw_underwater_background(framebuffer, state.progress * 0.002);
-    let camera = chase_camera(ship);
+    let camera = chase_camera(ship, false);
     debug_assert!(batch.commands.is_empty());
     for chunk in level.visible_chunks(state.progress) {
         queue_model(
@@ -6569,6 +6615,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             orbit_colliders,
                             yaw_input,
                             pitch_input,
+                            false,
                         );
                     } else {
                         ship.spiky_planet_locked = false;
@@ -6586,15 +6633,22 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                                 .unwrap_or(0)
                         });
                         let body = &vesper_planets[nearest];
+                        let orbit_center = body.center.add(Vec3::new(
+                            0.0,
+                            VESPER_ORBIT_HEIGHTS[nearest],
+                            0.0,
+                        ));
+                        let orbit_radius = VESPER_ORBIT_RADII[nearest];
                         move_around_planet(
                             ship,
                             movement,
-                            body.center,
-                            body.radius,
+                            orbit_center,
+                            orbit_radius,
                             body.rotation_y + world_time * 0.035,
                             &[],
                             yaw_input,
                             pitch_input,
+                            true,
                         );
                         vesper_orbit_index = ship.planet_locked.then_some(nearest);
                     }
@@ -7159,7 +7213,17 @@ mod tests {
         let mut ship = Ship::new(&ASTRA_SPEC);
         ship.position = Vec3::new(100.0, 0.0, 0.0);
         ship.yaw = 0.0;
-        move_around_planet(&mut ship, 80.0, center, SPIKY_PLANET_RADIUS, 0.0, &[], 0, 0);
+        move_around_planet(
+            &mut ship,
+            80.0,
+            center,
+            SPIKY_PLANET_RADIUS,
+            0.0,
+            &[],
+            0,
+            0,
+            false,
+        );
         let offset = ship.position.sub(center);
         let distance = offset.dot(offset).sqrt();
         let safe_radius = SPIKY_PLANET_RADIUS + ship.spec.collision_radius + COLLISION_MARGIN;
@@ -7168,6 +7232,49 @@ mod tests {
             distance >= safe_radius - 0.001,
             "ship reached radius {distance}"
         );
+    }
+
+    #[test]
+    fn vesper_orbit_stays_horizontal_around_the_planet_equator() {
+        let center = Vec3::new(20.0, 48.0, -10.0);
+        let mut ship = Ship::new(&ASTRA_SPEC);
+        ship.position = center.add(Vec3::new(50.0, 13.0, 0.0));
+        ship.planet_locked = true;
+
+        move_around_planet(
+            &mut ship,
+            5.0,
+            center,
+            34.0,
+            0.0,
+            &[],
+            0,
+            0,
+            true,
+        );
+
+        assert!((ship.position.y - center.y).abs() < 0.001);
+        assert!(ship.pitch.abs() < 0.001);
+        let plane = ship.orbit_plane_normal.expect("Vesper orbit plane");
+        assert!(plane.x.abs() < 0.001);
+        assert!((plane.y - 1.0).abs() < 0.001);
+        assert!(plane.z.abs() < 0.001);
+    }
+
+    #[test]
+    fn vesper_orbit_camera_is_farther_than_the_home_orbit_camera() {
+        let mut ship = Ship::new(&ASTRA_SPEC);
+        ship.position = Vec3::new(40.0, 0.0, 0.0);
+        ship.orbit_center = Some(Vec3::default());
+        ship.orbit_camera_blend = 1.0;
+
+        let home = chase_camera(&ship, false);
+        let vesper = chase_camera(&ship, true);
+        let home_distance = home.position.dot(home.position).sqrt();
+        let vesper_distance = vesper.position.dot(vesper.position).sqrt();
+
+        assert!(vesper_distance > home_distance + 55.0);
+        assert!((vesper.position.y - VESPER_ORBIT_CAMERA_HEIGHT).abs() < 0.001);
     }
 
     #[test]
