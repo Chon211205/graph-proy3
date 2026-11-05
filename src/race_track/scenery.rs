@@ -131,7 +131,13 @@ impl MeshBuilder {
         self.vertices.extend([a, b, c]);
         let mut face = Face::new([base, base + 1, base + 2], "procedural", group);
         face.color = MaterialColor::Fixed(color);
-        face.shader = SurfaceShader::Flat;
+        face.shader = match group {
+            "alien_tree_roots" => SurfaceShader::RaceBarkTexture,
+            "mossy_arch_stone" | "arch_carved_bases" | "arch_carved_capitals" => {
+                SurfaceShader::RaceBricksTexture
+            }
+            _ => SurfaceShader::Flat,
+        };
         self.faces.push(face);
     }
 
@@ -225,7 +231,7 @@ impl MeshBuilder {
             ] {
                 let mut face = Face::new(indices, "procedural", "alien_tree_trunks");
                 face.color = MaterialColor::Fixed([91, 75, 54]);
-                face.shader = SurfaceShader::Flat;
+                face.shader = SurfaceShader::RaceBarkTexture;
                 face.smooth = true;
                 self.faces.push(face);
             }
@@ -435,7 +441,7 @@ impl MeshBuilder {
                 for indices in [[a, b, c], [a, c, d]] {
                     let mut face = Face::new(indices, "procedural", "smooth_canopies");
                     face.color = MaterialColor::Fixed(color);
-                    face.shader = SurfaceShader::Flat;
+                    face.shader = SurfaceShader::RaceGrassTexture;
                     face.smooth = true;
                     self.faces.push(face);
                 }
@@ -495,6 +501,9 @@ impl MeshBuilder {
                         },
                         "misty_green_hills",
                     );
+                    for face in self.faces.iter_mut().rev().take(2) {
+                        face.shader = SurfaceShader::RaceGroundTexture;
+                    }
                     self.tri(
                         mid0,
                         mid1,
@@ -506,6 +515,9 @@ impl MeshBuilder {
                         },
                         "detailed_hill_peaks",
                     );
+                    if let Some(face) = self.faces.last_mut() {
+                        face.shader = SurfaceShader::RaceGroundTexture;
+                    }
                 }
             }
         }
@@ -538,6 +550,9 @@ impl MeshBuilder {
                     color,
                     "lush_track_ground",
                 );
+                for face in self.faces.iter_mut().rev().take(2) {
+                    face.shader = SurfaceShader::RaceGrassTexture;
+                }
             }
         }
         for patch in 0..30 {
@@ -575,6 +590,12 @@ mod tests {
         assert_eq!(scenery.forests.len(), 18);
         assert_eq!(scenery.forest_lods.len(), scenery.forests.len());
         assert_eq!(scenery.arches.len(), 18);
+        assert!(scenery
+            .terrain
+            .faces
+            .iter()
+            .filter(|face| face.group == "lush_track_ground")
+            .all(|face| face.shader == SurfaceShader::RaceGrassTexture));
         for (detailed, lod) in scenery.forests.iter().zip(&scenery.forest_lods) {
             assert!(lod.faces.len() <= detailed.faces.len().div_ceil(3));
         }
@@ -627,14 +648,36 @@ mod tests {
                 .iter()
                 .any(|face| face.group == group && face.smooth)));
         }
+        assert!(scenery.forests.iter().all(|model| model
+            .faces
+            .iter()
+            .filter(|face| matches!(face.group.as_str(), "alien_tree_trunks" | "alien_tree_roots"))
+            .all(|face| face.shader == SurfaceShader::RaceBarkTexture)));
         assert!(scenery
             .arches
             .iter()
             .any(|model| model.faces.iter().any(|face| face.group == "arch_carved_capitals")));
+        assert!(scenery.arches.iter().all(|model| model
+            .faces
+            .iter()
+            .filter(|face| matches!(
+                face.group.as_str(),
+                "mossy_arch_stone" | "arch_carved_bases" | "arch_carved_capitals"
+            ))
+            .all(|face| face.shader == SurfaceShader::RaceBricksTexture)));
         assert!(scenery
             .hills
             .faces
             .iter()
             .any(|face| face.group == "detailed_hill_peaks"));
+        assert!(scenery.hills.faces.iter().all(|face| {
+            !matches!(face.group.as_str(), "misty_green_hills" | "detailed_hill_peaks")
+                || face.shader == SurfaceShader::RaceGroundTexture
+        }));
+        assert!(scenery.forests.iter().all(|model| model
+            .faces
+            .iter()
+            .filter(|face| face.group == "smooth_canopies")
+            .all(|face| face.shader == SurfaceShader::RaceGrassTexture)));
     }
 }
