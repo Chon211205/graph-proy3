@@ -89,6 +89,7 @@ pub enum SurfaceShader {
     WaterMonsterCoreTexture,
     WaterMonsterTissueTexture,
     CoreGuardianEnvironmentTexture,
+    DragonBallGlass,
     CowboyYellowPaint,
     CowboyRedPaint,
     CowboyOrangeEmission,

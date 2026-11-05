@@ -1911,6 +1911,23 @@ fn procedural_surface_color(
     brightness: f32,
     fresnel: f32,
 ) -> u32 {
+    if shader == SurfaceShader::DragonBallGlass {
+        let inner_flow = (point.x * 3.7 + point.y * 4.9 - point.z * 2.8 + time * 1.4).sin();
+        let caustic = (point.x * 8.3 - point.y * 5.1 + time * 2.2)
+            .sin()
+            .max(0.0)
+            .powf(5.0);
+        let rim = fresnel.clamp(0.0, 1.0).powf(0.62);
+        let light = brightness * (0.82 + rim * 0.38);
+        return pack(
+            [
+                (218.0 + inner_flow * 12.0 + caustic * 25.0) as u8,
+                (91.0 + inner_flow * 9.0 + caustic * 34.0 + rim * 38.0) as u8,
+                (14.0 + caustic * 18.0 + rim * 22.0) as u8,
+            ],
+            light,
+        );
+    }
     if shader == SurfaceShader::CoreGuardianEnvironmentTexture {
         if let Some(textures) = alien_vein_textures() {
             let scale = 0.11;
@@ -2399,6 +2416,7 @@ fn procedural_surface_color(
             76.0 + noise * 17.0,
             1.0,
         ),
+        SurfaceShader::DragonBallGlass => (244.0, 132.0, 22.0, 1.0),
         SurfaceShader::AstraRedEmission => {
             let pulse = 0.96 + (time * 7.0 + point.z).sin() * 0.04;
             (
@@ -2556,6 +2574,56 @@ fn refract_water_color(
     let green = (refracted_g * transmission * 0.72 + surface_g * reflection + 8.0).min(255.0);
     let blue = (refracted_b * transmission * depth_tint + surface_b * reflection + 18.0).min(255.0);
     ((red as u32) << 16) | ((green as u32) << 8) | blue as u32
+}
+
+fn refract_dragon_ball_color(
+    surface: u32,
+    background: &[u32],
+    width: usize,
+    height: usize,
+    x: i32,
+    y: i32,
+    point: Vec3,
+    time: f32,
+    fresnel: f32,
+) -> u32 {
+    let lens = (1.0 - fresnel).clamp(0.0, 1.0);
+    let shimmer = (point.x * 5.8 + point.y * 4.2 + time * 1.6).sin();
+    let offset_x = (point.y * 4.4 + shimmer * 1.4) * lens;
+    let offset_y = (-point.z * 3.8 + (point.x * 6.1 - time).cos()) * lens;
+    let sample = |dx: f32, dy: f32| {
+        let sx = (x as f32 + offset_x + dx)
+            .round()
+            .clamp(0.0, width.saturating_sub(1) as f32) as usize;
+        let sy = (y as f32 + offset_y + dy)
+            .round()
+            .clamp(0.0, height.saturating_sub(1) as f32) as usize;
+        background[sy * width + sx]
+    };
+    // Slight channel separation imitates dispersion through the curved shell.
+    let red_sample = sample(1.6 * lens, 0.0);
+    let green_sample = sample(0.0, 0.0);
+    let blue_sample = sample(-1.6 * lens, 0.0);
+    let transmitted = [
+        ((red_sample >> 16) & 0xff) as f32,
+        ((green_sample >> 8) & 0xff) as f32,
+        (blue_sample & 0xff) as f32,
+    ];
+    let shell = [
+        ((surface >> 16) & 0xff) as f32,
+        ((surface >> 8) & 0xff) as f32,
+        (surface & 0xff) as f32,
+    ];
+    let transmission = 0.38 + lens * 0.30;
+    let rim_glow = fresnel.powf(0.55) * 62.0;
+    let rgb: [u32; 3] = std::array::from_fn(|channel| {
+        let amber_filter = [1.04, 0.72, 0.32][channel];
+        (transmitted[channel] * transmission * amber_filter
+            + shell[channel] * (1.0 - transmission)
+            + rim_glow * [1.0, 0.58, 0.18][channel])
+            .clamp(0.0, 255.0) as u32
+    });
+    (rgb[0] << 16) | (rgb[1] << 8) | rgb[2]
 }
 
 fn hash(mut value: u32) -> u32 {
@@ -2744,6 +2812,8 @@ fn make_dragon_ball(star_centers: &[(f32, f32)]) -> Model {
     let mut model = make_sphere(radius, 14, 22, false);
     for face in &mut model.faces {
         *face = Face::new(face.indices, "race_rgb_244_132_22", "dragon_ball");
+        face.shader = SurfaceShader::DragonBallGlass;
+        face.smooth = true;
     }
 
     for (star_index, &(y, z)) in star_centers.iter().enumerate() {
@@ -3882,7 +3952,7 @@ impl TriangleBatch {
                 matches!(
                     &command.style,
                     TriangleStyle::Procedural {
-                        shader: SurfaceShader::Ocean,
+                        shader: SurfaceShader::Ocean | SurfaceShader::DragonBallGlass,
                         ..
                     }
                 )
@@ -3980,6 +4050,15 @@ impl TriangleBatch {
                                     if *shader == SurfaceShader::Ocean {
                                         if let Some(background) = refractive_background {
                                             refract_water_color(
+                                                surface, background, width, height, x, y, point,
+                                                *time, *fresnel,
+                                            )
+                                        } else {
+                                            surface
+                                        }
+                                    } else if *shader == SurfaceShader::DragonBallGlass {
+                                        if let Some(background) = refractive_background {
+                                            refract_dragon_ball_color(
                                                 surface, background, width, height, x, y, point,
                                                 *time, *fresnel,
                                             )
@@ -8434,6 +8513,46 @@ mod tests {
                 .any(|face| face.group == format!("dragon_star_{star}")));
         }
         assert!(!reward.faces.iter().any(|face| face.group == "dragon_star_3"));
+    }
+
+    #[test]
+    fn every_dragon_ball_uses_refractive_glass_without_texturing_the_stars() {
+        for ball in [
+            make_one_star_dragon_ball(),
+            make_three_star_dragon_ball(),
+            make_four_star_dragon_ball(),
+        ] {
+            let shell: Vec<_> = ball
+                .faces
+                .iter()
+                .filter(|face| face.group == "dragon_ball")
+                .collect();
+            assert!(!shell.is_empty());
+            assert!(shell
+                .iter()
+                .all(|face| face.shader == SurfaceShader::DragonBallGlass && face.smooth));
+            assert!(ball
+                .faces
+                .iter()
+                .filter(|face| face.group.starts_with("dragon_star_"))
+                .all(|face| face.shader != SurfaceShader::DragonBallGlass));
+        }
+
+        let background = vec![0x204060; 16 * 16];
+        let surface = 0xf48416;
+        let refracted = refract_dragon_ball_color(
+            surface,
+            &background,
+            16,
+            16,
+            8,
+            8,
+            Vec3::new(0.7, -0.3, 1.1),
+            0.5,
+            0.2,
+        );
+        assert_ne!(refracted, surface);
+        assert_ne!(refracted, background[0]);
     }
 
     #[test]
