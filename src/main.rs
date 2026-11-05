@@ -10,6 +10,7 @@ mod triangle;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::f32::consts::{PI, TAU};
+use std::fs::File;
 use std::sync::OnceLock;
 use std::thread;
 use std::time::Instant;
@@ -1466,6 +1467,476 @@ fn pack(rgb: [u8; 3], brightness: f32) -> u32 {
     (channel(rgb[0]) << 16) | (channel(rgb[1]) << 8) | channel(rgb[2])
 }
 
+struct SurfaceTexture {
+    width: usize,
+    height: usize,
+    pixels: Vec<[u8; 3]>,
+}
+
+impl SurfaceTexture {
+    fn load_png(path: &str, target_size: usize) -> Option<Self> {
+        let file = File::open(path).ok()?;
+        let mut decoder = png::Decoder::new(file);
+        decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+        let mut reader = decoder.read_info().ok()?;
+        let mut bytes = vec![0; reader.output_buffer_size()];
+        let info = reader.next_frame(&mut bytes).ok()?;
+        let channels = match info.color_type {
+            png::ColorType::Rgb => 3,
+            png::ColorType::Rgba => 4,
+            png::ColorType::Grayscale => 1,
+            png::ColorType::GrayscaleAlpha => 2,
+            png::ColorType::Indexed => return None,
+        };
+        let source_width = info.width as usize;
+        let source_height = info.height as usize;
+        let size = target_size.min(source_width).min(source_height).max(1);
+        let mut pixels = Vec::with_capacity(size * size);
+        for y in 0..size {
+            let source_y = y * source_height / size;
+            for x in 0..size {
+                let source_x = x * source_width / size;
+                let offset = (source_y * source_width + source_x) * channels;
+                let color = if channels >= 3 {
+                    [bytes[offset], bytes[offset + 1], bytes[offset + 2]]
+                } else {
+                    [bytes[offset]; 3]
+                };
+                pixels.push(color);
+            }
+        }
+        Some(Self { width: size, height: size, pixels })
+    }
+
+    fn sample(&self, u: f32, v: f32) -> [f32; 3] {
+        let u = u.rem_euclid(1.0) * self.width as f32;
+        let v = v.rem_euclid(1.0) * self.height as f32;
+        let x0 = u.floor() as usize % self.width;
+        let y0 = v.floor() as usize % self.height;
+        let x1 = (x0 + 1) % self.width;
+        let y1 = (y0 + 1) % self.height;
+        let fx = u.fract();
+        let fy = v.fract();
+        let colors = [
+            self.pixels[y0 * self.width + x0],
+            self.pixels[y0 * self.width + x1],
+            self.pixels[y1 * self.width + x0],
+            self.pixels[y1 * self.width + x1],
+        ];
+        std::array::from_fn(|channel| {
+            let top = colors[0][channel] as f32
+                + (colors[1][channel] as f32 - colors[0][channel] as f32) * fx;
+            let bottom = colors[2][channel] as f32
+                + (colors[3][channel] as f32 - colors[2][channel] as f32) * fx;
+            top + (bottom - top) * fy
+        })
+    }
+
+    fn sample_triplanar(&self, point: Vec3, scale: f32) -> [f32; 3] {
+        let xy = self.sample(point.x * scale, point.y * scale);
+        let xz = self.sample(point.x * scale, point.z * scale);
+        let zy = self.sample(point.z * scale, point.y * scale);
+        std::array::from_fn(|channel| (xy[channel] + xz[channel] + zy[channel]) / 3.0)
+    }
+}
+
+fn blue_metal_texture() -> Option<&'static SurfaceTexture> {
+    static TEXTURE: OnceLock<Option<SurfaceTexture>> = OnceLock::new();
+    TEXTURE
+        .get_or_init(|| {
+            SurfaceTexture::load_png(
+                "assets/textures/blue_metal_plate_1k.blend/textures/blue_metal_plate_diff_1k.png",
+                256,
+            )
+        })
+        .as_ref()
+}
+
+struct RaceAsphaltTextures {
+    clean_color: SurfaceTexture,
+    clean_height: SurfaceTexture,
+    asphalt04_color: SurfaceTexture,
+    asphalt04_height: SurfaceTexture,
+}
+
+fn race_asphalt_textures() -> Option<&'static RaceAsphaltTextures> {
+    static TEXTURES: OnceLock<Option<RaceAsphaltTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let clean = "assets/textures/clean_asphalt_1k.blend/textures";
+            let asphalt04 = "assets/textures/asphalt_04_1k.blend/textures";
+            Some(RaceAsphaltTextures {
+                clean_color: SurfaceTexture::load_png(
+                    &format!("{clean}/clean_asphalt_diff_1k.optimized.png"),
+                    256,
+                )?,
+                clean_height: SurfaceTexture::load_png(
+                    &format!("{clean}/clean_asphalt_disp_1k.png"),
+                    256,
+                )?,
+                asphalt04_color: SurfaceTexture::load_png(
+                    &format!("{asphalt04}/asphalt_04_diff_1k.optimized.png"),
+                    256,
+                )?,
+                asphalt04_height: SurfaceTexture::load_png(
+                    &format!("{asphalt04}/asphalt_04_disp_1k.png"),
+                    256,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
+struct GrassTextures {
+    color: SurfaceTexture,
+    normal: SurfaceTexture,
+    roughness: SurfaceTexture,
+    ao: SurfaceTexture,
+}
+
+fn grass_textures() -> Option<&'static GrassTextures> {
+    static TEXTURES: OnceLock<Option<GrassTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let root = "assets/textures/Grass005_1K-PNG";
+            Some(GrassTextures {
+                color: SurfaceTexture::load_png(
+                    &format!("{root}/Grass005_1K-PNG_Color.png"),
+                    256,
+                )?,
+                normal: SurfaceTexture::load_png(
+                    &format!("{root}/Grass005_1K-PNG_NormalGL.png"),
+                    256,
+                )?,
+                roughness: SurfaceTexture::load_png(
+                    &format!("{root}/Grass005_1K-PNG_Roughness.png"),
+                    256,
+                )?,
+                ao: SurfaceTexture::load_png(
+                    &format!("{root}/Grass005_1K-PNG_AmbientOcclusion.png"),
+                    256,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
+struct GroundTextures {
+    color: SurfaceTexture,
+    normal: SurfaceTexture,
+    roughness: SurfaceTexture,
+    ao: SurfaceTexture,
+}
+
+fn ground_textures() -> Option<&'static GroundTextures> {
+    static TEXTURES: OnceLock<Option<GroundTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let root = "assets/textures/Ground030_1K-PNG";
+            Some(GroundTextures {
+                color: SurfaceTexture::load_png(
+                    &format!("{root}/Ground030_1K-PNG_Color.png"),
+                    256,
+                )?,
+                normal: SurfaceTexture::load_png(
+                    &format!("{root}/Ground030_1K-PNG_NormalGL.png"),
+                    256,
+                )?,
+                roughness: SurfaceTexture::load_png(
+                    &format!("{root}/Ground030_1K-PNG_Roughness.png"),
+                    256,
+                )?,
+                ao: SurfaceTexture::load_png(
+                    &format!("{root}/Ground030_1K-PNG_AmbientOcclusion.png"),
+                    256,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
+struct WaterSandTextures {
+    color: SurfaceTexture,
+    normal: SurfaceTexture,
+    roughness: SurfaceTexture,
+    ao: SurfaceTexture,
+}
+
+fn water_sand_textures() -> Option<&'static WaterSandTextures> {
+    static TEXTURES: OnceLock<Option<WaterSandTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let root = "assets/textures/Ground054_1K-PNG";
+            Some(WaterSandTextures {
+                color: SurfaceTexture::load_png(
+                    &format!("{root}/Ground054_1K-PNG_Color.png"),
+                    256,
+                )?,
+                normal: SurfaceTexture::load_png(
+                    &format!("{root}/Ground054_1K-PNG_NormalGL.png"),
+                    256,
+                )?,
+                roughness: SurfaceTexture::load_png(
+                    &format!("{root}/Ground054_1K-PNG_Roughness.png"),
+                    256,
+                )?,
+                ao: SurfaceTexture::load_png(
+                    &format!("{root}/Ground054_1K-PNG_AmbientOcclusion.png"),
+                    256,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
+struct AsphaltTextures {
+    color: SurfaceTexture,
+    normal: SurfaceTexture,
+    roughness: SurfaceTexture,
+    ao: SurfaceTexture,
+}
+
+fn asphalt_textures() -> Option<&'static AsphaltTextures> {
+    static TEXTURES: OnceLock<Option<AsphaltTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let root = "assets/textures/Asphalt031_1K-PNG";
+            Some(AsphaltTextures {
+                color: SurfaceTexture::load_png(
+                    &format!("{root}/Asphalt031_1K-PNG_Color.png"),
+                    256,
+                )?,
+                normal: SurfaceTexture::load_png(
+                    &format!("{root}/Asphalt031_1K-PNG_NormalGL.png"),
+                    256,
+                )?,
+                roughness: SurfaceTexture::load_png(
+                    &format!("{root}/Asphalt031_1K-PNG_Roughness.png"),
+                    256,
+                )?,
+                ao: SurfaceTexture::load_png(
+                    &format!("{root}/Asphalt031_1K-PNG_AmbientOcclusion.png"),
+                    256,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
+struct WaterEarthTextures {
+    color: SurfaceTexture,
+    normal: SurfaceTexture,
+    roughness: SurfaceTexture,
+    ao: SurfaceTexture,
+}
+
+fn water_earth_textures() -> Option<&'static WaterEarthTextures> {
+    static TEXTURES: OnceLock<Option<WaterEarthTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let root = "assets/textures/Ground048_1K-PNG";
+            Some(WaterEarthTextures {
+                color: SurfaceTexture::load_png(
+                    &format!("{root}/Ground048_1K-PNG_Color.png"),
+                    256,
+                )?,
+                normal: SurfaceTexture::load_png(
+                    &format!("{root}/Ground048_1K-PNG_NormalGL.png"),
+                    256,
+                )?,
+                roughness: SurfaceTexture::load_png(
+                    &format!("{root}/Ground048_1K-PNG_Roughness.png"),
+                    256,
+                )?,
+                ao: SurfaceTexture::load_png(
+                    &format!("{root}/Ground048_1K-PNG_AmbientOcclusion.png"),
+                    256,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
+struct AlienEggTextures {
+    color: SurfaceTexture,
+    normal: SurfaceTexture,
+    roughness: SurfaceTexture,
+    ao: SurfaceTexture,
+    emissive: SurfaceTexture,
+}
+
+fn alien_egg_textures() -> Option<&'static AlienEggTextures> {
+    static TEXTURES: OnceLock<Option<AlienEggTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let root = "assets/textures/AlienEggs";
+            Some(AlienEggTextures {
+                color: SurfaceTexture::load_png(
+                    &format!("{root}/AlienEggs_4K_basecolor.optimized.png"),
+                    256,
+                )?,
+                normal: SurfaceTexture::load_png(
+                    &format!("{root}/AlienEggs_4K_normal.optimized.png"),
+                    256,
+                )?,
+                roughness: SurfaceTexture::load_png(
+                    &format!("{root}/AlienEggs_4K_roughness.optimized.png"),
+                    256,
+                )?,
+                ao: SurfaceTexture::load_png(
+                    &format!("{root}/AlienEggs_4K_ambientocclusion.optimized.png"),
+                    256,
+                )?,
+                emissive: SurfaceTexture::load_png(
+                    &format!("{root}/AlienEggs_4K_emissive.optimized.png"),
+                    256,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
+struct AlienTissueTextures {
+    color: SurfaceTexture,
+    normal: SurfaceTexture,
+    roughness: SurfaceTexture,
+    ao: SurfaceTexture,
+}
+
+fn alien_tissue_textures() -> Option<&'static AlienTissueTextures> {
+    static TEXTURES: OnceLock<Option<AlienTissueTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let root = "assets/textures/AlienSkinTissue";
+            Some(AlienTissueTextures {
+                color: SurfaceTexture::load_png(
+                    &format!("{root}/AlienSkinTissue_4K_basecolor.optimized.png"),
+                    256,
+                )?,
+                normal: SurfaceTexture::load_png(
+                    &format!("{root}/AlienSkinTissue_4K_normal.optimized.png"),
+                    256,
+                )?,
+                roughness: SurfaceTexture::load_png(
+                    &format!("{root}/AlienSkinTissue_4K_roughness.optimized.png"),
+                    256,
+                )?,
+                ao: SurfaceTexture::load_png(
+                    &format!("{root}/AlienSkinTissue_4K_ambientocclusion.optimized.png"),
+                    256,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
+struct AlienVeinTextures {
+    color: SurfaceTexture,
+    normal: SurfaceTexture,
+    roughness: SurfaceTexture,
+    ao: SurfaceTexture,
+    emissive: SurfaceTexture,
+}
+
+fn alien_vein_textures() -> Option<&'static AlienVeinTextures> {
+    static TEXTURES: OnceLock<Option<AlienVeinTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let root = "assets/textures/AlienVeinSkin";
+            Some(AlienVeinTextures {
+                color: SurfaceTexture::load_png(
+                    &format!("{root}/AlienVeinSkin_4K_basecolor.optimized.png"),
+                    256,
+                )?,
+                normal: SurfaceTexture::load_png(
+                    &format!("{root}/AlienVeinSkin_4K_normal.optimized.png"),
+                    256,
+                )?,
+                roughness: SurfaceTexture::load_png(
+                    &format!("{root}/AlienVeinSkin_4K_roughness.optimized.png"),
+                    256,
+                )?,
+                ao: SurfaceTexture::load_png(
+                    &format!("{root}/AlienVeinSkin_4K_ambientocclusion.optimized.png"),
+                    256,
+                )?,
+                emissive: SurfaceTexture::load_png(
+                    &format!("{root}/AlienVeinSkin_4K_emissive.optimized.png"),
+                    256,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
+struct BarkTextures {
+    color: SurfaceTexture,
+    normal: SurfaceTexture,
+    roughness: SurfaceTexture,
+    ao: SurfaceTexture,
+}
+
+fn bark_textures() -> Option<&'static BarkTextures> {
+    static TEXTURES: OnceLock<Option<BarkTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let root = "assets/textures/Bark014_1K-PNG";
+            Some(BarkTextures {
+                color: SurfaceTexture::load_png(
+                    &format!("{root}/Bark014_1K-PNG_Color.png"),
+                    256,
+                )?,
+                normal: SurfaceTexture::load_png(
+                    &format!("{root}/Bark014_1K-PNG_NormalGL.png"),
+                    256,
+                )?,
+                roughness: SurfaceTexture::load_png(
+                    &format!("{root}/Bark014_1K-PNG_Roughness.png"),
+                    256,
+                )?,
+                ao: SurfaceTexture::load_png(
+                    &format!("{root}/Bark014_1K-PNG_AmbientOcclusion.png"),
+                    256,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
+struct BricksTextures {
+    color: SurfaceTexture,
+    normal: SurfaceTexture,
+    roughness: SurfaceTexture,
+    ao: SurfaceTexture,
+}
+
+fn bricks_textures() -> Option<&'static BricksTextures> {
+    static TEXTURES: OnceLock<Option<BricksTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let root = "assets/textures/Bricks113A_1K-PNG";
+            Some(BricksTextures {
+                color: SurfaceTexture::load_png(
+                    &format!("{root}/Bricks113A_1K-PNG_Color.png"),
+                    256,
+                )?,
+                normal: SurfaceTexture::load_png(
+                    &format!("{root}/Bricks113A_1K-PNG_NormalGL.png"),
+                    256,
+                )?,
+                roughness: SurfaceTexture::load_png(
+                    &format!("{root}/Bricks113A_1K-PNG_Roughness.png"),
+                    256,
+                )?,
+                ao: SurfaceTexture::load_png(
+                    &format!("{root}/Bricks113A_1K-PNG_AmbientOcclusion.png"),
+                    256,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
 fn procedural_surface_color(
     shader: SurfaceShader,
     point: Vec3,
@@ -1475,6 +1946,292 @@ fn procedural_surface_color(
     brightness: f32,
     fresnel: f32,
 ) -> u32 {
+    if matches!(shader, SurfaceShader::RaceAsphaltClean | SurfaceShader::RaceAsphalt04) {
+        if let Some(textures) = race_asphalt_textures() {
+            let (color_map, height_map, scale, contrast) = match shader {
+                SurfaceShader::RaceAsphaltClean => {
+                    (&textures.clean_color, &textures.clean_height, 0.095, 0.15)
+                }
+                SurfaceShader::RaceAsphalt04 => {
+                    (&textures.asphalt04_color, &textures.asphalt04_height, 0.082, 0.23)
+                }
+                _ => unreachable!(),
+            };
+            let color = color_map.sample(point.x * scale, point.z * scale);
+            let height = height_map.sample(point.x * scale, point.z * scale)[0] / 255.0;
+            let grain = 1.0 + (height - 0.5) * contrast;
+            let edge_sheen = 1.0 + fresnel * (0.07 + (1.0 - height) * 0.05);
+            let rgb = std::array::from_fn(|channel| {
+                (color[channel] * grain).clamp(0.0, 255.0) as u8
+            });
+            return pack(rgb, brightness * edge_sheen);
+        }
+    }
+    if shader == SurfaceShader::DragonBallGlass {
+        let inner_flow = (point.x * 3.7 + point.y * 4.9 - point.z * 2.8 + time * 1.4).sin();
+        let caustic = (point.x * 8.3 - point.y * 5.1 + time * 2.2)
+            .sin()
+            .max(0.0)
+            .powf(5.0);
+        let rim = fresnel.clamp(0.0, 1.0).powf(0.62);
+        let light = brightness * (0.82 + rim * 0.38);
+        return pack(
+            [
+                (218.0 + inner_flow * 12.0 + caustic * 25.0) as u8,
+                (91.0 + inner_flow * 9.0 + caustic * 34.0 + rim * 38.0) as u8,
+                (14.0 + caustic * 18.0 + rim * 22.0) as u8,
+            ],
+            light,
+        );
+    }
+    if shader == SurfaceShader::CoreGuardianEnvironmentTexture {
+        if let Some(textures) = alien_vein_textures() {
+            let scale = 0.11;
+            let color = textures.color.sample_triplanar(point, scale);
+            let normal = textures.normal.sample_triplanar(point, scale);
+            let roughness = textures.roughness.sample_triplanar(point, scale)[0] / 255.0;
+            let ao = textures.ao.sample_triplanar(point, scale)[0] / 255.0;
+            let emissive = textures.emissive.sample_triplanar(point, scale);
+            let relief = ((normal[0] - 128.0).abs() + (normal[1] - 128.0).abs()) / 255.0;
+            let pulse = 0.68 + (time * 1.8 + point.z * 0.18).sin() * 0.22;
+            let surface_light = brightness
+                * (0.65 + ao * 0.35)
+                * (0.92 + relief * 0.20)
+                * (1.0 + fresnel * (1.0 - roughness) * 0.10);
+            let tint = [0.90, 0.72, 0.92];
+            let channels: [u32; 3] = std::array::from_fn(|channel| {
+                (color[channel] * tint[channel] * surface_light
+                    + emissive[channel] * pulse * 0.55)
+                    .clamp(0.0, 255.0) as u32
+            });
+            return (channels[0] << 16) | (channels[1] << 8) | channels[2];
+        }
+    }
+    if shader == SurfaceShader::WaterMonsterCoreTexture {
+        if let Some(textures) = alien_egg_textures() {
+            let scale = 0.22;
+            let color = textures.color.sample_triplanar(point, scale);
+            let normal = textures.normal.sample_triplanar(point, scale);
+            let roughness = textures.roughness.sample_triplanar(point, scale)[0] / 255.0;
+            let ao = textures.ao.sample_triplanar(point, scale)[0] / 255.0;
+            let emissive = textures.emissive.sample_triplanar(point, scale);
+            let relief = ((normal[0] - 128.0).abs() + (normal[1] - 128.0).abs()) / 255.0;
+            let pulse = 0.78 + (time * 4.5 + point.y * 1.7).sin() * 0.22;
+            let surface_light = brightness
+                * (0.72 + ao * 0.28)
+                * (0.94 + relief * 0.16)
+                * (1.0 + fresnel * (1.0 - roughness) * 0.12);
+            let channels: [u32; 3] = std::array::from_fn(|channel| {
+                (color[channel] * surface_light + emissive[channel] * pulse * 0.72)
+                    .clamp(0.0, 255.0) as u32
+            });
+            return (channels[0] << 16) | (channels[1] << 8) | channels[2];
+        }
+    }
+    if shader == SurfaceShader::WaterMonsterTissueTexture {
+        if let Some(textures) = alien_tissue_textures() {
+            let scale = 0.20;
+            let color = textures.color.sample_triplanar(point, scale);
+            let normal = textures.normal.sample_triplanar(point, scale);
+            let roughness = textures.roughness.sample_triplanar(point, scale)[0] / 255.0;
+            let ao = textures.ao.sample_triplanar(point, scale)[0] / 255.0;
+            let relief = ((normal[0] - 128.0).abs() + (normal[1] - 128.0).abs()) / 255.0;
+            let surface_light = brightness
+                * (0.70 + ao * 0.30)
+                * (0.93 + relief * 0.18)
+                * (1.0 + fresnel * (1.0 - roughness) * 0.14);
+            let tint = [1.12, 0.82, 0.86];
+            let rgb = std::array::from_fn(|channel| {
+                (color[channel] * tint[channel]).clamp(0.0, 255.0) as u8
+            });
+            return pack(rgb, surface_light);
+        }
+    }
+    if shader == SurfaceShader::WaterPlanetEarthTexture {
+        if let Some(textures) = water_earth_textures() {
+            let scale = 0.08;
+            let color = textures.color.sample_triplanar(point, scale);
+            let normal = textures.normal.sample_triplanar(point, scale);
+            let roughness = textures.roughness.sample_triplanar(point, scale)[0] / 255.0;
+            let ao = textures.ao.sample_triplanar(point, scale)[0] / 255.0;
+            let relief = ((normal[0] - 128.0).abs() + (normal[1] - 128.0).abs()) / 255.0;
+            let surface_light = brightness
+                * (0.73 + ao * 0.27)
+                * (0.94 + relief * 0.15)
+                * (1.0 + fresnel * (1.0 - roughness) * 0.07);
+            let tint = [0.94, 0.90, 0.82];
+            let rgb = std::array::from_fn(|channel| {
+                (color[channel] * tint[channel]).clamp(0.0, 255.0) as u8
+            });
+            return pack(rgb, surface_light);
+        }
+    }
+    if matches!(
+        shader,
+        SurfaceShader::WaterPlanetPillarTexture | SurfaceShader::WaterLevelRockTexture
+    ) {
+        if let Some(textures) = asphalt_textures() {
+            let scale = 0.12;
+            let color = textures.color.sample_triplanar(point, scale);
+            let normal = textures.normal.sample_triplanar(point, scale);
+            let roughness = textures.roughness.sample_triplanar(point, scale)[0] / 255.0;
+            let ao = textures.ao.sample_triplanar(point, scale)[0] / 255.0;
+            let relief = ((normal[0] - 128.0).abs() + (normal[1] - 128.0).abs()) / 255.0;
+            let surface_light = brightness
+                * (0.69 + ao * 0.31)
+                * (0.93 + relief * 0.18)
+                * (1.0 + fresnel * (1.0 - roughness) * 0.07);
+            let tint = if shader == SurfaceShader::WaterLevelRockTexture {
+                [0.76, 0.92, 1.08]
+            } else {
+                [0.88, 0.94, 1.02]
+            };
+            let rgb = std::array::from_fn(|channel| {
+                (color[channel] * tint[channel]).clamp(0.0, 255.0) as u8
+            });
+            return pack(rgb, surface_light);
+        }
+    }
+    if matches!(
+        shader,
+        SurfaceShader::WaterPlanetSandTexture | SurfaceShader::WaterLevelSandTexture
+    ) {
+        if let Some(textures) = water_sand_textures() {
+            let scale = 0.075;
+            let color = textures.color.sample_triplanar(point, scale);
+            let normal = textures.normal.sample_triplanar(point, scale);
+            let roughness = textures.roughness.sample_triplanar(point, scale)[0] / 255.0;
+            let ao = textures.ao.sample_triplanar(point, scale)[0] / 255.0;
+            let relief = ((normal[0] - 128.0).abs() + (normal[1] - 128.0).abs()) / 255.0;
+            let surface_light = brightness
+                * (0.77 + ao * 0.23)
+                * (0.95 + relief * 0.12)
+                * (1.0 + fresnel * (1.0 - roughness) * 0.08);
+            let tint = if shader == SurfaceShader::WaterLevelSandTexture {
+                [0.84, 0.98, 1.04]
+            } else {
+                [1.06, 1.01, 0.90]
+            };
+            let rgb = std::array::from_fn(|channel| {
+                (color[channel] * tint[channel]).clamp(0.0, 255.0) as u8
+            });
+            return pack(rgb, surface_light);
+        }
+    }
+    if shader == SurfaceShader::RaceBricksTexture {
+        if let Some(textures) = bricks_textures() {
+            let scale = 0.14;
+            let color = textures.color.sample_triplanar(point, scale);
+            let normal = textures.normal.sample_triplanar(point, scale);
+            let roughness = textures.roughness.sample_triplanar(point, scale)[0] / 255.0;
+            let ao = textures.ao.sample_triplanar(point, scale)[0] / 255.0;
+            let relief = ((normal[0] - 128.0).abs() + (normal[1] - 128.0).abs()) / 255.0;
+            let surface_light = brightness
+                * (0.70 + ao * 0.30)
+                * (0.93 + relief * 0.17)
+                * (1.0 + fresnel * (1.0 - roughness) * 0.09);
+            let tint = [0.92, 0.94, 0.86];
+            let rgb = std::array::from_fn(|channel| {
+                (color[channel] * tint[channel]).clamp(0.0, 255.0) as u8
+            });
+            return pack(rgb, surface_light);
+        }
+    }
+    if shader == SurfaceShader::RaceBarkTexture {
+        if let Some(textures) = bark_textures() {
+            let scale = 0.18;
+            let color = textures.color.sample_triplanar(point, scale);
+            let normal = textures.normal.sample_triplanar(point, scale);
+            let roughness = textures.roughness.sample_triplanar(point, scale)[0] / 255.0;
+            let ao = textures.ao.sample_triplanar(point, scale)[0] / 255.0;
+            let relief = ((normal[0] - 128.0).abs() + (normal[1] - 128.0).abs()) / 255.0;
+            let surface_light = brightness
+                * (0.72 + ao * 0.28)
+                * (0.94 + relief * 0.16)
+                * (1.0 + fresnel * (1.0 - roughness) * 0.08);
+            let tint = [0.90, 0.84, 0.76];
+            let rgb = std::array::from_fn(|channel| {
+                (color[channel] * tint[channel]).clamp(0.0, 255.0) as u8
+            });
+            return pack(rgb, surface_light);
+        }
+    }
+    if shader == SurfaceShader::RaceGroundTexture {
+        if let Some(textures) = ground_textures() {
+            // Triplanar projection prevents stretching on the steep sides and
+            // avoids requiring UVs on the procedural mountain geometry.
+            let scale = 0.065;
+            let color = textures.color.sample_triplanar(point, scale);
+            let normal = textures.normal.sample_triplanar(point, scale);
+            let roughness = textures.roughness.sample_triplanar(point, scale)[0] / 255.0;
+            let ao = textures.ao.sample_triplanar(point, scale)[0] / 255.0;
+            let relief = ((normal[0] - 128.0).abs() + (normal[1] - 128.0).abs()) / 255.0;
+            let surface_light = brightness
+                * (0.76 + ao * 0.24)
+                * (0.95 + relief * 0.12)
+                * (1.0 + fresnel * (1.0 - roughness) * 0.10);
+            let tint = [0.92, 1.0, 0.90];
+            let rgb = std::array::from_fn(|channel| {
+                (color[channel] * tint[channel]).clamp(0.0, 255.0) as u8
+            });
+            return pack(rgb, surface_light);
+        }
+    }
+    if matches!(
+        shader,
+        SurfaceShader::RaceGrassTexture
+            | SurfaceShader::RacePlanetGrassTexture
+            | SurfaceShader::WaterPlanetGrassTexture
+    ) {
+        if let Some(textures) = grass_textures() {
+            let scale = 0.085;
+            let color = textures.color.sample(point.x * scale, point.z * scale);
+            let normal = textures.normal.sample(point.x * scale, point.z * scale);
+            let roughness = textures
+                .roughness
+                .sample(point.x * scale, point.z * scale)[0]
+                / 255.0;
+            let ao = textures.ao.sample(point.x * scale, point.z * scale)[0] / 255.0;
+            let relief = ((normal[0] - 128.0).abs() + (normal[1] - 128.0).abs())
+                / 255.0;
+            let planet_tint = match shader {
+                SurfaceShader::RacePlanetGrassTexture => [0.62, 0.78, 0.67],
+                SurfaceShader::WaterPlanetGrassTexture => [0.82, 0.94, 0.84],
+                _ => [1.0, 1.0, 1.0],
+            };
+            let surface_light = brightness
+                * (0.78 + ao * 0.22)
+                * (0.96 + relief * 0.10)
+                * (1.0 + fresnel * (1.0 - roughness) * 0.12);
+            let rgb = std::array::from_fn(|channel| {
+                (color[channel] * planet_tint[channel]).clamp(0.0, 255.0) as u8
+            });
+            return pack(rgb, surface_light);
+        }
+    }
+    if matches!(
+        shader,
+        SurfaceShader::ArwingBlue
+            | SurfaceShader::AstraCobalt
+            | SurfaceShader::AstraDeepBlue
+            | SurfaceShader::SharkBlueMetal
+    ) {
+        if let Some(texture) = blue_metal_texture() {
+            let sample = texture.sample_triplanar(point, 0.16);
+            let tint = match shader {
+                SurfaceShader::ArwingBlue => [0.92, 1.04, 1.22],
+                SurfaceShader::AstraCobalt => [0.78, 1.05, 1.34],
+                SurfaceShader::AstraDeepBlue => [0.52, 0.68, 0.94],
+                SurfaceShader::SharkBlueMetal => [0.72, 1.02, 1.18],
+                _ => unreachable!(),
+            };
+            let metal_light = brightness * (0.88 + fresnel * 0.52);
+            let rgb = std::array::from_fn(|channel| {
+                (sample[channel] * tint[channel]).clamp(0.0, 255.0) as u8
+            });
+            return pack(rgb, metal_light);
+        }
+    }
     let noise = ((point.x * 31.0).sin() * (point.y * 27.0).cos() + (point.z * 43.0).sin()) * 0.5;
 
     let (red, green, blue, light) = match shader {
@@ -1625,6 +2382,99 @@ fn procedural_surface_color(
             105.0 + fresnel * 72.0,
             0.76 + fresnel * 0.42,
         ),
+        SurfaceShader::SharkBlueMetal => (
+            35.0 + fresnel * 34.0,
+            96.0 + fresnel * 55.0,
+            142.0 + fresnel * 66.0,
+            0.82 + fresnel * 0.40,
+        ),
+        SurfaceShader::RaceGrassTexture => (
+            48.0 + noise * 9.0,
+            126.0 + noise * 18.0,
+            42.0 + noise * 8.0,
+            1.0,
+        ),
+        SurfaceShader::RacePlanetGrassTexture => (
+            34.0 + noise * 8.0,
+            101.0 + noise * 16.0,
+            62.0 + noise * 9.0,
+            1.0,
+        ),
+        SurfaceShader::RaceGroundTexture => (
+            126.0 + noise * 18.0,
+            112.0 + noise * 15.0,
+            78.0 + noise * 12.0,
+            1.0,
+        ),
+        SurfaceShader::RaceBarkTexture => (
+            91.0 + noise * 16.0,
+            68.0 + noise * 12.0,
+            45.0 + noise * 9.0,
+            1.0,
+        ),
+        SurfaceShader::RaceBricksTexture => (
+            122.0 + noise * 17.0,
+            112.0 + noise * 14.0,
+            91.0 + noise * 11.0,
+            1.0,
+        ),
+        SurfaceShader::WaterPlanetSandTexture => (
+            205.0 + noise * 18.0,
+            178.0 + noise * 14.0,
+            112.0 + noise * 10.0,
+            1.0,
+        ),
+        SurfaceShader::WaterPlanetGrassTexture => (
+            45.0 + noise * 9.0,
+            128.0 + noise * 17.0,
+            58.0 + noise * 8.0,
+            1.0,
+        ),
+        SurfaceShader::WaterPlanetPillarTexture => (
+            82.0 + noise * 16.0,
+            87.0 + noise * 15.0,
+            92.0 + noise * 14.0,
+            1.0,
+        ),
+        SurfaceShader::WaterPlanetEarthTexture => (
+            112.0 + noise * 18.0,
+            82.0 + noise * 14.0,
+            52.0 + noise * 11.0,
+            1.0,
+        ),
+        SurfaceShader::WaterLevelRockTexture => (
+            66.0 + noise * 15.0,
+            83.0 + noise * 15.0,
+            96.0 + noise * 15.0,
+            1.0,
+        ),
+        SurfaceShader::WaterLevelSandTexture => (
+            170.0 + noise * 16.0,
+            169.0 + noise * 14.0,
+            126.0 + noise * 11.0,
+            1.0,
+        ),
+        SurfaceShader::WaterMonsterCoreTexture => (
+            112.0 + noise * 20.0,
+            188.0 + noise * 18.0,
+            98.0 + noise * 14.0,
+            1.0,
+        ),
+        SurfaceShader::WaterMonsterTissueTexture => (
+            172.0 + noise * 22.0,
+            42.0 + noise * 10.0,
+            58.0 + noise * 12.0,
+            1.0,
+        ),
+        SurfaceShader::CoreGuardianEnvironmentTexture => (
+            88.0 + noise * 20.0,
+            28.0 + noise * 10.0,
+            76.0 + noise * 17.0,
+            1.0,
+        ),
+        SurfaceShader::DragonBallGlass => (244.0, 132.0, 22.0, 1.0),
+        SurfaceShader::RaceAsphaltClean => (48.0 + noise * 8.0, 49.0 + noise * 8.0, 50.0 + noise * 8.0, 1.0),
+        SurfaceShader::RaceAsphalt04 => (40.0 + noise * 12.0, 42.0 + noise * 12.0, 44.0 + noise * 12.0, 1.0),
         SurfaceShader::AstraRedEmission => {
             let pulse = 0.96 + (time * 7.0 + point.z).sin() * 0.04;
             (
@@ -1782,6 +2632,56 @@ fn refract_water_color(
     let green = (refracted_g * transmission * 0.72 + surface_g * reflection + 8.0).min(255.0);
     let blue = (refracted_b * transmission * depth_tint + surface_b * reflection + 18.0).min(255.0);
     ((red as u32) << 16) | ((green as u32) << 8) | blue as u32
+}
+
+fn refract_dragon_ball_color(
+    surface: u32,
+    background: &[u32],
+    width: usize,
+    height: usize,
+    x: i32,
+    y: i32,
+    point: Vec3,
+    time: f32,
+    fresnel: f32,
+) -> u32 {
+    let lens = (1.0 - fresnel).clamp(0.0, 1.0);
+    let shimmer = (point.x * 5.8 + point.y * 4.2 + time * 1.6).sin();
+    let offset_x = (point.y * 4.4 + shimmer * 1.4) * lens;
+    let offset_y = (-point.z * 3.8 + (point.x * 6.1 - time).cos()) * lens;
+    let sample = |dx: f32, dy: f32| {
+        let sx = (x as f32 + offset_x + dx)
+            .round()
+            .clamp(0.0, width.saturating_sub(1) as f32) as usize;
+        let sy = (y as f32 + offset_y + dy)
+            .round()
+            .clamp(0.0, height.saturating_sub(1) as f32) as usize;
+        background[sy * width + sx]
+    };
+    // Slight channel separation imitates dispersion through the curved shell.
+    let red_sample = sample(1.6 * lens, 0.0);
+    let green_sample = sample(0.0, 0.0);
+    let blue_sample = sample(-1.6 * lens, 0.0);
+    let transmitted = [
+        ((red_sample >> 16) & 0xff) as f32,
+        ((green_sample >> 8) & 0xff) as f32,
+        (blue_sample & 0xff) as f32,
+    ];
+    let shell = [
+        ((surface >> 16) & 0xff) as f32,
+        ((surface >> 8) & 0xff) as f32,
+        (surface & 0xff) as f32,
+    ];
+    let transmission = 0.38 + lens * 0.30;
+    let rim_glow = fresnel.powf(0.55) * 62.0;
+    let rgb: [u32; 3] = std::array::from_fn(|channel| {
+        let amber_filter = [1.04, 0.72, 0.32][channel];
+        (transmitted[channel] * transmission * amber_filter
+            + shell[channel] * (1.0 - transmission)
+            + rim_glow * [1.0, 0.58, 0.18][channel])
+            .clamp(0.0, 255.0) as u32
+    });
+    (rgb[0] << 16) | (rgb[1] << 8) | rgb[2]
 }
 
 fn hash(mut value: u32) -> u32 {
@@ -1970,6 +2870,8 @@ fn make_dragon_ball(star_centers: &[(f32, f32)]) -> Model {
     let mut model = make_sphere(radius, 14, 22, false);
     for face in &mut model.faces {
         *face = Face::new(face.indices, "race_rgb_244_132_22", "dragon_ball");
+        face.shader = SurfaceShader::DragonBallGlass;
+        face.smooth = true;
     }
 
     for (star_index, &(y, z)) in star_centers.iter().enumerate() {
@@ -2228,11 +3130,16 @@ fn make_planet_lod(radius: f32, stacks: usize, slices: usize, visual: PlanetVisu
         let band = index / (slices * 2).max(1);
         let material = match visual {
             PlanetVisual::Water if band < 2 || band + 2 >= stacks => "planet_ice",
-            PlanetVisual::Water if hash(index as u32 * 31) % 5 < 2 => "planet_land",
+            PlanetVisual::Water if hash(index as u32 * 31) % 5 == 0 => {
+                "water_planet_sand_texture"
+            }
+            PlanetVisual::Water if hash(index as u32 * 31) % 5 < 2 => {
+                "water_planet_grass_texture"
+            }
             PlanetVisual::Water => "planet_ocean",
-            PlanetVisual::Spiky if hash(index as u32 * 17) % 7 == 0 => "Coral_claro",
-            PlanetVisual::Spiky if index % 2 == 0 => "Fucsia",
-            PlanetVisual::Spiky => "Magenta_sombra",
+            // The distant LOD contains only the spherical shell; authored
+            // tentacles are restored by the detailed model at close range.
+            PlanetVisual::Spiky => "spiky_planet_vein_texture",
             PlanetVisual::Racing if band == stacks / 2 => "race_rgb_245_208_42",
             PlanetVisual::Racing if index % 3 == 0 => "race_rgb_58_160_107",
             PlanetVisual::Racing => "race_rgb_44_133_88",
@@ -2247,6 +3154,9 @@ fn make_planet_lod(radius: f32, stacks: usize, slices: usize, visual: PlanetVisu
             PlanetVisual::VesperShell => "race_rgb_192_204_184",
         };
         *face = Face::new(face.indices, material, "planet_lod");
+        if matches!(visual, PlanetVisual::Spiky) {
+            face.shader = SurfaceShader::CoreGuardianEnvironmentTexture;
+        }
         face.smooth = true;
     }
     model.recalculate_normals();
@@ -3138,7 +4048,7 @@ impl TriangleBatch {
                 matches!(
                     &command.style,
                     TriangleStyle::Procedural {
-                        shader: SurfaceShader::Ocean,
+                        shader: SurfaceShader::Ocean | SurfaceShader::DragonBallGlass,
                         ..
                     }
                 )
@@ -3236,6 +4146,15 @@ impl TriangleBatch {
                                     if *shader == SurfaceShader::Ocean {
                                         if let Some(background) = refractive_background {
                                             refract_water_color(
+                                                surface, background, width, height, x, y, point,
+                                                *time, *fresnel,
+                                            )
+                                        } else {
+                                            surface
+                                        }
+                                    } else if *shader == SurfaceShader::DragonBallGlass {
+                                        if let Some(background) = refractive_background {
+                                            refract_dragon_ball_color(
                                                 surface, background, width, height, x, y, point,
                                                 *time, *fresnel,
                                             )
@@ -7030,6 +7949,404 @@ mod tests {
     }
 
     #[test]
+    fn blue_metal_texture_loads_and_drives_arwing_and_astra_surfaces() {
+        let texture = blue_metal_texture().expect("blue metal texture must load");
+        assert_eq!((texture.width, texture.height), (256, 256));
+        let point = Vec3::new(1.7, 0.9, -2.4);
+        let arwing = procedural_surface_color(
+            SurfaceShader::ArwingBlue,
+            point,
+            0,
+            0,
+            0.0,
+            1.0,
+            0.25,
+        );
+        let astra = procedural_surface_color(
+            SurfaceShader::AstraCobalt,
+            point,
+            0,
+            0,
+            0.0,
+            1.0,
+            0.25,
+        );
+        assert_ne!(arwing, astra);
+        assert_ne!(arwing, pack([30, 78, 190], 1.0));
+    }
+
+    #[test]
+    fn race_grass_loads_the_complete_optimized_texture_set() {
+        let textures = grass_textures().expect("race grass textures must load");
+        for texture in [
+            &textures.color,
+            &textures.normal,
+            &textures.roughness,
+            &textures.ao,
+        ] {
+            assert_eq!((texture.width, texture.height), (256, 256));
+            assert_eq!(texture.pixels.len(), 256 * 256);
+        }
+        let textured = procedural_surface_color(
+            SurfaceShader::RaceGrassTexture,
+            Vec3::new(18.0, -0.8, 27.0),
+            0,
+            0,
+            0.0,
+            1.0,
+            0.0,
+        );
+        assert_ne!(textured, pack([48, 126, 42], 1.0));
+    }
+
+    #[test]
+    fn race_asphalt_variants_load_and_produce_distinct_surfaces() {
+        let textures = race_asphalt_textures().expect("race asphalt textures must load");
+        for texture in [
+            &textures.clean_color,
+            &textures.clean_height,
+            &textures.asphalt04_color,
+            &textures.asphalt04_height,
+        ] {
+            assert_eq!((texture.width, texture.height), (256, 256));
+        }
+        let point = Vec3::new(108.0, 0.0, 207.0);
+        let clean = procedural_surface_color(
+            SurfaceShader::RaceAsphaltClean,
+            point,
+            0,
+            0,
+            0.0,
+            1.0,
+            0.1,
+        );
+        let asphalt04 = procedural_surface_color(
+            SurfaceShader::RaceAsphalt04,
+            point,
+            0,
+            0,
+            0.0,
+            1.0,
+            0.1,
+        );
+        assert_ne!(clean, asphalt04);
+    }
+
+    #[test]
+    fn ground030_loads_the_complete_optimized_texture_set() {
+        let textures = ground_textures().expect("Ground030 textures must load");
+        for texture in [
+            &textures.color,
+            &textures.normal,
+            &textures.roughness,
+            &textures.ao,
+        ] {
+            assert_eq!((texture.width, texture.height), (256, 256));
+            assert_eq!(texture.pixels.len(), 256 * 256);
+        }
+        let textured = procedural_surface_color(
+            SurfaceShader::RaceGroundTexture,
+            Vec3::new(14.0, 8.0, 21.0),
+            0,
+            0,
+            0.0,
+            1.0,
+            0.15,
+        );
+        assert_ne!(textured, pack([126, 112, 78], 1.0));
+    }
+
+    #[test]
+    fn bark014_loads_the_complete_optimized_texture_set() {
+        let textures = bark_textures().expect("Bark014 textures must load");
+        for texture in [
+            &textures.color,
+            &textures.normal,
+            &textures.roughness,
+            &textures.ao,
+        ] {
+            assert_eq!((texture.width, texture.height), (256, 256));
+            assert_eq!(texture.pixels.len(), 256 * 256);
+        }
+        let textured = procedural_surface_color(
+            SurfaceShader::RaceBarkTexture,
+            Vec3::new(2.0, 5.5, -1.25),
+            0,
+            0,
+            0.0,
+            1.0,
+            0.1,
+        );
+        assert_ne!(textured, pack([91, 68, 45], 1.0));
+    }
+
+    #[test]
+    fn bricks113a_loads_the_complete_optimized_texture_set() {
+        let textures = bricks_textures().expect("Bricks113A textures must load");
+        for texture in [
+            &textures.color,
+            &textures.normal,
+            &textures.roughness,
+            &textures.ao,
+        ] {
+            assert_eq!((texture.width, texture.height), (256, 256));
+            assert_eq!(texture.pixels.len(), 256 * 256);
+        }
+        let textured = procedural_surface_color(
+            SurfaceShader::RaceBricksTexture,
+            Vec3::new(3.5, 7.0, 1.25),
+            0,
+            0,
+            0.0,
+            1.0,
+            0.1,
+        );
+        assert_ne!(textured, pack([122, 112, 91], 1.0));
+    }
+
+    #[test]
+    fn ground054_textures_water_planet_sand_and_grass005_textures_its_grass() {
+        let textures = water_sand_textures().expect("Ground054 textures must load");
+        for texture in [
+            &textures.color,
+            &textures.normal,
+            &textures.roughness,
+            &textures.ao,
+        ] {
+            assert_eq!((texture.width, texture.height), (256, 256));
+            assert_eq!(texture.pixels.len(), 256 * 256);
+        }
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let detailed = load_obj(root.join("assets/planets/water_planet.obj")).unwrap();
+        assert!(detailed
+            .faces
+            .iter()
+            .any(|face| face.shader == SurfaceShader::WaterPlanetSandTexture));
+        assert!(detailed
+            .faces
+            .iter()
+            .any(|face| face.shader == SurfaceShader::WaterPlanetGrassTexture));
+        assert!(detailed.faces.iter().any(|face| {
+            face.material.to_ascii_lowercase().contains("oceano")
+                && face.shader == SurfaceShader::Ocean
+        }));
+
+        let lod = make_planet_lod(WATER_PLANET_RADIUS, 6, 10, PlanetVisual::Water);
+        assert!(lod
+            .faces
+            .iter()
+            .any(|face| face.shader == SurfaceShader::WaterPlanetSandTexture));
+        assert!(lod
+            .faces
+            .iter()
+            .any(|face| face.shader == SurfaceShader::WaterPlanetGrassTexture));
+    }
+
+    #[test]
+    fn asphalt031_textures_only_water_planet_stone_pillars() {
+        let textures = asphalt_textures().expect("Asphalt031 textures must load");
+        for texture in [
+            &textures.color,
+            &textures.normal,
+            &textures.roughness,
+            &textures.ao,
+        ] {
+            assert_eq!((texture.width, texture.height), (256, 256));
+            assert_eq!(texture.pixels.len(), 256 * 256);
+        }
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let planet = load_obj(root.join("assets/planets/water_planet.obj")).unwrap();
+        let pillars: Vec<_> = planet
+            .faces
+            .iter()
+            .filter(|face| {
+                let group = face.group.to_ascii_lowercase();
+                group.starts_with("roca_") && group.contains("_pilar_")
+            })
+            .collect();
+        assert!(!pillars.is_empty());
+        assert!(pillars
+            .iter()
+            .all(|face| face.shader == SurfaceShader::WaterPlanetPillarTexture));
+        assert!(planet.faces.iter().any(|face| {
+            face.group.to_ascii_lowercase().starts_with("roca_")
+                && face.group.to_ascii_lowercase().contains("_cesped_")
+                && face.shader == SurfaceShader::WaterPlanetGrassTexture
+        }));
+    }
+
+    #[test]
+    fn ground048_textures_the_earth_below_water_planet_grass() {
+        let textures = water_earth_textures().expect("Ground048 textures must load");
+        for texture in [
+            &textures.color,
+            &textures.normal,
+            &textures.roughness,
+            &textures.ao,
+        ] {
+            assert_eq!((texture.width, texture.height), (256, 256));
+            assert_eq!(texture.pixels.len(), 256 * 256);
+        }
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let planet = load_obj(root.join("assets/planets/water_planet.obj")).unwrap();
+        let earth_faces: Vec<_> = planet
+            .faces
+            .iter()
+            .filter(|face| face.material.to_ascii_lowercase() == "03_|_tierra.002")
+            .collect();
+        assert!(!earth_faces.is_empty());
+        assert!(earth_faces
+            .iter()
+            .all(|face| face.shader == SurfaceShader::WaterPlanetEarthTexture));
+        assert!(planet
+            .faces
+            .iter()
+            .filter(|face| face.material.to_ascii_lowercase() == "04_|_cesped.002")
+            .all(|face| face.shader == SurfaceShader::WaterPlanetGrassTexture));
+    }
+
+    #[test]
+    fn underwater_level_uses_asphalt_for_stone_and_ground054_for_sand() {
+        assert!(asphalt_textures().is_some());
+        assert!(water_sand_textures().is_some());
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let level = load_obj(root.join("assets/levels/waterlevel_extendido.obj")).unwrap();
+        for material in ["underwater_rock", "blue_stone", "deep_cave_rock"] {
+            let faces: Vec<_> = level
+                .faces
+                .iter()
+                .filter(|face| face.material.to_ascii_lowercase() == material)
+                .collect();
+            assert!(!faces.is_empty(), "missing stone material {material}");
+            assert!(faces
+                .iter()
+                .all(|face| face.shader == SurfaceShader::WaterLevelRockTexture));
+        }
+        let sand: Vec<_> = level
+            .faces
+            .iter()
+            .filter(|face| face.material.to_ascii_lowercase() == "underwater_sand")
+            .collect();
+        assert!(!sand.is_empty());
+        assert!(sand
+            .iter()
+            .all(|face| face.shader == SurfaceShader::WaterLevelSandTexture));
+    }
+
+    #[test]
+    fn guardian_alien_texture_sets_load_optimized() {
+        let egg = alien_egg_textures().expect("AlienEgg textures must load");
+        for texture in [
+            &egg.color,
+            &egg.normal,
+            &egg.roughness,
+            &egg.ao,
+            &egg.emissive,
+        ] {
+            assert_eq!((texture.width, texture.height), (256, 256));
+        }
+        let tissue = alien_tissue_textures().expect("AlienSkinTissue textures must load");
+        for texture in [&tissue.color, &tissue.normal, &tissue.roughness, &tissue.ao] {
+            assert_eq!((texture.width, texture.height), (256, 256));
+        }
+        let veins = alien_vein_textures().expect("AlienVeinSkin textures must load");
+        for texture in [
+            &veins.color,
+            &veins.normal,
+            &veins.roughness,
+            &veins.ao,
+            &veins.emissive,
+        ] {
+            assert_eq!((texture.width, texture.height), (256, 256));
+        }
+    }
+
+    #[test]
+    fn spiky_planet_uses_vein_skin_on_sphere_and_boss_skin_on_tentacles() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let planet = load_obj(root.join("assets/planets/planeta_espinas.obj")).unwrap();
+        let sphere: Vec<_> = planet
+            .faces
+            .iter()
+            .filter(|face| face.material.eq_ignore_ascii_case("Rosa_cuerpo"))
+            .collect();
+        assert!(!sphere.is_empty());
+        assert!(sphere.iter().all(|face| {
+            face.shader == SurfaceShader::CoreGuardianEnvironmentTexture
+        }));
+
+        let tentacle_materials = [
+            "Fucsia",
+            "Magenta_sombra",
+            "Coral_claro",
+            "Durazno",
+            "Crema",
+        ];
+        let tentacles: Vec<_> = planet
+            .faces
+            .iter()
+            .filter(|face| tentacle_materials.iter().any(|material| {
+                face.material.eq_ignore_ascii_case(material)
+            }))
+            .collect();
+        assert!(!tentacles.is_empty());
+        assert!(tentacles.iter().all(|face| {
+            face.shader == SurfaceShader::WaterMonsterTissueTexture
+        }));
+
+        let lod = make_planet_lod(SPIKY_PLANET_RADIUS, 6, 10, PlanetVisual::Spiky);
+        assert!(lod.faces.iter().all(|face| {
+            face.shader == SurfaceShader::CoreGuardianEnvironmentTexture
+        }));
+    }
+
+    #[test]
+    fn exterior_race_planet_textures_only_green_terrain_at_every_lod() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let detailed = load_obj(root.join("assets/planets/planeta_carreras_detallado.obj")).unwrap();
+        assert!(detailed.faces.iter().any(|face| {
+            face.group == "Race_Planet_Terrain"
+                && face.shader == SurfaceShader::RacePlanetGrassTexture
+        }));
+        assert!(detailed.faces.iter().filter(|face| {
+            face.group.contains("Track") || face.group.contains("Boost_Light")
+        }).all(|face| face.shader != SurfaceShader::RacePlanetGrassTexture));
+
+        let lod = make_planet_lod(race_track::PLANET_RADIUS, 6, 10, PlanetVisual::Racing);
+        assert!(lod.faces.iter().any(|face| {
+            face.shader == SurfaceShader::RacePlanetGrassTexture
+        }));
+        assert!(lod.faces.iter().any(|face| {
+            face.material == "race_rgb_245_208_42"
+                && face.shader != SurfaceShader::RacePlanetGrassTexture
+        }));
+    }
+
+    #[test]
+    fn shark_blue_armor_uses_metal_texture_without_touching_lights_or_teeth() {
+        let model = load_obj(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("assets/enemies/acuaticenemies.obj"),
+        )
+        .unwrap();
+        assert!(model.faces.iter().any(|face| {
+            face.group.contains("ENEMY_SHARK_DRONE")
+                && face.shader == SurfaceShader::SharkBlueMetal
+        }));
+        for face in model.faces.iter().filter(|face| {
+            face.group.contains("ENEMY_SHARK_DRONE_Tooth")
+                || face.group.contains("ENEMY_SHARK_DRONE_Eye")
+                || face.group.contains("ENEMY_SHARK_DRONE_Engine_Glow")
+        }) {
+            assert_ne!(face.shader, SurfaceShader::SharkBlueMetal);
+        }
+    }
+
+    #[test]
     fn unified_hud_draws_panels_bars_reticle_and_boss_health() {
         let mut frame = Framebuffer::new(WIDTH, HEIGHT);
         draw_unified_combat_hud(
@@ -7412,6 +8729,46 @@ mod tests {
                 .any(|face| face.group == format!("dragon_star_{star}")));
         }
         assert!(!reward.faces.iter().any(|face| face.group == "dragon_star_3"));
+    }
+
+    #[test]
+    fn every_dragon_ball_uses_refractive_glass_without_texturing_the_stars() {
+        for ball in [
+            make_one_star_dragon_ball(),
+            make_three_star_dragon_ball(),
+            make_four_star_dragon_ball(),
+        ] {
+            let shell: Vec<_> = ball
+                .faces
+                .iter()
+                .filter(|face| face.group == "dragon_ball")
+                .collect();
+            assert!(!shell.is_empty());
+            assert!(shell
+                .iter()
+                .all(|face| face.shader == SurfaceShader::DragonBallGlass && face.smooth));
+            assert!(ball
+                .faces
+                .iter()
+                .filter(|face| face.group.starts_with("dragon_star_"))
+                .all(|face| face.shader != SurfaceShader::DragonBallGlass));
+        }
+
+        let background = vec![0x204060; 16 * 16];
+        let surface = 0xf48416;
+        let refracted = refract_dragon_ball_color(
+            surface,
+            &background,
+            16,
+            16,
+            8,
+            8,
+            Vec3::new(0.7, -0.3, 1.1),
+            0.5,
+            0.2,
+        );
+        assert_ne!(refracted, surface);
+        assert_ne!(refracted, background[0]);
     }
 
     #[test]

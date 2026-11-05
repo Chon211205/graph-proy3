@@ -6,6 +6,9 @@ pub(super) const CURB_WIDTH: f32 = 1.8;
 // Fourteen samples preserve the authored final curve while cutting redundant
 // nearest-point searches and static geometry for all thirteen racers.
 const SAMPLES_PER_SPAN: usize = 14;
+// Maximum longitudinal subdivision: every road segment alternates material,
+// while both triangles across its width still share the same asphalt.
+const ASPHALT_SECTION_SAMPLES: usize = 1;
 
 const CONTROL_POINTS: [Vec3; 25] = [
     Vec3::new(72.0, 0.0, 207.0),
@@ -115,6 +118,16 @@ impl RaceCourse {
                 },
                 "asphalt",
             );
+            // Alternate in short runs instead of every polygon, so each
+            // asphalt remains readable without lasting an entire curve.
+            let asphalt_shader = if (index / ASPHALT_SECTION_SAMPLES).is_multiple_of(2) {
+                SurfaceShader::RaceAsphaltClean
+            } else {
+                SurfaceShader::RaceAsphalt04
+            };
+            for face in road.faces.iter_mut().rev().take(2) {
+                face.shader = asphalt_shader;
+            }
             for direction in [-1.0, 1.0] {
                 let inner = HALF_ROAD * direction;
                 let outer = (HALF_ROAD + CURB_WIDTH) * direction;
@@ -408,6 +421,28 @@ mod tests {
         assert_eq!(course.curbs.len(), 18);
         assert_eq!(course.barriers.len(), 18);
         assert!(!course.road.iter().any(|chunk| chunk.faces.is_empty()));
+        let clean_faces = course
+            .road
+            .iter()
+            .flat_map(|chunk| &chunk.faces)
+            .filter(|face| face.shader == SurfaceShader::RaceAsphaltClean)
+            .count();
+        let asphalt04_faces = course
+            .road
+            .iter()
+            .flat_map(|chunk| &chunk.faces)
+            .filter(|face| face.shader == SurfaceShader::RaceAsphalt04)
+            .count();
+        assert!(clean_faces > 0 && asphalt04_faces > 0);
+        assert_eq!(clean_faces + asphalt04_faces, course.samples.len() * 2);
+        assert!(course
+            .curbs
+            .iter()
+            .flat_map(|chunk| &chunk.faces)
+            .all(|face| !matches!(
+                face.shader,
+                SurfaceShader::RaceAsphaltClean | SurfaceShader::RaceAsphalt04
+            )));
         assert!(!course.curbs.iter().any(|chunk| chunk.faces.is_empty()));
         assert_eq!(
             course.barriers.iter().map(|chunk| chunk.faces.len()).sum::<usize>(),

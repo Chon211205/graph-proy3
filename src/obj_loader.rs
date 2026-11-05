@@ -74,6 +74,24 @@ pub enum SurfaceShader {
     AstraCobalt,
     AstraDeepBlue,
     AstraRedEmission,
+    SharkBlueMetal,
+    RaceGrassTexture,
+    RacePlanetGrassTexture,
+    RaceGroundTexture,
+    RaceBarkTexture,
+    RaceBricksTexture,
+    WaterPlanetSandTexture,
+    WaterPlanetGrassTexture,
+    WaterPlanetPillarTexture,
+    WaterPlanetEarthTexture,
+    WaterLevelRockTexture,
+    WaterLevelSandTexture,
+    WaterMonsterCoreTexture,
+    WaterMonsterTissueTexture,
+    CoreGuardianEnvironmentTexture,
+    DragonBallGlass,
+    RaceAsphaltClean,
+    RaceAsphalt04,
     CowboyYellowPaint,
     CowboyRedPaint,
     CowboyOrangeEmission,
@@ -200,7 +218,22 @@ impl Model {
 }
 
 fn classify_surface(name: &str) -> SurfaceShader {
-    if name.starts_with("enemy_laser_") {
+    if matches!(name, "underwater_rock" | "blue_stone" | "deep_cave_rock") {
+        SurfaceShader::WaterLevelRockTexture
+    } else if name == "underwater_sand" {
+        SurfaceShader::WaterLevelSandTexture
+    } else if name == "03_|_tierra.002" || name == "water_planet_earth_texture" {
+        SurfaceShader::WaterPlanetEarthTexture
+    } else if name == "06_|_arena.002" || name == "water_planet_sand_texture" {
+        SurfaceShader::WaterPlanetSandTexture
+    } else if name == "04_|_cesped.002" || name == "water_planet_grass_texture" {
+        SurfaceShader::WaterPlanetGrassTexture
+    } else if matches!(
+        name,
+        "race_rgb_25_92_61" | "race_rgb_44_133_88" | "race_rgb_58_160_107"
+    ) {
+        SurfaceShader::RacePlanetGrassTexture
+    } else if name.starts_with("enemy_laser_") {
         SurfaceShader::AstraRedEmission
     } else if matches!(name, "kirbycar_cyanglow") {
         SurfaceShader::BuzzEmission
@@ -705,6 +738,36 @@ pub fn load_obj(path: impl AsRef<Path>) -> Result<Model, String> {
                         material.clone(),
                         group.clone(),
                     );
+                    if group.contains("ENEMY_SHARK_DRONE")
+                        && matches!(
+                            material.as_str(),
+                            "race_rgb_31_105_151" | "race_rgb_105_123_139"
+                        )
+                    {
+                        face.shader = SurfaceShader::SharkBlueMetal;
+                    }
+                    let normalized_group = group.to_ascii_lowercase();
+                    if normalized_group.starts_with("roca_")
+                        && normalized_group.contains("_pilar_")
+                    {
+                        face.shader = SurfaceShader::WaterPlanetPillarTexture;
+                    }
+                    if normalized_group == "planeta_espinas" {
+                        face.shader = if material.eq_ignore_ascii_case("Rosa_cuerpo") {
+                            SurfaceShader::CoreGuardianEnvironmentTexture
+                        } else if matches!(
+                            material.to_ascii_lowercase().as_str(),
+                            "fucsia"
+                                | "magenta_sombra"
+                                | "coral_claro"
+                                | "durazno"
+                                | "crema"
+                        ) {
+                            SurfaceShader::WaterMonsterTissueTexture
+                        } else {
+                            face.shader
+                        };
+                    }
                     face.smooth = smooth;
                     model.faces.push(face);
                 }
