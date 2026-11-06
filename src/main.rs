@@ -1450,9 +1450,21 @@ fn material_radius(model: &Model, center: Vec3, material_name: &str) -> f32 {
 fn screen_size() -> (usize, usize) {
     #[cfg(target_os = "windows")]
     {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{
-            GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN,
-        };
+        #[link(name = "user32")]
+        unsafe extern "system" {
+            fn GetSystemMetrics(index: i32) -> i32;
+            fn SetProcessDPIAware() -> i32;
+        }
+
+        const SM_CXSCREEN: i32 = 0;
+        const SM_CYSCREEN: i32 = 1;
+        // Request physical monitor pixels before querying its size. Without
+        // this, Windows can expose a smaller DPI-virtualized resolution and
+        // then enlarge the finished frame, which makes fullscreen look soft.
+        static DPI_AWARE: OnceLock<()> = OnceLock::new();
+        DPI_AWARE.get_or_init(|| unsafe {
+            SetProcessDPIAware();
+        });
         let width = unsafe { GetSystemMetrics(SM_CXSCREEN) };
         let height = unsafe { GetSystemMetrics(SM_CYSCREEN) };
         if width > 0 && height > 0 {
@@ -1475,8 +1487,8 @@ fn create_window(fullscreen: bool) -> Result<Window, minifb::Error> {
         WindowOptions {
             borderless: fullscreen,
             resize: !fullscreen,
-            // Fill the physical display in fullscreen instead of adding
-            // pillarbox bars when its aspect ratio differs from the renderer.
+            // Fill the complete physical display. This keeps the existing
+            // render resolution and cost while avoiding fullscreen side bars.
             scale_mode: ScaleMode::Stretch,
             ..WindowOptions::default()
         },
@@ -6157,10 +6169,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             "No se pudieron cargar los sprites de Torre: {error}"
         ))
     })?;
-    let tower_audio_device = raylib::core::audio::RaylibAudio::init_audio_device().ok();
-    let tower_audio = tower_audio_device
-        .as_ref()
-        .map(tower_guard::TowerAudio::load);
+    let tower_audio = tower_guard::TowerAudio::load();
     let buzz_variants = [
         load_obj("assets/vehicles/buzz/buzz_nave_detallada.obj")?,
         load_obj("assets/vehicles/buzz/buzz_carro_detallado.obj")?,
@@ -7180,12 +7189,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     scene_framebuffer.height,
                     &tower_sprites,
                 );
-                if let Some(audio) = &tower_audio {
-                    for cue in tower_game.take_audio_cues().into_iter().flatten() {
-                        audio.play(cue);
-                    }
-                } else {
-                    let _ = tower_game.take_audio_cues();
+                for cue in tower_game.take_audio_cues().into_iter().flatten() {
+                    tower_audio.play(cue);
                 }
                 match action {
                     tower_guard::TowerAction::Continue => {}
