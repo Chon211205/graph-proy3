@@ -590,8 +590,8 @@ impl TowerGame {
         }
     }
 
-    pub fn draw_hud(&self, frame: &mut crate::framebuffer::Framebuffer) {
-        draw_hud(self, frame);
+    pub fn draw_hud(&self, frame: &mut crate::framebuffer::Framebuffer, sprites: &SpriteBank) {
+        draw_hud(self, frame, sprites);
     }
 }
 
@@ -865,7 +865,7 @@ mod tests {
         }
         let mut frame = crate::framebuffer::Framebuffer::new(1200, 800);
         game.render(&mut frame, &sprites);
-        game.draw_hud(&mut frame);
+        game.draw_hud(&mut frame, &sprites);
         frame
             .save_png(&path)
             .expect("preview screenshot should be writable");

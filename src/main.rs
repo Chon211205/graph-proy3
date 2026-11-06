@@ -7550,7 +7550,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             );
         }
         if game_mode == GameMode::TowerGuard {
-            tower_game.draw_hud(&mut framebuffer);
+            tower_game.draw_hud(&mut framebuffer, &tower_sprites);
         }
         if performance_hud {
             let stats = triangle_batch.stats();

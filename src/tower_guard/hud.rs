@@ -1,8 +1,8 @@
 use crate::{HEIGHT, WIDTH, draw_selection_label, framebuffer::Framebuffer};
 
-use super::{BossKind, Phase, TowerGame};
+use super::{BossKind, Phase, TowerGame, sprites::SpriteBank};
 
-pub(super) fn draw_hud(game: &TowerGame, frame: &mut Framebuffer) {
+pub(super) fn draw_hud(game: &TowerGame, frame: &mut Framebuffer, sprites: &SpriteBank) {
     let center_x = (frame.width / 2) as i32;
     let scale = (2.0 * frame.width as f32 / WIDTH as f32)
         .clamp(1.0, 2.4)
@@ -10,8 +10,10 @@ pub(super) fn draw_hud(game: &TowerGame, frame: &mut Framebuffer) {
     let y_scale = frame.height as f32 / HEIGHT as f32;
     let y = |base: i32| (base as f32 * y_scale) as i32;
 
-    if game.lost_defense_flash > 0.0 {
-        draw_damage_overlay(frame, game.lost_defense_flash / super::DAMAGE_FLASH_SECONDS);
+    let injury = (5_u8.saturating_sub(game.defenses) as f32 / 5.0).powf(1.35) * 0.78;
+    let impact = game.lost_defense_flash / super::DAMAGE_FLASH_SECONDS;
+    if injury > 0.0 || impact > 0.0 {
+        draw_damage_overlay(frame, injury, impact);
     }
 
     draw_selection_label(
@@ -141,7 +143,7 @@ pub(super) fn draw_hud(game: &TowerGame, frame: &mut Framebuffer) {
     );
 
     if matches!(game.phase, Phase::Victory | Phase::Defeat) {
-        draw_result(game, frame, center_x, y_scale, scale.max(1));
+        draw_result(game, frame, center_x, y_scale, scale.max(1), sprites);
     }
     if game.lost_defense_flash > 0.0 {
         draw_selection_label(
@@ -155,25 +157,9 @@ pub(super) fn draw_hud(game: &TowerGame, frame: &mut Framebuffer) {
     }
 }
 
-fn draw_damage_overlay(frame: &mut Framebuffer, remaining: f32) {
-    let strength = remaining.clamp(0.0, 1.0).powf(0.72);
-    let band_x = (frame.width as f32 * 0.20).max(1.0);
-    let band_y = (frame.height as f32 * 0.18).max(1.0);
-    for y in 0..frame.height {
-        let edge_y = y.min(frame.height.saturating_sub(1) - y) as f32;
-        for x in 0..frame.width {
-            let edge_x = x.min(frame.width.saturating_sub(1) - x) as f32;
-            let distance = (edge_x / band_x).min(edge_y / band_y).clamp(0.0, 1.0);
-            let falloff = 1.0 - distance;
-            if falloff <= 0.0 {
-                continue;
-            }
-            let alpha = strength * falloff * falloff * 0.66;
-            let index = y * frame.width + x;
-            frame.pixels[index] = tint_toward_blood(frame.pixels[index], alpha);
-        }
-    }
-
+fn draw_damage_overlay(frame: &mut Framebuffer, injury: f32, impact: f32) {
+    let strength = injury.clamp(0.0, 0.78);
+    let impact = impact.clamp(0.0, 1.0).powf(0.72);
     let w = frame.width as f32;
     let h = frame.height as f32;
     let stains = [
@@ -187,8 +173,18 @@ fn draw_damage_overlay(frame: &mut Framebuffer, remaining: f32) {
         (0.39, 0.015, 0.034, 0.054),
         (0.70, 0.020, 0.026, 0.046),
     ];
-    for (cx, cy, rx, ry) in stains {
-        draw_blood_stain(frame, cx * w, cy * h, rx * w, ry * h, strength);
+    let blood = (strength + impact * 0.88).clamp(0.0, 1.0);
+    let stain_count = (2.0 + blood * (stains.len() as f32 - 2.0)).ceil() as usize;
+    let size_scale = 0.8 + blood * 0.45;
+    for (cx, cy, rx, ry) in stains.into_iter().take(stain_count) {
+        draw_blood_stain(
+            frame,
+            cx * w,
+            cy * h,
+            rx * w * size_scale,
+            ry * h * size_scale,
+            blood,
+        );
     }
 }
 
@@ -207,7 +203,7 @@ fn draw_blood_stain(frame: &mut Framebuffer, cx: f32, cy: f32, rx: f32, ry: f32,
             if radius > rough_edge {
                 continue;
             }
-            let alpha = strength * (0.20 + (1.0 - radius / rough_edge) * 0.55);
+            let alpha = strength * (0.14 + (1.0 - radius / rough_edge) * 0.68);
             let index = y * frame.width + x;
             frame.pixels[index] = tint_toward_blood(frame.pixels[index], alpha);
         }
@@ -223,26 +219,25 @@ fn tint_toward_blood(color: u32, alpha: f32) -> u32 {
     (channel(16, 156) << 16) | (channel(8, 8) << 8) | channel(0, 20)
 }
 
-fn draw_result(game: &TowerGame, frame: &mut Framebuffer, center_x: i32, y_scale: f32, scale: i32) {
-    let title = if game.phase == Phase::Victory {
-        "VICTORIA - TORRE DEFENDIDA"
-    } else {
-        "DERROTA - DEFENSA AGOTADA"
-    };
+fn draw_result(
+    game: &TowerGame,
+    frame: &mut Framebuffer,
+    center_x: i32,
+    y_scale: f32,
+    scale: i32,
+    sprites: &SpriteBank,
+) {
+    let won = game.phase == Phase::Victory;
     let y = |base: i32| (base as f32 * y_scale) as i32;
-    draw_panel(frame, 0x090e12, 0.18, 0.30, 0.82, 0.88);
-    draw_selection_label(
+    draw_panel(frame, 0x050709, 0.18, 0.28, 0.82, 0.89);
+    sprites.draw_result_title(
         frame,
-        title,
-        center_x,
-        y(HEIGHT as i32 * 34 / 100),
-        scale.max(1),
-        if game.phase == Phase::Victory {
-            0xffd17b
-        } else {
-            0xff8173
-        },
+        won,
+        center_x as f32,
+        frame.height as f32 * 0.34,
+        frame.height as f32 * 0.105,
     );
+    let mini_scale = (scale / 2).max(1);
     let accuracy = format!(
         "PUNTUACION {}   PRECISION {}%",
         game.stats.score,
@@ -252,8 +247,8 @@ fn draw_result(game: &TowerGame, frame: &mut Framebuffer, center_x: i32, y_scale
         frame,
         &accuracy,
         center_x,
-        y(HEIGHT as i32 * 43 / 100),
-        scale.max(1),
+        y(HEIGHT as i32 * 54 / 100),
+        mini_scale,
         0xf1e8d9,
     );
     let totals = format!(
@@ -264,14 +259,14 @@ fn draw_result(game: &TowerGame, frame: &mut Framebuffer, center_x: i32, y_scale
         frame,
         &totals,
         center_x,
-        y(HEIGHT as i32 * 51 / 100),
-        scale.max(1),
+        y(HEIGHT as i32 * 61 / 100),
+        mini_scale,
         0xc6d4d2,
     );
     draw_button(
         frame,
         center_x,
-        y(HEIGHT as i32 * 73 / 100),
+        y(HEIGHT as i32 * 74 / 100),
         "REINTENTAR  ENTER",
         0xffba58,
     );
