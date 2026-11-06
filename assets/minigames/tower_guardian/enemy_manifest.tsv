@@ -1,9 +1,9 @@
 # id|display|source|sprite|role|hp|head_box(x1,y1,x2,y2)|weak_box(x1,y1,x2,y2)
 white_shirt|Zombi de camisa rota|assets/minigames/tower_guardian/source/white-shirt-zombie.png|assets/minigames/tower_guardian/sprites/white-shirt-zombie.png|normal|1|0.34,0.04,0.68,0.25|-
-green_brute|Zombi corpulento|assets/minigames/tower_guardian/source/green-brute.png|assets/minigames/tower_guardian/sprites/green-brute.png|heavy|2|0.37,0.01,0.63,0.20|-
-blue_vest|Zombi de chaleco azul|assets/minigames/tower_guardian/source/blue-vest-zombie.png|assets/minigames/tower_guardian/sprites/blue-vest-zombie.png|normal|1|0.38,0.04,0.65,0.25|-
+green_brute|Zombi corpulento|assets/minigames/tower_guardian/source/green-brute.png|assets/minigames/tower_guardian/sprites/green-brute.png|heavy|3|0.37,0.01,0.63,0.20|-
+blue_vest|Zombi de chaleco azul|assets/minigames/tower_guardian/source/blue-vest-zombie.png|assets/minigames/tower_guardian/sprites/blue-vest-zombie.png|normal|2|0.38,0.04,0.65,0.25|-
 orange_claw|Criatura naranja|assets/minigames/tower_guardian/source/orange-clawed-monster.png|assets/minigames/tower_guardian/sprites/orange-clawed-monster.png|fast|1|0.32,0.04,0.69,0.34|-
-blue_claw|Criatura azul|assets/minigames/tower_guardian/source/blue-clawed-monster.png|assets/minigames/tower_guardian/sprites/blue-clawed-monster.png|fast|1|0.31,0.04,0.70,0.34|-
-black_creature|Criatura negra de garras|assets/minigames/tower_guardian/source/black-creature.png|assets/minigames/tower_guardian/sprites/black-creature.png|normal|1|0.32,0.04,0.68,0.36|-
+blue_claw|Criatura azul|assets/minigames/tower_guardian/source/blue-clawed-monster.png|assets/minigames/tower_guardian/sprites/blue-clawed-monster.png|fast|2|0.31,0.04,0.70,0.34|-
+black_creature|Criatura negra de garras|assets/minigames/tower_guardian/source/black-creature.png|assets/minigames/tower_guardian/sprites/black-creature.png|normal|2|0.32,0.04,0.68,0.36|-
 hat_boss|Jefe del sombrero|assets/minigames/tower_guardian/source/boss-hat.png|assets/minigames/tower_guardian/sprites/boss-hat.png|boss|24|0.32,0.02,0.68,0.22|0.36,0.22,0.65,0.48
 rocket_boss|Jefe del lanzacohetes|assets/minigames/tower_guardian/source/boss-rocket.png|assets/minigames/tower_guardian/sprites/boss-rocket.png|boss|32|0.36,0.04,0.62,0.22|0.42,0.25,0.61,0.50

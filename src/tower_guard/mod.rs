@@ -27,6 +27,7 @@ pub use state::{InputFrame, Phase};
 
 const BOSS_INTRO_SECONDS: f32 = 2.4;
 const BOSS_DEFEAT_SECONDS: f32 = 2.1;
+const ENEMY_FALL_SECONDS: f32 = 1.1;
 const AIM_ARROW_SPEED: f32 = 0.62;
 const MAX_HELPERS: usize = 2;
 const MAX_NORMAL_ENEMIES: usize = 2;
@@ -444,6 +445,9 @@ impl TowerGame {
             return;
         }
         sprites.get(enemy.kind).sprite.draw(frame, pose);
+        if enemy.state != LifeState::Falling {
+            draw_enemy_health(frame, pose, enemy.health);
+        }
         if enemy.hit_flash > 0.0 {
             let (r, g, b) = if enemy.killed_by_headshot {
                 (255, 204, 92)
@@ -459,7 +463,12 @@ impl TowerGame {
             );
         }
         if enemy.state == LifeState::Falling {
-            draw_fall_dust(frame, pose.anchor_x, pose.anchor_y, enemy.state_timer);
+            draw_fall_dust(
+                frame,
+                pose.anchor_x,
+                pose.anchor_y,
+                ENEMY_FALL_SECONDS - enemy.state_timer,
+            );
         }
     }
 
@@ -529,7 +538,7 @@ impl TowerGame {
         let mut y = 0.57 + enemy.depth * 0.33;
         let mut rotation = (enemy.elapsed * 7.4 + enemy.seed).sin() * 0.035;
         let mut alpha = 1.0;
-        let mut h = sprite_height;
+        let h = sprite_height;
         match enemy.state {
             LifeState::Walking => {
                 y += (enemy.elapsed * 12.5 + enemy.seed).sin() * 0.006;
@@ -543,11 +552,10 @@ impl TowerGame {
                 alpha = (enemy.state_timer / 0.42).clamp(0.0, 1.0);
             }
             LifeState::Falling => {
-                let fall = (1.0 - enemy.state_timer / 0.65).clamp(0.0, 1.0);
-                rotation += fall * 0.92;
-                y += fall * 0.07;
-                h *= 1.0 - fall * 0.10;
-                alpha = 1.0 - fall * 0.60;
+                let fall = (1.0 - enemy.state_timer / ENEMY_FALL_SECONDS).clamp(0.0, 1.0);
+                rotation += fall * 1.25;
+                y += fall * 0.085;
+                alpha = 1.0 - ((fall - 0.72) / 0.28).clamp(0.0, 1.0);
             }
             LifeState::Telegraph | LifeState::Gone => {}
         }
@@ -592,6 +600,32 @@ fn base_height(kind: EnemyKind) -> f32 {
         EnemyKind::HatBoss => 0.56,
         EnemyKind::RocketBoss => 0.59,
         _ => 0.36,
+    }
+}
+
+fn draw_enemy_health(frame: &mut crate::framebuffer::Framebuffer, pose: SpritePose, health: u8) {
+    if health <= 1 {
+        return;
+    }
+    let scale = (pose.height / 150.0).clamp(0.65, 1.25);
+    let pip_width = (8.0 * scale).round() as i32;
+    let pip_height = (4.0 * scale).round() as i32;
+    let gap = (3.0 * scale).round() as i32;
+    let total = i32::from(health) * pip_width + (i32::from(health) - 1) * gap;
+    let left = pose.anchor_x.round() as i32 - total / 2;
+    let top = (pose.anchor_y - pose.height - 8.0 * scale).round() as i32;
+    for pip in 0..i32::from(health) {
+        let x = left + pip * (pip_width + gap);
+        for y in 0..pip_height {
+            for dx in 0..pip_width {
+                put(
+                    frame,
+                    x + dx,
+                    top + y,
+                    if y == 0 { 0xffd078 } else { 0xd65336 },
+                );
+            }
+        }
     }
 }
 

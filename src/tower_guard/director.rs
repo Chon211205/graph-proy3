@@ -69,7 +69,11 @@ mod tests {
                 let enemies = group(round, index).unwrap();
                 let required: u8 = enemies
                     .iter()
-                    .map(|kind| if *kind == EnemyKind::GreenBrute { 2 } else { 1 })
+                    .map(|kind| match kind {
+                        EnemyKind::GreenBrute => 3,
+                        EnemyKind::BlueVest | EnemyKind::BlueClaw | EnemyKind::BlackCreature => 2,
+                        _ => 1,
+                    })
                     .sum();
                 assert!(enemies.len() <= 2);
                 assert!(required <= NORMAL_GROUP_AMMO);

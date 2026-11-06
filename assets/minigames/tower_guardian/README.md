@@ -2,7 +2,7 @@
 
 Este minijuego se abre al orbitar la Casa Torre, el tercer cuerpo de la galaxia Vesper, y pulsar Enter. Al volver, la nave conserva su selección y su órbita.
 
-Los PNG de `source/` son las referencias originales y permanecen intactos. `enemy_manifest.tsv` define la identidad, salud y zonas de impacto de los seis enemigos y los dos jefes. Los sprites transparentes se regeneran con:
+Los PNG de `source/` son las referencias originales y permanecen intactos. `enemy_manifest.tsv` define la identidad, salud y zonas de impacto de los seis enemigos y los dos jefes. Los sprites transparentes se regeneran con; el proceso también elimina islas blancas grandes encerradas entre extremidades y conserva los detalles blancos pequeños de caras y dientes:
 
 ```powershell
 python scripts/prepare_tower_guard_sprites.py
