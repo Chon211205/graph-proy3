@@ -33,6 +33,7 @@ use triangle::{ScreenVertex, draw_triangle_shaded_region};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
+const START_FULLSCREEN: bool = true;
 const NEAR_PLANE: f32 = 0.2;
 const FAR_PLANE: f32 = 750.0;
 const VERTICAL_FOV: f32 = 60.0_f32.to_radians();
@@ -87,7 +88,10 @@ const LEVEL_RENDER_BEHIND: f32 = 48.0;
 const LEVEL_RENDER_AHEAD: f32 = 112.0;
 const COLLISION_GRID_CELL_SIZE: f32 = 12.0;
 const MAX_BUBBLE_PARTICLES: usize = 256;
-const RESOLUTION_SCALES: [f32; 4] = [1.0, 0.9, 0.75, 0.6];
+const MIN_SURFACE_TEXTURE_SIZE: usize = 512;
+// Favor image quality when adaptive resolution is needed. The old 60% floor
+// made fine geometry and texture detail visibly pixelated on demanding scenes.
+const RESOLUTION_SCALES: [f32; 4] = [1.0, 0.95, 0.85, 0.75];
 
 fn water_reward_position() -> Vec3 {
     Vec3::new(-WATER_REWARD_PROGRESS, 7.2, 0.0)
@@ -263,7 +267,13 @@ fn upscale_scene(source: &Framebuffer, target: &mut Framebuffer) {
                 let top = channel(colors[0]) + (channel(colors[1]) - channel(colors[0])) * fx;
                 let bottom =
                     channel(colors[2]) + (channel(colors[3]) - channel(colors[2])) * fx;
-                (top + (bottom - top) * fy).round() as u32
+                let bilinear = top + (bottom - top) * fy;
+                // Mild reconstruction sharpening offsets bilinear blur without
+                // reintroducing the blockiness of nearest-neighbor scaling.
+                let neighborhood = colors.iter().map(|&color| channel(color)).sum::<f32>() * 0.25;
+                (bilinear + (bilinear - neighborhood) * 0.14)
+                    .clamp(0.0, 255.0)
+                    .round() as u32
             };
             target.pixels[target_row + x] =
                 (interpolate(16) << 16) | (interpolate(8) << 8) | interpolate(0);
@@ -1445,6 +1455,8 @@ fn create_window(fullscreen: bool) -> Result<Window, minifb::Error> {
         WindowOptions {
             borderless: fullscreen,
             resize: !fullscreen,
+            // Fill the physical display in fullscreen instead of adding
+            // pillarbox bars when its aspect ratio differs from the renderer.
             scale_mode: ScaleMode::Stretch,
             ..WindowOptions::default()
         },
@@ -1499,7 +1511,11 @@ impl SurfaceTexture {
         };
         let source_width = info.width as usize;
         let source_height = info.height as usize;
-        let size = target_size.min(source_width).min(source_height).max(1);
+        let size = target_size
+            .max(MIN_SURFACE_TEXTURE_SIZE)
+            .min(source_width)
+            .min(source_height)
+            .max(1);
         let mut pixels = Vec::with_capacity(size * size);
         for y in 0..size {
             let source_y = y * source_height / size;
@@ -1927,19 +1943,19 @@ fn bricks_textures() -> Option<&'static BricksTextures> {
             Some(BricksTextures {
                 color: SurfaceTexture::load_png(
                     &format!("{root}/Bricks113A_1K-PNG_Color.png"),
-                    256,
+                    512,
                 )?,
                 normal: SurfaceTexture::load_png(
                     &format!("{root}/Bricks113A_1K-PNG_NormalGL.png"),
-                    256,
+                    512,
                 )?,
                 roughness: SurfaceTexture::load_png(
                     &format!("{root}/Bricks113A_1K-PNG_Roughness.png"),
-                    256,
+                    512,
                 )?,
                 ao: SurfaceTexture::load_png(
                     &format!("{root}/Bricks113A_1K-PNG_AmbientOcclusion.png"),
-                    256,
+                    512,
                 )?,
             })
         })
@@ -5984,7 +6000,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let kirby_submarine_model = load_obj(kirby_submarine_path)
         .map_err(|error| format!("Error al cargar {kirby_submarine_path}: {error}"))?;
 
-    let mut fullscreen = false;
+    let mut fullscreen = START_FULLSCREEN;
     let mut window = create_window(fullscreen)?;
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     let buzz_variants = [
@@ -7933,7 +7949,7 @@ mod tests {
             resolution.update(1.0 / 40.0, RenderStats::default());
         }
         assert_eq!(resolution.scale_index, 1);
-        assert_eq!(resolution.dimensions(), (1080, 720));
+        assert_eq!(resolution.dimensions(), (1140, 760));
 
         for _ in 0..600 {
             resolution.update(1.0 / 100.0, RenderStats::default());
@@ -7958,6 +7974,14 @@ mod tests {
         assert!(resolution.toggle());
         assert!(!resolution.enabled);
         assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
+    }
+
+    #[test]
+    fn dynamic_resolution_preserves_a_high_quality_floor() {
+        let mut resolution = DynamicResolution::new();
+        resolution.scale_index = RESOLUTION_SCALES.len() - 1;
+        assert_eq!(resolution.percentage(), 75);
+        assert_eq!(resolution.dimensions(), (900, 600));
     }
 
     #[test]
@@ -8085,7 +8109,7 @@ mod tests {
     #[test]
     fn blue_metal_texture_loads_and_drives_arwing_and_astra_surfaces() {
         let texture = blue_metal_texture().expect("blue metal texture must load");
-        assert_eq!((texture.width, texture.height), (256, 256));
+        assert_eq!((texture.width, texture.height), (512, 512));
         let point = Vec3::new(1.7, 0.9, -2.4);
         let arwing = procedural_surface_color(
             SurfaceShader::ArwingBlue,
@@ -8118,8 +8142,8 @@ mod tests {
             &textures.roughness,
             &textures.ao,
         ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
-            assert_eq!(texture.pixels.len(), 256 * 256);
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
         }
         let textured = procedural_surface_color(
             SurfaceShader::RaceGrassTexture,
@@ -8136,14 +8160,19 @@ mod tests {
     #[test]
     fn race_asphalt_variants_load_and_produce_distinct_surfaces() {
         let textures = race_asphalt_textures().expect("race asphalt textures must load");
-        for texture in [
+        let maps = [
             &textures.clean_color,
             &textures.clean_height,
             &textures.asphalt04_color,
             &textures.asphalt04_height,
-        ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
+        ];
+        for texture in maps {
+            // Optimized color maps are 256 px while the authored height maps
+            // retain 512 px of useful detail.
+            assert!((256..=512).contains(&texture.width));
+            assert_eq!(texture.width, texture.height);
         }
+        assert!(maps.iter().any(|texture| texture.width == 512));
         let point = Vec3::new(108.0, 0.0, 207.0);
         let clean = procedural_surface_color(
             SurfaceShader::RaceAsphaltClean,
@@ -8175,8 +8204,8 @@ mod tests {
             &textures.roughness,
             &textures.ao,
         ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
-            assert_eq!(texture.pixels.len(), 256 * 256);
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
         }
         let textured = procedural_surface_color(
             SurfaceShader::RaceGroundTexture,
@@ -8199,8 +8228,8 @@ mod tests {
             &textures.roughness,
             &textures.ao,
         ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
-            assert_eq!(texture.pixels.len(), 256 * 256);
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
         }
         let textured = procedural_surface_color(
             SurfaceShader::RaceBarkTexture,
@@ -8223,8 +8252,8 @@ mod tests {
             &textures.roughness,
             &textures.ao,
         ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
-            assert_eq!(texture.pixels.len(), 256 * 256);
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
         }
         let textured = procedural_surface_color(
             SurfaceShader::RaceBricksTexture,
@@ -8247,8 +8276,8 @@ mod tests {
             &textures.roughness,
             &textures.ao,
         ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
-            assert_eq!(texture.pixels.len(), 256 * 256);
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
         }
 
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -8286,8 +8315,8 @@ mod tests {
             &textures.roughness,
             &textures.ao,
         ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
-            assert_eq!(texture.pixels.len(), 256 * 256);
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
         }
 
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -8320,8 +8349,8 @@ mod tests {
             &textures.roughness,
             &textures.ao,
         ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
-            assert_eq!(texture.pixels.len(), 256 * 256);
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
         }
 
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
