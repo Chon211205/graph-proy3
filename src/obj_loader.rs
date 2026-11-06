@@ -218,7 +218,9 @@ impl Model {
 }
 
 fn classify_surface(name: &str) -> SurfaceShader {
-    if matches!(name, "underwater_rock" | "blue_stone" | "deep_cave_rock") {
+    if matches!(name, "tower_stone" | "tower_stone_dark") {
+        SurfaceShader::RaceBricksTexture
+    } else if matches!(name, "underwater_rock" | "blue_stone" | "deep_cave_rock") {
         SurfaceShader::WaterLevelRockTexture
     } else if name == "underwater_sand" {
         SurfaceShader::WaterLevelSandTexture
@@ -235,6 +237,10 @@ fn classify_surface(name: &str) -> SurfaceShader {
         SurfaceShader::RacePlanetGrassTexture
     } else if name.starts_with("enemy_laser_") {
         SurfaceShader::AstraRedEmission
+    } else if matches!(name, "kirbycar_white" | "arwingcar_hullwhite")
+        || name.contains("kirby_white_highlights")
+    {
+        SurfaceShader::ArwingHull
     } else if matches!(name, "kirbycar_cyanglow") {
         SurfaceShader::BuzzEmission
     } else if matches!(name, "kirbycar_starmetal") {
@@ -794,7 +800,7 @@ mod tests {
     #[test]
     fn face_caches_fixed_material_classification() {
         let face = Face::new([0, 1, 2], "Underwater_Rock", "terrain");
-        assert_eq!(face.shader, SurfaceShader::Rock);
+        assert_eq!(face.shader, SurfaceShader::WaterLevelRockTexture);
         assert_eq!(face.color, MaterialColor::Fixed([220, 230, 238]));
     }
 
@@ -804,6 +810,41 @@ mod tests {
         let turbo = Face::new([0, 1, 2], "turbo_glow", "effect");
         assert_eq!(laser.color, MaterialColor::LaserCore);
         assert_eq!(turbo.color, MaterialColor::Turbo);
+    }
+
+    #[test]
+    fn tower_masonry_uses_bricks_texture() {
+        for material in ["tower_stone", "tower_stone_dark"] {
+            assert_eq!(
+                Face::new([0, 1, 2], material, "tower").shader,
+                SurfaceShader::RaceBricksTexture,
+                "tower material {material} should use the bricks texture"
+            );
+        }
+    }
+
+    #[test]
+    fn white_ship_surfaces_use_the_textured_metal_shader() {
+        for material in [
+            "hull_white",
+            "Casco_blanco",
+            "buzz_white",
+            "mcqueen_white",
+            "ArwingCar_HullWhite",
+            "KirbyCar_White",
+            "Kirby_White_Highlights.005",
+        ] {
+            let shader = Face::new([0, 1, 2], material, "ship").shader;
+            assert!(
+                matches!(
+                    shader,
+                    SurfaceShader::ArwingHull
+                        | SurfaceShader::BuzzWhiteMetal
+                        | SurfaceShader::McQueenWhiteMetal
+                ),
+                "white ship material {material} is not textured metal"
+            );
+        }
     }
 
     #[test]

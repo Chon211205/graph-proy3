@@ -18,7 +18,8 @@ use std::time::Instant;
 use core_guardian::{CoreGuardian, GuardianAction, GuardianInput};
 use framebuffer::Framebuffer;
 use galaxy::{
-    Galaxy, GalaxyTransit, crossed_wormhole, draw_hyperspace_transition, wormhole_position,
+    Galaxy, GalaxyTransit, crossed_wormhole, draw_hyperspace_transition, nova_portal_position,
+    wormhole_position,
 };
 use minifb::{Key, ScaleMode, Window, WindowOptions};
 use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
@@ -33,20 +34,28 @@ use triangle::{ScreenVertex, draw_triangle_shaded_region};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
+const START_FULLSCREEN: bool = true;
 const NEAR_PLANE: f32 = 0.2;
 const FAR_PLANE: f32 = 750.0;
 const VERTICAL_FOV: f32 = 60.0_f32.to_radians();
 const LIGHT_SPEED: f32 = 600.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
 const SUN_POSITION_X: f32 = -520.0;
-const PLANET_ORBIT_RADIUS: f32 = 280.0;
+const SUN_VISUAL_SCALE: f32 = 1.35;
+const PLANET_ORBIT_RADIUS: f32 = 220.0;
 const SPIKY_PLANET_ORBIT_SPEED: f32 = 0.012;
-const SPIKY_PLANET_ORBIT_RADIUS: f32 = 430.0;
+const SPIKY_PLANET_ORBIT_RADIUS: f32 = 330.0;
 const SPIKY_PLANET_ORBIT_PHASE: f32 = PI * 0.5;
 const SPIKY_PLANET_ORBIT_INCLINATION: f32 = 0.30;
-const SPIKY_PLANET_RADIUS: f32 = 26.0;
-const SPIKY_PLANET_ROTATION_SPEED: f32 = 0.18;
-const WATER_PLANET_RADIUS: f32 = 24.0;
+const RACE_PLANET_ORBIT_SPEED: f32 = 0.008;
+const RACE_PLANET_ORBIT_RADIUS: f32 = 440.0;
+const RACE_PLANET_ORBIT_PHASE: f32 = PI * 1.18;
+const RACE_PLANET_ORBIT_INCLINATION: f32 = -0.16;
+const SPIKY_PLANET_RADIUS: f32 = 39.0;
+const WATER_PLANET_ROTATION_SPEED: f32 = 0.55;
+const SPIKY_PLANET_ROTATION_SPEED: f32 = 0.48;
+const RACE_PLANET_ROTATION_SPEED: f32 = 0.38;
+const WATER_PLANET_RADIUS: f32 = 36.0;
 const COLLISION_MARGIN: f32 = 4.0;
 const AVOIDANCE_DISTANCE: f32 = 52.0;
 const ORBIT_LIMIT_RADIUS: f32 = 60.0;
@@ -87,7 +96,10 @@ const LEVEL_RENDER_BEHIND: f32 = 48.0;
 const LEVEL_RENDER_AHEAD: f32 = 112.0;
 const COLLISION_GRID_CELL_SIZE: f32 = 12.0;
 const MAX_BUBBLE_PARTICLES: usize = 256;
-const RESOLUTION_SCALES: [f32; 4] = [1.0, 0.9, 0.75, 0.6];
+const MIN_SURFACE_TEXTURE_SIZE: usize = 512;
+// Render above the presentation resolution for supersampled geometry and
+// smoother edges. Even the lowest adaptive level remains near-native quality.
+const RESOLUTION_SCALES: [f32; 4] = [1.5, 1.35, 1.15, 1.0];
 
 fn water_reward_position() -> Vec3 {
     Vec3::new(-WATER_REWARD_PROGRESS, 7.2, 0.0)
@@ -263,7 +275,13 @@ fn upscale_scene(source: &Framebuffer, target: &mut Framebuffer) {
                 let top = channel(colors[0]) + (channel(colors[1]) - channel(colors[0])) * fx;
                 let bottom =
                     channel(colors[2]) + (channel(colors[3]) - channel(colors[2])) * fx;
-                (top + (bottom - top) * fy).round() as u32
+                let bilinear = top + (bottom - top) * fy;
+                // Mild reconstruction sharpening offsets bilinear blur without
+                // reintroducing the blockiness of nearest-neighbor scaling.
+                let neighborhood = colors.iter().map(|&color| channel(color)).sum::<f32>() * 0.25;
+                (bilinear + (bilinear - neighborhood) * 0.14)
+                    .clamp(0.0, 255.0)
+                    .round() as u32
             };
             target.pixels[target_row + x] =
                 (interpolate(16) << 16) | (interpolate(8) << 8) | interpolate(0);
@@ -1445,6 +1463,8 @@ fn create_window(fullscreen: bool) -> Result<Window, minifb::Error> {
         WindowOptions {
             borderless: fullscreen,
             resize: !fullscreen,
+            // Fill the physical display in fullscreen instead of adding
+            // pillarbox bars when its aspect ratio differs from the renderer.
             scale_mode: ScaleMode::Stretch,
             ..WindowOptions::default()
         },
@@ -1499,7 +1519,11 @@ impl SurfaceTexture {
         };
         let source_width = info.width as usize;
         let source_height = info.height as usize;
-        let size = target_size.min(source_width).min(source_height).max(1);
+        let size = target_size
+            .max(MIN_SURFACE_TEXTURE_SIZE)
+            .min(source_width)
+            .min(source_height)
+            .max(1);
         let mut pixels = Vec::with_capacity(size * size);
         for y in 0..size {
             let source_y = y * source_height / size;
@@ -1927,19 +1951,19 @@ fn bricks_textures() -> Option<&'static BricksTextures> {
             Some(BricksTextures {
                 color: SurfaceTexture::load_png(
                     &format!("{root}/Bricks113A_1K-PNG_Color.png"),
-                    256,
+                    512,
                 )?,
                 normal: SurfaceTexture::load_png(
                     &format!("{root}/Bricks113A_1K-PNG_NormalGL.png"),
-                    256,
+                    512,
                 )?,
                 roughness: SurfaceTexture::load_png(
                     &format!("{root}/Bricks113A_1K-PNG_Roughness.png"),
-                    256,
+                    512,
                 )?,
                 ao: SurfaceTexture::load_png(
                     &format!("{root}/Bricks113A_1K-PNG_AmbientOcclusion.png"),
-                    256,
+                    512,
                 )?,
             })
         })
@@ -2216,6 +2240,29 @@ fn procedural_surface_color(
                 (color[channel] * planet_tint[channel]).clamp(0.0, 255.0) as u8
             });
             return pack(rgb, surface_light);
+        }
+    }
+    if matches!(
+        shader,
+        SurfaceShader::ArwingHull
+            | SurfaceShader::BuzzWhiteMetal
+            | SurfaceShader::McQueenWhiteMetal
+    ) {
+        if let Some(texture) = blue_metal_texture() {
+            let sample = texture.sample_triplanar(point, 0.16);
+            let grain = sample[0] * 0.2126 + sample[1] * 0.7152 + sample[2] * 0.0722;
+            let white_metal = 176.0 + grain * 0.31;
+            let tint = match shader {
+                SurfaceShader::ArwingHull => [0.98, 1.01, 1.04],
+                SurfaceShader::BuzzWhiteMetal => [0.96, 0.99, 1.03],
+                SurfaceShader::McQueenWhiteMetal => [1.00, 1.01, 1.03],
+                _ => unreachable!(),
+            };
+            let metal_light = brightness * (0.88 + fresnel * 0.52);
+            let rgb = std::array::from_fn(|channel| {
+                (white_metal * tint[channel]).clamp(0.0, 255.0) as u8
+            });
+            return pack(rgb, metal_light);
         }
     }
     if matches!(
@@ -2705,6 +2752,7 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
     let (base, horizon_glow, star_tint) = match galaxy {
         Galaxy::Home => ([4.0, 7.0, 20.0], [8.0, 11.0, 24.0], None),
         Galaxy::Vesper => ([7.0, 3.0, 25.0], [18.0, 11.0, 48.0], Some([130, 198, 255])),
+        Galaxy::Nova => ([2.0, 15.0, 18.0], [6.0, 48.0, 42.0], Some([105, 255, 205])),
     };
     for y in 0..framebuffer.height {
         let t = y as f32 / framebuffer.height as f32;
@@ -2716,7 +2764,7 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
         framebuffer.pixels[start..start + framebuffer.width].fill(color);
     }
 
-    if galaxy == Galaxy::Vesper {
+    if matches!(galaxy, Galaxy::Vesper | Galaxy::Nova) {
         let cx = framebuffer.width as f32 * 0.58;
         let cy = framebuffer.height as f32 * 0.44;
         let scale = framebuffer.width.min(framebuffer.height) as f32;
@@ -3219,6 +3267,11 @@ fn animate_spiky_tentacle(vertex: Vec3, time: f32) -> Vec3 {
 
 fn make_wormhole_sphere(radius: f32, stacks: usize, slices: usize) -> Model {
     let mut model = make_sphere(radius, stacks, slices, false);
+    for vertex in &mut model.vertices {
+        vertex.y *= 0.12;
+    }
+    model.recalculate_bounds();
+    model.recalculate_normals();
     for face in &mut model.faces {
         face.shader = SurfaceShader::Flat;
         face.color = MaterialColor::Fixed([2, 1, 7]);
@@ -3285,18 +3338,24 @@ fn draw_wormhole_energy(
     if radius < 1.0 {
         return;
     }
-    let extent = radius * 1.55;
-    if !circle_intersects_frame(framebuffer, center_x, center_y, extent) {
+    let vertical_scale = 0.28;
+    let extent_x = radius * 1.55;
+    let extent_y = extent_x * vertical_scale;
+    if center_x + extent_x < 0.0
+        || center_x - extent_x >= framebuffer.width as f32
+        || center_y + extent_y < 0.0
+        || center_y - extent_y >= framebuffer.height as f32
+    {
         return;
     }
     let width = framebuffer.width;
     let height = framebuffer.height;
-    let min_x = (center_x - extent).floor().max(0.0) as usize;
-    let max_x = (center_x + extent)
+    let min_x = (center_x - extent_x).floor().max(0.0) as usize;
+    let max_x = (center_x + extent_x)
         .ceil()
         .min(width.saturating_sub(1) as f32) as usize;
-    let min_y = (center_y - extent).floor().max(0.0) as usize;
-    let max_y = (center_y + extent)
+    let min_y = (center_y - extent_y).floor().max(0.0) as usize;
+    let max_y = (center_y + extent_y)
         .ceil()
         .min(height.saturating_sub(1) as f32) as usize;
     if min_x > max_x || min_y > max_y {
@@ -3309,8 +3368,9 @@ fn draw_wormhole_energy(
         for x in min_x..=max_x {
             let dx = x as f32 + 0.5 - center_x;
             let dy = y as f32 + 0.5 - center_y;
-            let distance = (dx * dx + dy * dy).sqrt();
-            let angle = dy.atan2(dx);
+            let flattened_dy = dy / vertical_scale;
+            let distance = (dx * dx + flattened_dy * flattened_dy).sqrt();
+            let angle = flattened_dy.atan2(dx);
             let turbulence = (angle * 7.0 + time * 2.4).sin() * 0.055
                 + (angle * 13.0 - time * 3.1).sin() * 0.028
                 + (angle * 3.0 + time * 1.3).cos() * 0.035;
@@ -3336,7 +3396,7 @@ fn draw_wormhole_energy(
             let old_r = ((old >> 16) & 0xff) as f32;
             let old_g = ((old >> 8) & 0xff) as f32;
             let old_b = (old & 0xff) as f32;
-            let violet = (angle * 4.0 + time * 1.7).sin() * 0.5 + 0.5;
+                let violet = (angle * 4.0 + time * 1.7).sin() * 0.5 + 0.5;
             let red = (old_r + intensity * (32.0 + violet * 72.0)).min(255.0) as u32;
             let green = (old_g + intensity * (126.0 + (1.0 - violet) * 70.0)).min(255.0) as u32;
             let blue = (old_b + intensity * 245.0).min(255.0) as u32;
@@ -3573,14 +3633,31 @@ fn spiky_planet_position(world_time: f32) -> Vec3 {
     ))
 }
 
+fn race_planet_position(world_time: f32) -> Vec3 {
+    let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
+    let orbit = world_time * RACE_PLANET_ORBIT_SPEED + RACE_PLANET_ORBIT_PHASE;
+    let (sin, cos) = orbit.sin_cos();
+    let (sin_inclination, cos_inclination) = RACE_PLANET_ORBIT_INCLINATION.sin_cos();
+    sun_position.add(Vec3::new(
+        cos * RACE_PLANET_ORBIT_RADIUS,
+        sin * RACE_PLANET_ORBIT_RADIUS * sin_inclination - 20.0,
+        sin * RACE_PLANET_ORBIT_RADIUS * cos_inclination,
+    ))
+}
+
 fn spiky_planet_is_closer(ship_position: Vec3, water_center: Vec3, spiky_center: Vec3) -> bool {
     let water_offset = ship_position.sub(water_center);
     let spiky_offset = ship_position.sub(spiky_center);
     spiky_offset.dot(spiky_offset) < water_offset.dot(water_offset)
 }
 
-fn race_planet_is_closest(ship_position: Vec3, water_center: Vec3, spiky_center: Vec3) -> bool {
-    let race_offset = ship_position.sub(race_track::PLANET_POSITION);
+fn race_planet_is_closest(
+    ship_position: Vec3,
+    water_center: Vec3,
+    spiky_center: Vec3,
+    race_center: Vec3,
+) -> bool {
+    let race_offset = ship_position.sub(race_center);
     let water_offset = ship_position.sub(water_center);
     let spiky_offset = ship_position.sub(spiky_center);
     let race_distance = race_offset.dot(race_offset);
@@ -3615,9 +3692,9 @@ fn place_ship_near_spiky_planet(controller: &mut ShipController, world_time: f32
     ship.orbit_camera_blend = 1.0;
 }
 
-fn place_ship_near_race_planet(controller: &mut ShipController) {
+fn place_ship_near_race_planet(controller: &mut ShipController, world_time: f32) {
     controller.reset();
-    let center = race_track::PLANET_POSITION;
+    let center = race_planet_position(world_time);
     let offset = Vec3::new(45.0, 8.0, 0.0);
     let ship = &mut controller.ship;
     ship.position = center.add(offset);
@@ -4493,6 +4570,7 @@ fn render_scene(
     spiky_planet_center: Vec3,
     spiky_planet_scale: f32,
     sun: &Model,
+    sun_center: Vec3,
     wormhole: &Model,
     wormhole_center: Vec3,
     galaxy: Galaxy,
@@ -4515,7 +4593,7 @@ fn render_scene(
     debug_assert!(batch.commands.is_empty());
     let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let planet_position = water_planet_position(world_time);
-    let planet_rotation = world_time * 0.25;
+    let planet_rotation = world_time * WATER_PLANET_ROTATION_SPEED;
 
     if galaxy == Galaxy::Home {
         draw_water_planet_atmosphere(
@@ -4530,7 +4608,12 @@ fn render_scene(
             sun,
             batch,
             &camera,
-            |vertex| vertex.add(sun_position),
+            |vertex| {
+                vertex
+                    .sub(sun_center)
+                    .mul(SUN_VISUAL_SCALE)
+                    .add(sun_position)
+            },
             Some(world_time),
             None,
         );
@@ -4599,9 +4682,10 @@ fn render_scene(
             None,
             None,
         );
+        let race_position = race_planet_position(world_time);
         let race_lod = planet_lod_states[2].update(projected_planet_radius(
             &camera,
-            race_track::PLANET_POSITION,
+            race_position,
             race_track::PLANET_RADIUS,
             batch.projection.focal,
         ));
@@ -4613,11 +4697,20 @@ fn render_scene(
             race_model,
             batch,
             &camera,
-            |vertex| vertex.add(race_track::PLANET_POSITION),
+            |vertex| {
+                let rotation = world_time * RACE_PLANET_ROTATION_SPEED;
+                let (sin, cos) = rotation.sin_cos();
+                Vec3::new(
+                    vertex.x * cos - vertex.z * sin,
+                    vertex.y,
+                    vertex.x * sin + vertex.z * cos,
+                )
+                .add(race_position)
+            },
             None,
             None,
         );
-    } else {
+    } else if galaxy == Galaxy::Vesper {
         for (index, body) in vesper_planets.iter().enumerate() {
             let (sin, cos) = (body.rotation_y + world_time * 0.035).sin_cos();
             let lod = vesper_lod_states[index].update(projected_planet_radius(
@@ -4658,6 +4751,16 @@ fn render_scene(
         None,
         None,
     );
+    if galaxy == Galaxy::Vesper {
+        queue_model(
+            wormhole,
+            batch,
+            &camera,
+            |vertex| vertex.add(nova_portal_position()),
+            None,
+            None,
+        );
+    }
 
     render_ship_components(
         ship_model,
@@ -4676,6 +4779,14 @@ fn render_scene(
     );
     batch.flush(framebuffer);
     draw_wormhole_energy(framebuffer, &camera, wormhole_center, world_time);
+    if galaxy == Galaxy::Vesper {
+        draw_wormhole_energy(
+            framebuffer,
+            &camera,
+            nova_portal_position(),
+            world_time + 1.7,
+        );
+    }
     draw_projectile_glow(
         framebuffer,
         projectiles,
@@ -5984,7 +6095,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let kirby_submarine_model = load_obj(kirby_submarine_path)
         .map_err(|error| format!("Error al cargar {kirby_submarine_path}: {error}"))?;
 
-    let mut fullscreen = false;
+    let mut fullscreen = START_FULLSCREEN;
     let mut window = create_window(fullscreen)?;
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     let buzz_variants = [
@@ -6124,9 +6235,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     ];
     let mut enemy_instance_buffers: [Vec<Vec3>; 3] =
         std::array::from_fn(|index| Vec::with_capacity(enemy_models[index].vertices.len()));
-    let mut scene_framebuffer = Framebuffer::new(WIDTH, HEIGHT);
-    let mut triangle_batch = TriangleBatch::new(WIDTH, HEIGHT);
     let mut dynamic_resolution = DynamicResolution::new();
+    let (initial_render_width, initial_render_height) = dynamic_resolution.dimensions();
+    let mut scene_framebuffer = Framebuffer::new(initial_render_width, initial_render_height);
+    let mut triangle_batch = TriangleBatch::new(initial_render_width, initial_render_height);
     let mut hybrid_ray_tracing = HybridRayTracing::new();
     let level_colliders = build_level_colliders(&water_level);
     let water_level_spatial = LevelSpatialIndex::new(&water_level, level_colliders);
@@ -6141,6 +6253,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let sun_path = "assets/planets/sol_detallado.obj";
     let sun = load_obj(sun_path)
         .map_err(|error| format!("Error al cargar {sun_path}: {error}"))?;
+    let sun_center = model_center(&sun);
     let vesper_planets = [
         VesperPlanet::load(
             "assets/planets/reloj_arena.obj",
@@ -6172,7 +6285,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         pink_center: spiky_planet_center,
         pink_scale: spiky_planet_scale,
         sun: &sun,
-        sun_center: model_center(&sun),
+        sun_center,
     };
     let wormhole = make_wormhole_sphere(22.0, 18, 28);
     let turbo_plume = make_turbo_plume(12);
@@ -6350,19 +6463,25 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             if !transit.switched && transit.elapsed < 0.82 {
                 let t = (transit.elapsed / 0.82).clamp(0.0, 1.0);
                 let eased = t * t * (3.0 - 2.0 * t);
-                let destination = wormhole_position(active_galaxy);
-                let offset = destination.sub(transit.start_position);
+                let offset = transit.portal_position.sub(transit.start_position);
                 ship_controller.ship.position = transit.start_position.add(offset.mul(eased));
             }
             if !transit.switched && transit.elapsed >= 0.82 {
                 active_galaxy = transit.destination;
                 let portal = wormhole_position(active_galaxy);
-                let (exit_offset, exit_yaw) = if active_galaxy == Galaxy::Vesper {
-                    // Spawn facing the planet cluster with the return portal to the right.
-                    (Vec3::new(-420.0, 0.0, 0.0), std::f32::consts::FRAC_PI_2)
-                } else {
-                    // Arrive beside the portal and fly away from it by default.
-                    (Vec3::new(150.0, 0.0, 80.0), 0.0)
+                let (exit_offset, exit_yaw) = match active_galaxy {
+                    Galaxy::Vesper => {
+                        // Spawn facing the planet cluster with the portal behind.
+                        (Vec3::new(-420.0, 0.0, 0.0), std::f32::consts::FRAC_PI_2)
+                    }
+                    Galaxy::Nova => {
+                        // Enter the green Nova nebula clear of its gateway.
+                        (Vec3::new(0.0, 20.0, -150.0), std::f32::consts::PI)
+                    }
+                    Galaxy::Home => {
+                        // Arrive beside the solar portal and fly away from it.
+                        (Vec3::new(150.0, 0.0, 80.0), 0.0)
+                    }
                 };
                 ship_controller.ship.position = portal.add(exit_offset);
                 ship_controller.ship.yaw = exit_yaw;
@@ -6433,7 +6552,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             && active_galaxy == Galaxy::Home
             && crate::input::pressed(Key::Key3)
         {
-            place_ship_near_race_planet(&mut ship_controller);
+            place_ship_near_race_planet(&mut ship_controller, world_time);
         }
 
         let pitch_input = (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8
@@ -6494,7 +6613,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         } else if game_mode == GameMode::Racing && crate::input::pressed(Key::Backspace) {
             game_mode = GameMode::FreeWorld;
             ship_controller = ShipController::new(ship_spec);
-            race_track.leave(&mut ship_controller);
+            race_track.leave(&mut ship_controller, race_planet_position(world_time));
             window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
         } else if game_mode == GameMode::WaterLevel && crate::input::pressed(Key::Backspace) {
             game_mode = GameMode::FreeWorld;
@@ -6583,18 +6702,23 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         let empty_colliders: [ObjectCollider; 0] = [];
                         let water_center = water_planet_position(world_time);
                         let spiky_center = spiky_planet_position(world_time);
+                        let race_center = race_planet_position(world_time);
                         if !ship.planet_locked {
-                            ship.race_planet_locked =
-                                race_planet_is_closest(ship.position, water_center, spiky_center);
+                            ship.race_planet_locked = race_planet_is_closest(
+                                ship.position,
+                                water_center,
+                                spiky_center,
+                                race_center,
+                            );
                             ship.spiky_planet_locked = !ship.race_planet_locked
                                 && spiky_planet_is_closer(ship.position, water_center, spiky_center);
                         }
                         let (orbit_center, orbit_radius, orbit_rotation, orbit_colliders) =
                             if ship.race_planet_locked {
                                 (
-                                    race_track::PLANET_POSITION,
+                                    race_center,
                                     race_track::PLANET_RADIUS,
-                                    world_time * 0.08,
+                                    world_time * RACE_PLANET_ROTATION_SPEED,
                                     empty_colliders.as_slice(),
                                 )
                             } else if ship.spiky_planet_locked {
@@ -6608,7 +6732,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                                 (
                                     water_center,
                                     planet_surface_radius,
-                                    world_time * 0.25,
+                                    world_time * WATER_PLANET_ROTATION_SPEED,
                                     object_colliders.as_slice(),
                                 )
                             };
@@ -6623,7 +6747,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             pitch_input,
                             false,
                         );
-                    } else {
+                    } else if active_galaxy == Galaxy::Vesper {
                         ship.spiky_planet_locked = false;
                         ship.race_planet_locked = false;
                         let nearest = vesper_orbit_index.unwrap_or_else(|| {
@@ -6657,6 +6781,18 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             true,
                         );
                         vesper_orbit_index = ship.planet_locked.then_some(nearest);
+                    } else {
+                        // Nova is open deep space: no body should capture the
+                        // ship into an orbit while it approaches its portal.
+                        ship.planet_locked = false;
+                        ship.spiky_planet_locked = false;
+                        ship.race_planet_locked = false;
+                        ship.orbit_center = None;
+                        ship.orbit_plane_normal = None;
+                        ship.position = ship
+                            .position
+                            .add(ship.movement_basis().0.mul(movement));
+                        vesper_orbit_index = None;
                     }
                 }
                 let camera_target = if ship.orbit_plane_normal.is_some() { 1.0 } else { 0.0 };
@@ -6676,14 +6812,27 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     portal_center,
                     42.0,
                 );
+                let near_nova_portal = active_galaxy == Galaxy::Vesper
+                    && crossed_wormhole(
+                        previous_ship_position,
+                        ship.position,
+                        nova_portal_position(),
+                        42.0,
+                    );
                 if galaxy_transition.is_none()
-                    && near_wormhole
+                    && (near_wormhole || near_nova_portal)
                     && !ship.planet_locked
                 {
+                    let (portal_position, destination) = if near_nova_portal {
+                        (nova_portal_position(), Galaxy::Nova)
+                    } else {
+                        (portal_center, active_galaxy.portal_destination())
+                    };
                     galaxy_transition = Some(GalaxyTransit {
                         elapsed: 0.0,
                         start_position: ship.position,
-                        destination: if active_galaxy == Galaxy::Home { Galaxy::Vesper } else { Galaxy::Home },
+                        portal_position,
+                        destination,
                         switched: false,
                     });
                     window.set_title("Agujero de gusano | Entrando en hipervelocidad");
@@ -6691,7 +6840,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 
                 if galaxy_transition.is_some() {
                     window.set_title("Atravesando el agujero | Hipervelocidad");
-                } else if near_wormhole {
+                } else if near_wormhole || near_nova_portal {
                     window.set_title("Agujero de gusano | Atravesalo para viajar");
                 } else if ship.planet_locked {
                     if ship.race_planet_locked {
@@ -6713,10 +6862,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         );
                     }
                 } else {
-                    window.set_title(if active_galaxy == Galaxy::Home {
-                        "Sistema solar | Vuelo libre 3D | F11: fullscreen"
-                    } else {
-                        "Espacio profundo | Vuelo libre 3D | F11: fullscreen"
+                    window.set_title(match active_galaxy {
+                        Galaxy::Home => "Sistema solar | Vuelo libre 3D | F11: fullscreen",
+                        Galaxy::Vesper => "Galaxia Vesper | Portales: Sistema solar y Nova",
+                        Galaxy::Nova => "Galaxia Nova | Portal: Vesper",
                     });
                 }
                 render_scene(
@@ -6732,6 +6881,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     spiky_planet_center,
                     spiky_planet_scale,
                     &sun,
+                    sun_center,
                     &wormhole,
                     wormhole_position(active_galaxy),
                     active_galaxy,
@@ -6773,7 +6923,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 if race_track.reward_complete() {
                     game_mode = GameMode::FreeWorld;
                     ship_controller = ShipController::new(ship_spec);
-                    race_track.leave(&mut ship_controller);
+                    race_track.leave(&mut ship_controller, race_planet_position(world_time));
                     window.set_title("Sistema solar | Esfera de 1 estrella obtenida");
                 } else {
                     race_track.update(&mut ship_controller, race_input, delta_time);
@@ -6884,10 +7034,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             .is_some_and(|transit| transit.elapsed >= 2.15)
         {
             galaxy_transition = None;
-            window.set_title(if active_galaxy == Galaxy::Home {
-                "Sistema solar | Vuelo libre 3D | F11: fullscreen"
-            } else {
-                "Espacio profundo | Vuelo libre 3D | F11: fullscreen"
+            window.set_title(match active_galaxy {
+                Galaxy::Home => "Sistema solar | Vuelo libre 3D | F11: fullscreen",
+                Galaxy::Vesper => "Galaxia Vesper | Portales: Sistema solar y Nova",
+                Galaxy::Nova => "Galaxia Nova | Portal disponible: Vesper",
             });
         }
 
@@ -7217,6 +7367,44 @@ mod tests {
         let spiky = Vec3::new(100.0, 0.0, 0.0);
         assert!(spiky_planet_is_closer(ship, water, spiky));
         assert!(!spiky_planet_is_closer(ship, spiky, water));
+    }
+
+    #[test]
+    fn home_planets_follow_distinct_orbits_around_the_sun() {
+        let orbit_center = Vec3::new(SUN_POSITION_X, 0.0, 0.0);
+        let positions = [
+            (water_planet_position(0.0), PLANET_ORBIT_RADIUS),
+            (spiky_planet_position(0.0), SPIKY_PLANET_ORBIT_RADIUS),
+            (race_planet_position(0.0), RACE_PLANET_ORBIT_RADIUS),
+        ];
+        for (position, expected_radius) in positions {
+            let offset = position.sub(orbit_center);
+            assert!((offset.dot(offset).sqrt() - expected_radius).abs() < 0.01);
+        }
+        assert!(water_planet_position(20.0).sub(water_planet_position(0.0)).dot(
+            water_planet_position(20.0).sub(water_planet_position(0.0))
+        ) > 1.0);
+        assert!(race_planet_position(20.0).sub(race_planet_position(0.0)).dot(
+            race_planet_position(20.0).sub(race_planet_position(0.0))
+        ) > 1.0);
+    }
+
+    #[test]
+    fn home_portal_is_positioned_directly_above_the_sun() {
+        let sun = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
+        let portal = wormhole_position(Galaxy::Home);
+        assert!((portal.x - sun.x).abs() < 0.001);
+        assert!((portal.z - sun.z).abs() < 0.001);
+        assert!(portal.y > sun.y + 100.0);
+
+        let model = make_wormhole_sphere(22.0, 18, 28);
+        let (center, _) = model.bounds();
+        let vertical_radius = model
+            .vertices
+            .iter()
+            .map(|vertex| (vertex.y - center.y).abs())
+            .fold(0.0, f32::max);
+        assert!(vertical_radius < 3.0, "portal is not lying flat");
     }
 
     #[test]
@@ -7933,20 +8121,20 @@ mod tests {
             resolution.update(1.0 / 40.0, RenderStats::default());
         }
         assert_eq!(resolution.scale_index, 1);
-        assert_eq!(resolution.dimensions(), (1080, 720));
+        assert_eq!(resolution.dimensions(), (1620, 1080));
 
         for _ in 0..600 {
             resolution.update(1.0 / 100.0, RenderStats::default());
         }
         assert_eq!(resolution.scale_index, 0);
-        assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
+        assert_eq!(resolution.dimensions(), (1800, 1200));
     }
 
     #[test]
     fn racing_resolution_stays_native() {
         let mut resolution = DynamicResolution::new();
         assert!(!resolution.prefer_racing_resolution());
-        assert_eq!(resolution.percentage(), 100);
+        assert_eq!(resolution.percentage(), 150);
         assert_eq!(resolution.status, "HD NATIVO");
         assert!(!resolution.prefer_racing_resolution());
     }
@@ -7957,6 +8145,14 @@ mod tests {
         resolution.scale_index = RESOLUTION_SCALES.len() - 1;
         assert!(resolution.toggle());
         assert!(!resolution.enabled);
+        assert_eq!(resolution.dimensions(), (1800, 1200));
+    }
+
+    #[test]
+    fn dynamic_resolution_preserves_a_high_quality_floor() {
+        let mut resolution = DynamicResolution::new();
+        resolution.scale_index = RESOLUTION_SCALES.len() - 1;
+        assert_eq!(resolution.percentage(), 100);
         assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
     }
 
@@ -7967,8 +8163,8 @@ mod tests {
         resolution.low_time = 0.7;
 
         assert!(resolution.prefer_native_resolution("VESPER HD"));
-        assert_eq!(resolution.percentage(), 100);
-        assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
+        assert_eq!(resolution.percentage(), 150);
+        assert_eq!(resolution.dimensions(), (1800, 1200));
         assert_eq!(resolution.low_time, 0.0);
         assert_eq!(resolution.status, "VESPER HD");
         assert!(!resolution.prefer_native_resolution("VESPER HD"));
@@ -8085,7 +8281,7 @@ mod tests {
     #[test]
     fn blue_metal_texture_loads_and_drives_arwing_and_astra_surfaces() {
         let texture = blue_metal_texture().expect("blue metal texture must load");
-        assert_eq!((texture.width, texture.height), (256, 256));
+        assert_eq!((texture.width, texture.height), (512, 512));
         let point = Vec3::new(1.7, 0.9, -2.4);
         let arwing = procedural_surface_color(
             SurfaceShader::ArwingBlue,
@@ -8110,6 +8306,35 @@ mod tests {
     }
 
     #[test]
+    fn metallic_texture_drives_all_white_ship_shaders() {
+        for shader in [
+            SurfaceShader::ArwingHull,
+            SurfaceShader::BuzzWhiteMetal,
+            SurfaceShader::McQueenWhiteMetal,
+        ] {
+            let first = procedural_surface_color(
+                shader,
+                Vec3::new(1.7, 0.9, -2.4),
+                0,
+                0,
+                0.0,
+                1.0,
+                0.25,
+            );
+            let second = procedural_surface_color(
+                shader,
+                Vec3::new(4.9, -1.3, 3.8),
+                0,
+                0,
+                0.0,
+                1.0,
+                0.25,
+            );
+            assert_ne!(first, second, "white shader {shader:?} lacks texture detail");
+        }
+    }
+
+    #[test]
     fn race_grass_loads_the_complete_optimized_texture_set() {
         let textures = grass_textures().expect("race grass textures must load");
         for texture in [
@@ -8118,8 +8343,8 @@ mod tests {
             &textures.roughness,
             &textures.ao,
         ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
-            assert_eq!(texture.pixels.len(), 256 * 256);
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
         }
         let textured = procedural_surface_color(
             SurfaceShader::RaceGrassTexture,
@@ -8136,14 +8361,19 @@ mod tests {
     #[test]
     fn race_asphalt_variants_load_and_produce_distinct_surfaces() {
         let textures = race_asphalt_textures().expect("race asphalt textures must load");
-        for texture in [
+        let maps = [
             &textures.clean_color,
             &textures.clean_height,
             &textures.asphalt04_color,
             &textures.asphalt04_height,
-        ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
+        ];
+        for texture in maps {
+            // Optimized color maps are 256 px while the authored height maps
+            // retain 512 px of useful detail.
+            assert!((256..=512).contains(&texture.width));
+            assert_eq!(texture.width, texture.height);
         }
+        assert!(maps.iter().any(|texture| texture.width == 512));
         let point = Vec3::new(108.0, 0.0, 207.0);
         let clean = procedural_surface_color(
             SurfaceShader::RaceAsphaltClean,
@@ -8175,8 +8405,8 @@ mod tests {
             &textures.roughness,
             &textures.ao,
         ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
-            assert_eq!(texture.pixels.len(), 256 * 256);
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
         }
         let textured = procedural_surface_color(
             SurfaceShader::RaceGroundTexture,
@@ -8199,8 +8429,8 @@ mod tests {
             &textures.roughness,
             &textures.ao,
         ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
-            assert_eq!(texture.pixels.len(), 256 * 256);
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
         }
         let textured = procedural_surface_color(
             SurfaceShader::RaceBarkTexture,
@@ -8223,8 +8453,8 @@ mod tests {
             &textures.roughness,
             &textures.ao,
         ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
-            assert_eq!(texture.pixels.len(), 256 * 256);
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
         }
         let textured = procedural_surface_color(
             SurfaceShader::RaceBricksTexture,
@@ -8247,8 +8477,8 @@ mod tests {
             &textures.roughness,
             &textures.ao,
         ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
-            assert_eq!(texture.pixels.len(), 256 * 256);
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
         }
 
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -8286,8 +8516,8 @@ mod tests {
             &textures.roughness,
             &textures.ao,
         ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
-            assert_eq!(texture.pixels.len(), 256 * 256);
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
         }
 
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -8320,8 +8550,8 @@ mod tests {
             &textures.roughness,
             &textures.ao,
         ] {
-            assert_eq!((texture.width, texture.height), (256, 256));
-            assert_eq!(texture.pixels.len(), 256 * 256);
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
         }
 
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
