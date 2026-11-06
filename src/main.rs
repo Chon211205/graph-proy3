@@ -98,9 +98,10 @@ const LEVEL_RENDER_AHEAD: f32 = 112.0;
 const COLLISION_GRID_CELL_SIZE: f32 = 12.0;
 const MAX_BUBBLE_PARTICLES: usize = 256;
 const MIN_SURFACE_TEXTURE_SIZE: usize = 512;
-// Render above the presentation resolution for supersampled geometry and
-// smoother edges. Even the lowest adaptive level remains near-native quality.
-const RESOLUTION_SCALES: [f32; 4] = [1.5, 1.35, 1.15, 1.0];
+// The CPU renderer uses the full presentation resolution by default. Running
+// at 150% supersampling multiplied raster and post-processing work by 2.25,
+// which was wasteful on machines without a dedicated GPU.
+const RESOLUTION_SCALES: [f32; 1] = [1.0];
 
 fn water_reward_position() -> Vec3 {
     Vec3::new(-WATER_REWARD_PROGRESS, 7.2, 0.0)
@@ -6374,6 +6375,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     println!("Vuelo libre 3D iniciado: {}", ship_spec.name);
     println!("W/S o flechas: subir/bajar | Espacio: acelerar | Ctrl: frenar");
     println!("A/D: direccion | Q/E: alabeo | Enter: disparar/cargar | R: reiniciar | P: captura");
+    println!("F4: iluminacion avanzada (desactivada por defecto para mejor rendimiento)");
     println!("1: warp al planeta acuatico | Shift: velocidad de luz");
     println!("Backspace: abandonar la zona orbital");
     println!("Enter cerca del planeta: iniciar nivel submarino");
@@ -6411,6 +6413,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut world_time = 0.0_f32;
     let mut distance = 0.0_f32;
     let mut performance_hud = false;
+    let mut advanced_lighting = false;
     let mut last_tower_cursor = (0.5_f32, 0.52_f32);
     let mut tower_mouse_down = false;
 
@@ -6617,6 +6620,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         };
         if crate::input::pressed(Key::F3) {
             performance_hud = !performance_hud;
+        }
+        if crate::input::pressed(Key::F4) {
+            advanced_lighting = !advanced_lighting;
         }
         if resolution_changed || toggled_resolution {
             let (render_width, render_height) = dynamic_resolution.dimensions();
@@ -7225,7 +7231,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             });
         }
 
-        if game_mode != GameMode::TowerGuard {
+        if advanced_lighting && game_mode != GameMode::TowerGuard {
             hybrid_ray_tracing.apply_high(&mut scene_framebuffer);
         }
         upscale_scene(&scene_framebuffer, &mut framebuffer);
@@ -8312,26 +8318,26 @@ mod tests {
     }
 
     #[test]
-    fn dynamic_resolution_reacts_only_to_sustained_frame_rates() {
+    fn lightweight_profile_keeps_native_resolution_under_load() {
         let mut resolution = DynamicResolution::new();
         for _ in 0..80 {
             resolution.update(1.0 / 40.0, RenderStats::default());
         }
-        assert_eq!(resolution.scale_index, 1);
-        assert_eq!(resolution.dimensions(), (1620, 1080));
+        assert_eq!(resolution.scale_index, 0);
+        assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
 
         for _ in 0..600 {
             resolution.update(1.0 / 100.0, RenderStats::default());
         }
         assert_eq!(resolution.scale_index, 0);
-        assert_eq!(resolution.dimensions(), (1800, 1200));
+        assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
     }
 
     #[test]
     fn racing_resolution_stays_native() {
         let mut resolution = DynamicResolution::new();
         assert!(!resolution.prefer_racing_resolution());
-        assert_eq!(resolution.percentage(), 150);
+        assert_eq!(resolution.percentage(), 100);
         assert_eq!(resolution.status, "HD NATIVO");
         assert!(!resolution.prefer_racing_resolution());
     }
@@ -8340,9 +8346,9 @@ mod tests {
     fn disabling_dynamic_resolution_restores_full_size() {
         let mut resolution = DynamicResolution::new();
         resolution.scale_index = RESOLUTION_SCALES.len() - 1;
-        assert!(resolution.toggle());
+        assert!(!resolution.toggle());
         assert!(!resolution.enabled);
-        assert_eq!(resolution.dimensions(), (1800, 1200));
+        assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
     }
 
     #[test]
@@ -8359,9 +8365,9 @@ mod tests {
         resolution.scale_index = RESOLUTION_SCALES.len() - 1;
         resolution.low_time = 0.7;
 
-        assert!(resolution.prefer_native_resolution("VESPER HD"));
-        assert_eq!(resolution.percentage(), 150);
-        assert_eq!(resolution.dimensions(), (1800, 1200));
+        assert!(!resolution.prefer_native_resolution("VESPER HD"));
+        assert_eq!(resolution.percentage(), 100);
+        assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
         assert_eq!(resolution.low_time, 0.0);
         assert_eq!(resolution.status, "VESPER HD");
         assert!(!resolution.prefer_native_resolution("VESPER HD"));
@@ -8377,7 +8383,8 @@ mod tests {
         for _ in 0..180 {
             loaded.update(1.0 / 60.0, expensive_render);
         }
-        assert!(loaded.scale_index > 0);
+        assert_eq!(loaded.scale_index, 0);
+        assert_eq!(loaded.dimensions(), (WIDTH, HEIGHT));
 
         let mut stable = DynamicResolution::new();
         stable.update(0.1, RenderStats::default());
