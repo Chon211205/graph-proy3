@@ -237,6 +237,10 @@ fn classify_surface(name: &str) -> SurfaceShader {
         SurfaceShader::RacePlanetGrassTexture
     } else if name.starts_with("enemy_laser_") {
         SurfaceShader::AstraRedEmission
+    } else if matches!(name, "kirbycar_white" | "arwingcar_hullwhite")
+        || name.contains("kirby_white_highlights")
+    {
+        SurfaceShader::ArwingHull
     } else if matches!(name, "kirbycar_cyanglow") {
         SurfaceShader::BuzzEmission
     } else if matches!(name, "kirbycar_starmetal") {
@@ -815,6 +819,30 @@ mod tests {
                 Face::new([0, 1, 2], material, "tower").shader,
                 SurfaceShader::RaceBricksTexture,
                 "tower material {material} should use the bricks texture"
+            );
+        }
+    }
+
+    #[test]
+    fn white_ship_surfaces_use_the_textured_metal_shader() {
+        for material in [
+            "hull_white",
+            "Casco_blanco",
+            "buzz_white",
+            "mcqueen_white",
+            "ArwingCar_HullWhite",
+            "KirbyCar_White",
+            "Kirby_White_Highlights.005",
+        ] {
+            let shader = Face::new([0, 1, 2], material, "ship").shader;
+            assert!(
+                matches!(
+                    shader,
+                    SurfaceShader::ArwingHull
+                        | SurfaceShader::BuzzWhiteMetal
+                        | SurfaceShader::McQueenWhiteMetal
+                ),
+                "white ship material {material} is not textured metal"
             );
         }
     }

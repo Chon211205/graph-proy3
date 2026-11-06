@@ -40,14 +40,21 @@ const VERTICAL_FOV: f32 = 60.0_f32.to_radians();
 const LIGHT_SPEED: f32 = 600.0;
 const PLANET_ORBIT_SPEED: f32 = 0.02;
 const SUN_POSITION_X: f32 = -520.0;
-const PLANET_ORBIT_RADIUS: f32 = 280.0;
+const SUN_VISUAL_SCALE: f32 = 1.35;
+const PLANET_ORBIT_RADIUS: f32 = 220.0;
 const SPIKY_PLANET_ORBIT_SPEED: f32 = 0.012;
-const SPIKY_PLANET_ORBIT_RADIUS: f32 = 430.0;
+const SPIKY_PLANET_ORBIT_RADIUS: f32 = 330.0;
 const SPIKY_PLANET_ORBIT_PHASE: f32 = PI * 0.5;
 const SPIKY_PLANET_ORBIT_INCLINATION: f32 = 0.30;
-const SPIKY_PLANET_RADIUS: f32 = 26.0;
-const SPIKY_PLANET_ROTATION_SPEED: f32 = 0.18;
-const WATER_PLANET_RADIUS: f32 = 24.0;
+const RACE_PLANET_ORBIT_SPEED: f32 = 0.008;
+const RACE_PLANET_ORBIT_RADIUS: f32 = 440.0;
+const RACE_PLANET_ORBIT_PHASE: f32 = PI * 1.18;
+const RACE_PLANET_ORBIT_INCLINATION: f32 = -0.16;
+const SPIKY_PLANET_RADIUS: f32 = 39.0;
+const WATER_PLANET_ROTATION_SPEED: f32 = 0.55;
+const SPIKY_PLANET_ROTATION_SPEED: f32 = 0.48;
+const RACE_PLANET_ROTATION_SPEED: f32 = 0.38;
+const WATER_PLANET_RADIUS: f32 = 36.0;
 const COLLISION_MARGIN: f32 = 4.0;
 const AVOIDANCE_DISTANCE: f32 = 52.0;
 const ORBIT_LIMIT_RADIUS: f32 = 60.0;
@@ -89,9 +96,9 @@ const LEVEL_RENDER_AHEAD: f32 = 112.0;
 const COLLISION_GRID_CELL_SIZE: f32 = 12.0;
 const MAX_BUBBLE_PARTICLES: usize = 256;
 const MIN_SURFACE_TEXTURE_SIZE: usize = 512;
-// Favor image quality when adaptive resolution is needed. The old 60% floor
-// made fine geometry and texture detail visibly pixelated on demanding scenes.
-const RESOLUTION_SCALES: [f32; 4] = [1.0, 0.95, 0.85, 0.75];
+// Render above the presentation resolution for supersampled geometry and
+// smoother edges. Even the lowest adaptive level remains near-native quality.
+const RESOLUTION_SCALES: [f32; 4] = [1.5, 1.35, 1.15, 1.0];
 
 fn water_reward_position() -> Vec3 {
     Vec3::new(-WATER_REWARD_PROGRESS, 7.2, 0.0)
@@ -2236,6 +2243,29 @@ fn procedural_surface_color(
     }
     if matches!(
         shader,
+        SurfaceShader::ArwingHull
+            | SurfaceShader::BuzzWhiteMetal
+            | SurfaceShader::McQueenWhiteMetal
+    ) {
+        if let Some(texture) = blue_metal_texture() {
+            let sample = texture.sample_triplanar(point, 0.16);
+            let grain = sample[0] * 0.2126 + sample[1] * 0.7152 + sample[2] * 0.0722;
+            let white_metal = 176.0 + grain * 0.31;
+            let tint = match shader {
+                SurfaceShader::ArwingHull => [0.98, 1.01, 1.04],
+                SurfaceShader::BuzzWhiteMetal => [0.96, 0.99, 1.03],
+                SurfaceShader::McQueenWhiteMetal => [1.00, 1.01, 1.03],
+                _ => unreachable!(),
+            };
+            let metal_light = brightness * (0.88 + fresnel * 0.52);
+            let rgb = std::array::from_fn(|channel| {
+                (white_metal * tint[channel]).clamp(0.0, 255.0) as u8
+            });
+            return pack(rgb, metal_light);
+        }
+    }
+    if matches!(
+        shader,
         SurfaceShader::ArwingBlue
             | SurfaceShader::AstraCobalt
             | SurfaceShader::AstraDeepBlue
@@ -3235,6 +3265,11 @@ fn animate_spiky_tentacle(vertex: Vec3, time: f32) -> Vec3 {
 
 fn make_wormhole_sphere(radius: f32, stacks: usize, slices: usize) -> Model {
     let mut model = make_sphere(radius, stacks, slices, false);
+    for vertex in &mut model.vertices {
+        vertex.y *= 0.12;
+    }
+    model.recalculate_bounds();
+    model.recalculate_normals();
     for face in &mut model.faces {
         face.shader = SurfaceShader::Flat;
         face.color = MaterialColor::Fixed([2, 1, 7]);
@@ -3301,18 +3336,24 @@ fn draw_wormhole_energy(
     if radius < 1.0 {
         return;
     }
-    let extent = radius * 1.55;
-    if !circle_intersects_frame(framebuffer, center_x, center_y, extent) {
+    let vertical_scale = 0.28;
+    let extent_x = radius * 1.55;
+    let extent_y = extent_x * vertical_scale;
+    if center_x + extent_x < 0.0
+        || center_x - extent_x >= framebuffer.width as f32
+        || center_y + extent_y < 0.0
+        || center_y - extent_y >= framebuffer.height as f32
+    {
         return;
     }
     let width = framebuffer.width;
     let height = framebuffer.height;
-    let min_x = (center_x - extent).floor().max(0.0) as usize;
-    let max_x = (center_x + extent)
+    let min_x = (center_x - extent_x).floor().max(0.0) as usize;
+    let max_x = (center_x + extent_x)
         .ceil()
         .min(width.saturating_sub(1) as f32) as usize;
-    let min_y = (center_y - extent).floor().max(0.0) as usize;
-    let max_y = (center_y + extent)
+    let min_y = (center_y - extent_y).floor().max(0.0) as usize;
+    let max_y = (center_y + extent_y)
         .ceil()
         .min(height.saturating_sub(1) as f32) as usize;
     if min_x > max_x || min_y > max_y {
@@ -3325,8 +3366,9 @@ fn draw_wormhole_energy(
         for x in min_x..=max_x {
             let dx = x as f32 + 0.5 - center_x;
             let dy = y as f32 + 0.5 - center_y;
-            let distance = (dx * dx + dy * dy).sqrt();
-            let angle = dy.atan2(dx);
+            let flattened_dy = dy / vertical_scale;
+            let distance = (dx * dx + flattened_dy * flattened_dy).sqrt();
+            let angle = flattened_dy.atan2(dx);
             let turbulence = (angle * 7.0 + time * 2.4).sin() * 0.055
                 + (angle * 13.0 - time * 3.1).sin() * 0.028
                 + (angle * 3.0 + time * 1.3).cos() * 0.035;
@@ -3589,14 +3631,31 @@ fn spiky_planet_position(world_time: f32) -> Vec3 {
     ))
 }
 
+fn race_planet_position(world_time: f32) -> Vec3 {
+    let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
+    let orbit = world_time * RACE_PLANET_ORBIT_SPEED + RACE_PLANET_ORBIT_PHASE;
+    let (sin, cos) = orbit.sin_cos();
+    let (sin_inclination, cos_inclination) = RACE_PLANET_ORBIT_INCLINATION.sin_cos();
+    sun_position.add(Vec3::new(
+        cos * RACE_PLANET_ORBIT_RADIUS,
+        sin * RACE_PLANET_ORBIT_RADIUS * sin_inclination - 20.0,
+        sin * RACE_PLANET_ORBIT_RADIUS * cos_inclination,
+    ))
+}
+
 fn spiky_planet_is_closer(ship_position: Vec3, water_center: Vec3, spiky_center: Vec3) -> bool {
     let water_offset = ship_position.sub(water_center);
     let spiky_offset = ship_position.sub(spiky_center);
     spiky_offset.dot(spiky_offset) < water_offset.dot(water_offset)
 }
 
-fn race_planet_is_closest(ship_position: Vec3, water_center: Vec3, spiky_center: Vec3) -> bool {
-    let race_offset = ship_position.sub(race_track::PLANET_POSITION);
+fn race_planet_is_closest(
+    ship_position: Vec3,
+    water_center: Vec3,
+    spiky_center: Vec3,
+    race_center: Vec3,
+) -> bool {
+    let race_offset = ship_position.sub(race_center);
     let water_offset = ship_position.sub(water_center);
     let spiky_offset = ship_position.sub(spiky_center);
     let race_distance = race_offset.dot(race_offset);
@@ -3631,9 +3690,9 @@ fn place_ship_near_spiky_planet(controller: &mut ShipController, world_time: f32
     ship.orbit_camera_blend = 1.0;
 }
 
-fn place_ship_near_race_planet(controller: &mut ShipController) {
+fn place_ship_near_race_planet(controller: &mut ShipController, world_time: f32) {
     controller.reset();
-    let center = race_track::PLANET_POSITION;
+    let center = race_planet_position(world_time);
     let offset = Vec3::new(45.0, 8.0, 0.0);
     let ship = &mut controller.ship;
     ship.position = center.add(offset);
@@ -4509,6 +4568,7 @@ fn render_scene(
     spiky_planet_center: Vec3,
     spiky_planet_scale: f32,
     sun: &Model,
+    sun_center: Vec3,
     wormhole: &Model,
     wormhole_center: Vec3,
     galaxy: Galaxy,
@@ -4531,7 +4591,7 @@ fn render_scene(
     debug_assert!(batch.commands.is_empty());
     let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let planet_position = water_planet_position(world_time);
-    let planet_rotation = world_time * 0.25;
+    let planet_rotation = world_time * WATER_PLANET_ROTATION_SPEED;
 
     if galaxy == Galaxy::Home {
         draw_water_planet_atmosphere(
@@ -4546,7 +4606,12 @@ fn render_scene(
             sun,
             batch,
             &camera,
-            |vertex| vertex.add(sun_position),
+            |vertex| {
+                vertex
+                    .sub(sun_center)
+                    .mul(SUN_VISUAL_SCALE)
+                    .add(sun_position)
+            },
             Some(world_time),
             None,
         );
@@ -4615,9 +4680,10 @@ fn render_scene(
             None,
             None,
         );
+        let race_position = race_planet_position(world_time);
         let race_lod = planet_lod_states[2].update(projected_planet_radius(
             &camera,
-            race_track::PLANET_POSITION,
+            race_position,
             race_track::PLANET_RADIUS,
             batch.projection.focal,
         ));
@@ -4629,7 +4695,16 @@ fn render_scene(
             race_model,
             batch,
             &camera,
-            |vertex| vertex.add(race_track::PLANET_POSITION),
+            |vertex| {
+                let rotation = world_time * RACE_PLANET_ROTATION_SPEED;
+                let (sin, cos) = rotation.sin_cos();
+                Vec3::new(
+                    vertex.x * cos - vertex.z * sin,
+                    vertex.y,
+                    vertex.x * sin + vertex.z * cos,
+                )
+                .add(race_position)
+            },
             None,
             None,
         );
@@ -6140,9 +6215,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     ];
     let mut enemy_instance_buffers: [Vec<Vec3>; 3] =
         std::array::from_fn(|index| Vec::with_capacity(enemy_models[index].vertices.len()));
-    let mut scene_framebuffer = Framebuffer::new(WIDTH, HEIGHT);
-    let mut triangle_batch = TriangleBatch::new(WIDTH, HEIGHT);
     let mut dynamic_resolution = DynamicResolution::new();
+    let (initial_render_width, initial_render_height) = dynamic_resolution.dimensions();
+    let mut scene_framebuffer = Framebuffer::new(initial_render_width, initial_render_height);
+    let mut triangle_batch = TriangleBatch::new(initial_render_width, initial_render_height);
     let mut hybrid_ray_tracing = HybridRayTracing::new();
     let level_colliders = build_level_colliders(&water_level);
     let water_level_spatial = LevelSpatialIndex::new(&water_level, level_colliders);
@@ -6157,6 +6233,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let sun_path = "assets/planets/sol_detallado.obj";
     let sun = load_obj(sun_path)
         .map_err(|error| format!("Error al cargar {sun_path}: {error}"))?;
+    let sun_center = model_center(&sun);
     let vesper_planets = [
         VesperPlanet::load(
             "assets/planets/reloj_arena.obj",
@@ -6188,7 +6265,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         pink_center: spiky_planet_center,
         pink_scale: spiky_planet_scale,
         sun: &sun,
-        sun_center: model_center(&sun),
+        sun_center,
     };
     let wormhole = make_wormhole_sphere(22.0, 18, 28);
     let turbo_plume = make_turbo_plume(12);
@@ -6449,7 +6526,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             && active_galaxy == Galaxy::Home
             && crate::input::pressed(Key::Key3)
         {
-            place_ship_near_race_planet(&mut ship_controller);
+            place_ship_near_race_planet(&mut ship_controller, world_time);
         }
 
         let pitch_input = (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8
@@ -6510,7 +6587,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         } else if game_mode == GameMode::Racing && crate::input::pressed(Key::Backspace) {
             game_mode = GameMode::FreeWorld;
             ship_controller = ShipController::new(ship_spec);
-            race_track.leave(&mut ship_controller);
+            race_track.leave(&mut ship_controller, race_planet_position(world_time));
             window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
         } else if game_mode == GameMode::WaterLevel && crate::input::pressed(Key::Backspace) {
             game_mode = GameMode::FreeWorld;
@@ -6599,18 +6676,23 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         let empty_colliders: [ObjectCollider; 0] = [];
                         let water_center = water_planet_position(world_time);
                         let spiky_center = spiky_planet_position(world_time);
+                        let race_center = race_planet_position(world_time);
                         if !ship.planet_locked {
-                            ship.race_planet_locked =
-                                race_planet_is_closest(ship.position, water_center, spiky_center);
+                            ship.race_planet_locked = race_planet_is_closest(
+                                ship.position,
+                                water_center,
+                                spiky_center,
+                                race_center,
+                            );
                             ship.spiky_planet_locked = !ship.race_planet_locked
                                 && spiky_planet_is_closer(ship.position, water_center, spiky_center);
                         }
                         let (orbit_center, orbit_radius, orbit_rotation, orbit_colliders) =
                             if ship.race_planet_locked {
                                 (
-                                    race_track::PLANET_POSITION,
+                                    race_center,
                                     race_track::PLANET_RADIUS,
-                                    world_time * 0.08,
+                                    world_time * RACE_PLANET_ROTATION_SPEED,
                                     empty_colliders.as_slice(),
                                 )
                             } else if ship.spiky_planet_locked {
@@ -6624,7 +6706,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                                 (
                                     water_center,
                                     planet_surface_radius,
-                                    world_time * 0.25,
+                                    world_time * WATER_PLANET_ROTATION_SPEED,
                                     object_colliders.as_slice(),
                                 )
                             };
@@ -6748,6 +6830,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     spiky_planet_center,
                     spiky_planet_scale,
                     &sun,
+                    sun_center,
                     &wormhole,
                     wormhole_position(active_galaxy),
                     active_galaxy,
@@ -6789,7 +6872,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 if race_track.reward_complete() {
                     game_mode = GameMode::FreeWorld;
                     ship_controller = ShipController::new(ship_spec);
-                    race_track.leave(&mut ship_controller);
+                    race_track.leave(&mut ship_controller, race_planet_position(world_time));
                     window.set_title("Sistema solar | Esfera de 1 estrella obtenida");
                 } else {
                     race_track.update(&mut ship_controller, race_input, delta_time);
@@ -7233,6 +7316,44 @@ mod tests {
         let spiky = Vec3::new(100.0, 0.0, 0.0);
         assert!(spiky_planet_is_closer(ship, water, spiky));
         assert!(!spiky_planet_is_closer(ship, spiky, water));
+    }
+
+    #[test]
+    fn home_planets_follow_distinct_orbits_around_the_sun() {
+        let orbit_center = Vec3::new(SUN_POSITION_X, 0.0, 0.0);
+        let positions = [
+            (water_planet_position(0.0), PLANET_ORBIT_RADIUS),
+            (spiky_planet_position(0.0), SPIKY_PLANET_ORBIT_RADIUS),
+            (race_planet_position(0.0), RACE_PLANET_ORBIT_RADIUS),
+        ];
+        for (position, expected_radius) in positions {
+            let offset = position.sub(orbit_center);
+            assert!((offset.dot(offset).sqrt() - expected_radius).abs() < 0.01);
+        }
+        assert!(water_planet_position(20.0).sub(water_planet_position(0.0)).dot(
+            water_planet_position(20.0).sub(water_planet_position(0.0))
+        ) > 1.0);
+        assert!(race_planet_position(20.0).sub(race_planet_position(0.0)).dot(
+            race_planet_position(20.0).sub(race_planet_position(0.0))
+        ) > 1.0);
+    }
+
+    #[test]
+    fn home_portal_is_positioned_directly_above_the_sun() {
+        let sun = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
+        let portal = wormhole_position(Galaxy::Home);
+        assert!((portal.x - sun.x).abs() < 0.001);
+        assert!((portal.z - sun.z).abs() < 0.001);
+        assert!(portal.y > sun.y + 100.0);
+
+        let model = make_wormhole_sphere(22.0, 18, 28);
+        let (center, _) = model.bounds();
+        let vertical_radius = model
+            .vertices
+            .iter()
+            .map(|vertex| (vertex.y - center.y).abs())
+            .fold(0.0, f32::max);
+        assert!(vertical_radius < 3.0, "portal is not lying flat");
     }
 
     #[test]
@@ -7949,20 +8070,20 @@ mod tests {
             resolution.update(1.0 / 40.0, RenderStats::default());
         }
         assert_eq!(resolution.scale_index, 1);
-        assert_eq!(resolution.dimensions(), (1140, 760));
+        assert_eq!(resolution.dimensions(), (1620, 1080));
 
         for _ in 0..600 {
             resolution.update(1.0 / 100.0, RenderStats::default());
         }
         assert_eq!(resolution.scale_index, 0);
-        assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
+        assert_eq!(resolution.dimensions(), (1800, 1200));
     }
 
     #[test]
     fn racing_resolution_stays_native() {
         let mut resolution = DynamicResolution::new();
         assert!(!resolution.prefer_racing_resolution());
-        assert_eq!(resolution.percentage(), 100);
+        assert_eq!(resolution.percentage(), 150);
         assert_eq!(resolution.status, "HD NATIVO");
         assert!(!resolution.prefer_racing_resolution());
     }
@@ -7973,15 +8094,15 @@ mod tests {
         resolution.scale_index = RESOLUTION_SCALES.len() - 1;
         assert!(resolution.toggle());
         assert!(!resolution.enabled);
-        assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
+        assert_eq!(resolution.dimensions(), (1800, 1200));
     }
 
     #[test]
     fn dynamic_resolution_preserves_a_high_quality_floor() {
         let mut resolution = DynamicResolution::new();
         resolution.scale_index = RESOLUTION_SCALES.len() - 1;
-        assert_eq!(resolution.percentage(), 75);
-        assert_eq!(resolution.dimensions(), (900, 600));
+        assert_eq!(resolution.percentage(), 100);
+        assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
     }
 
     #[test]
@@ -7991,8 +8112,8 @@ mod tests {
         resolution.low_time = 0.7;
 
         assert!(resolution.prefer_native_resolution("VESPER HD"));
-        assert_eq!(resolution.percentage(), 100);
-        assert_eq!(resolution.dimensions(), (WIDTH, HEIGHT));
+        assert_eq!(resolution.percentage(), 150);
+        assert_eq!(resolution.dimensions(), (1800, 1200));
         assert_eq!(resolution.low_time, 0.0);
         assert_eq!(resolution.status, "VESPER HD");
         assert!(!resolution.prefer_native_resolution("VESPER HD"));
@@ -8131,6 +8252,35 @@ mod tests {
         );
         assert_ne!(arwing, astra);
         assert_ne!(arwing, pack([30, 78, 190], 1.0));
+    }
+
+    #[test]
+    fn metallic_texture_drives_all_white_ship_shaders() {
+        for shader in [
+            SurfaceShader::ArwingHull,
+            SurfaceShader::BuzzWhiteMetal,
+            SurfaceShader::McQueenWhiteMetal,
+        ] {
+            let first = procedural_surface_color(
+                shader,
+                Vec3::new(1.7, 0.9, -2.4),
+                0,
+                0,
+                0.0,
+                1.0,
+                0.25,
+            );
+            let second = procedural_surface_color(
+                shader,
+                Vec3::new(4.9, -1.3, 3.8),
+                0,
+                0,
+                0.0,
+                1.0,
+                0.25,
+            );
+            assert_ne!(first, second, "white shader {shader:?} lacks texture detail");
+        }
     }
 
     #[test]

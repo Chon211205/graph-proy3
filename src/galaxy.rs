@@ -15,9 +15,8 @@ pub(crate) struct GalaxyTransit {
 
 pub(crate) fn wormhole_position(galaxy: Galaxy) -> Vec3 {
     match galaxy {
-        // With the ship's default heading (-X), negative Z places the portal
-        // on the right side of the view, opposite the pink planet.
-        Galaxy::Home => Vec3::new(-260.0, 48.0, -130.0),
+        // Horizontal gateway suspended directly above the Sun.
+        Galaxy::Home => Vec3::new(-520.0, 175.0, 0.0),
         // Keep the return portal well clear of the new planet cluster.
         Galaxy::Vesper => Vec3::new(350.0, 48.0, 600.0),
     }

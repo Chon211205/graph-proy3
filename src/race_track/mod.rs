@@ -25,12 +25,7 @@ use self::{
 
 pub(crate) use self::drive::RaceInput;
 
-pub(crate) const PLANET_POSITION: Vec3 = Vec3 {
-    x: -180.0,
-    y: 10.0,
-    z: -100.0,
-};
-pub(crate) const PLANET_RADIUS: f32 = 28.0;
+pub(crate) const PLANET_RADIUS: f32 = 42.0;
 const RIVAL_COUNT: usize = 12;
 const REWARD_DURATION: f32 = 5.5;
 const REWARD_COLLECT_TIME: f32 = 2.8;
@@ -176,11 +171,11 @@ impl RaceTrack {
         true
     }
 
-    pub fn leave(&self, controller: &mut ShipController) {
+    pub fn leave(&self, controller: &mut ShipController, planet_position: Vec3) {
         controller.reset();
         let radial = Vec3::new(1.0, 0.24, -0.12).normalize();
         let ship = &mut controller.ship;
-        ship.position = PLANET_POSITION.add(radial.mul(PLANET_RADIUS + 72.0));
+        ship.position = planet_position.add(radial.mul(PLANET_RADIUS + 72.0));
         ship.yaw = (-radial.z).atan2(-radial.x).rem_euclid(TAU);
         ship.pitch = radial.y.asin();
         ship.planet_locked = false;
@@ -328,7 +323,7 @@ impl RaceTrack {
             sky.sun,
             batch,
             &camera,
-            |v| v.sub(sky.sun_center).mul(0.45).add(Vec3::new(-280.0, 170.0, -130.0)),
+            |v| v.sub(sky.sun_center).mul(0.60).add(Vec3::new(-280.0, 170.0, -130.0)),
             Some(time),
             None,
         );
