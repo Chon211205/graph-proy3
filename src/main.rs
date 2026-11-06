@@ -18,7 +18,8 @@ use std::time::Instant;
 use core_guardian::{CoreGuardian, GuardianAction, GuardianInput};
 use framebuffer::Framebuffer;
 use galaxy::{
-    Galaxy, GalaxyTransit, crossed_wormhole, draw_hyperspace_transition, wormhole_position,
+    Galaxy, GalaxyTransit, crossed_wormhole, draw_hyperspace_transition, nova_portal_position,
+    wormhole_position,
 };
 use minifb::{Key, ScaleMode, Window, WindowOptions};
 use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
@@ -2751,6 +2752,7 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
     let (base, horizon_glow, star_tint) = match galaxy {
         Galaxy::Home => ([4.0, 7.0, 20.0], [8.0, 11.0, 24.0], None),
         Galaxy::Vesper => ([7.0, 3.0, 25.0], [18.0, 11.0, 48.0], Some([130, 198, 255])),
+        Galaxy::Nova => ([2.0, 15.0, 18.0], [6.0, 48.0, 42.0], Some([105, 255, 205])),
     };
     for y in 0..framebuffer.height {
         let t = y as f32 / framebuffer.height as f32;
@@ -2762,7 +2764,7 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
         framebuffer.pixels[start..start + framebuffer.width].fill(color);
     }
 
-    if galaxy == Galaxy::Vesper {
+    if matches!(galaxy, Galaxy::Vesper | Galaxy::Nova) {
         let cx = framebuffer.width as f32 * 0.58;
         let cy = framebuffer.height as f32 * 0.44;
         let scale = framebuffer.width.min(framebuffer.height) as f32;
@@ -3394,7 +3396,7 @@ fn draw_wormhole_energy(
             let old_r = ((old >> 16) & 0xff) as f32;
             let old_g = ((old >> 8) & 0xff) as f32;
             let old_b = (old & 0xff) as f32;
-            let violet = (angle * 4.0 + time * 1.7).sin() * 0.5 + 0.5;
+                let violet = (angle * 4.0 + time * 1.7).sin() * 0.5 + 0.5;
             let red = (old_r + intensity * (32.0 + violet * 72.0)).min(255.0) as u32;
             let green = (old_g + intensity * (126.0 + (1.0 - violet) * 70.0)).min(255.0) as u32;
             let blue = (old_b + intensity * 245.0).min(255.0) as u32;
@@ -4708,7 +4710,7 @@ fn render_scene(
             None,
             None,
         );
-    } else {
+    } else if galaxy == Galaxy::Vesper {
         for (index, body) in vesper_planets.iter().enumerate() {
             let (sin, cos) = (body.rotation_y + world_time * 0.035).sin_cos();
             let lod = vesper_lod_states[index].update(projected_planet_radius(
@@ -4749,6 +4751,16 @@ fn render_scene(
         None,
         None,
     );
+    if galaxy == Galaxy::Vesper {
+        queue_model(
+            wormhole,
+            batch,
+            &camera,
+            |vertex| vertex.add(nova_portal_position()),
+            None,
+            None,
+        );
+    }
 
     render_ship_components(
         ship_model,
@@ -4767,6 +4779,14 @@ fn render_scene(
     );
     batch.flush(framebuffer);
     draw_wormhole_energy(framebuffer, &camera, wormhole_center, world_time);
+    if galaxy == Galaxy::Vesper {
+        draw_wormhole_energy(
+            framebuffer,
+            &camera,
+            nova_portal_position(),
+            world_time + 1.7,
+        );
+    }
     draw_projectile_glow(
         framebuffer,
         projectiles,
@@ -6443,19 +6463,25 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             if !transit.switched && transit.elapsed < 0.82 {
                 let t = (transit.elapsed / 0.82).clamp(0.0, 1.0);
                 let eased = t * t * (3.0 - 2.0 * t);
-                let destination = wormhole_position(active_galaxy);
-                let offset = destination.sub(transit.start_position);
+                let offset = transit.portal_position.sub(transit.start_position);
                 ship_controller.ship.position = transit.start_position.add(offset.mul(eased));
             }
             if !transit.switched && transit.elapsed >= 0.82 {
                 active_galaxy = transit.destination;
                 let portal = wormhole_position(active_galaxy);
-                let (exit_offset, exit_yaw) = if active_galaxy == Galaxy::Vesper {
-                    // Spawn facing the planet cluster with the return portal to the right.
-                    (Vec3::new(-420.0, 0.0, 0.0), std::f32::consts::FRAC_PI_2)
-                } else {
-                    // Arrive beside the portal and fly away from it by default.
-                    (Vec3::new(150.0, 0.0, 80.0), 0.0)
+                let (exit_offset, exit_yaw) = match active_galaxy {
+                    Galaxy::Vesper => {
+                        // Spawn facing the planet cluster with the portal behind.
+                        (Vec3::new(-420.0, 0.0, 0.0), std::f32::consts::FRAC_PI_2)
+                    }
+                    Galaxy::Nova => {
+                        // Enter the green Nova nebula clear of its gateway.
+                        (Vec3::new(0.0, 20.0, -150.0), std::f32::consts::PI)
+                    }
+                    Galaxy::Home => {
+                        // Arrive beside the solar portal and fly away from it.
+                        (Vec3::new(150.0, 0.0, 80.0), 0.0)
+                    }
                 };
                 ship_controller.ship.position = portal.add(exit_offset);
                 ship_controller.ship.yaw = exit_yaw;
@@ -6721,7 +6747,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             pitch_input,
                             false,
                         );
-                    } else {
+                    } else if active_galaxy == Galaxy::Vesper {
                         ship.spiky_planet_locked = false;
                         ship.race_planet_locked = false;
                         let nearest = vesper_orbit_index.unwrap_or_else(|| {
@@ -6755,6 +6781,18 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             true,
                         );
                         vesper_orbit_index = ship.planet_locked.then_some(nearest);
+                    } else {
+                        // Nova is open deep space: no body should capture the
+                        // ship into an orbit while it approaches its portal.
+                        ship.planet_locked = false;
+                        ship.spiky_planet_locked = false;
+                        ship.race_planet_locked = false;
+                        ship.orbit_center = None;
+                        ship.orbit_plane_normal = None;
+                        ship.position = ship
+                            .position
+                            .add(ship.movement_basis().0.mul(movement));
+                        vesper_orbit_index = None;
                     }
                 }
                 let camera_target = if ship.orbit_plane_normal.is_some() { 1.0 } else { 0.0 };
@@ -6774,14 +6812,27 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     portal_center,
                     42.0,
                 );
+                let near_nova_portal = active_galaxy == Galaxy::Vesper
+                    && crossed_wormhole(
+                        previous_ship_position,
+                        ship.position,
+                        nova_portal_position(),
+                        42.0,
+                    );
                 if galaxy_transition.is_none()
-                    && near_wormhole
+                    && (near_wormhole || near_nova_portal)
                     && !ship.planet_locked
                 {
+                    let (portal_position, destination) = if near_nova_portal {
+                        (nova_portal_position(), Galaxy::Nova)
+                    } else {
+                        (portal_center, active_galaxy.portal_destination())
+                    };
                     galaxy_transition = Some(GalaxyTransit {
                         elapsed: 0.0,
                         start_position: ship.position,
-                        destination: if active_galaxy == Galaxy::Home { Galaxy::Vesper } else { Galaxy::Home },
+                        portal_position,
+                        destination,
                         switched: false,
                     });
                     window.set_title("Agujero de gusano | Entrando en hipervelocidad");
@@ -6789,7 +6840,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 
                 if galaxy_transition.is_some() {
                     window.set_title("Atravesando el agujero | Hipervelocidad");
-                } else if near_wormhole {
+                } else if near_wormhole || near_nova_portal {
                     window.set_title("Agujero de gusano | Atravesalo para viajar");
                 } else if ship.planet_locked {
                     if ship.race_planet_locked {
@@ -6811,10 +6862,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         );
                     }
                 } else {
-                    window.set_title(if active_galaxy == Galaxy::Home {
-                        "Sistema solar | Vuelo libre 3D | F11: fullscreen"
-                    } else {
-                        "Espacio profundo | Vuelo libre 3D | F11: fullscreen"
+                    window.set_title(match active_galaxy {
+                        Galaxy::Home => "Sistema solar | Vuelo libre 3D | F11: fullscreen",
+                        Galaxy::Vesper => "Galaxia Vesper | Portales: Sistema solar y Nova",
+                        Galaxy::Nova => "Galaxia Nova | Portal: Vesper",
                     });
                 }
                 render_scene(
@@ -6983,10 +7034,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             .is_some_and(|transit| transit.elapsed >= 2.15)
         {
             galaxy_transition = None;
-            window.set_title(if active_galaxy == Galaxy::Home {
-                "Sistema solar | Vuelo libre 3D | F11: fullscreen"
-            } else {
-                "Espacio profundo | Vuelo libre 3D | F11: fullscreen"
+            window.set_title(match active_galaxy {
+                Galaxy::Home => "Sistema solar | Vuelo libre 3D | F11: fullscreen",
+                Galaxy::Vesper => "Galaxia Vesper | Portales: Sistema solar y Nova",
+                Galaxy::Nova => "Galaxia Nova | Portal disponible: Vesper",
             });
         }
 

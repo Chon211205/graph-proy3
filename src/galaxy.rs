@@ -4,11 +4,23 @@ use crate::{framebuffer::Framebuffer, obj_loader::Vec3};
 pub(crate) enum Galaxy {
     Home,
     Vesper,
+    Nova,
+}
+
+impl Galaxy {
+    pub(crate) const fn portal_destination(self) -> Self {
+        match self {
+            Self::Home => Self::Vesper,
+            Self::Vesper => Self::Home,
+            Self::Nova => Self::Vesper,
+        }
+    }
 }
 
 pub(crate) struct GalaxyTransit {
     pub elapsed: f32,
     pub start_position: Vec3,
+    pub portal_position: Vec3,
     pub destination: Galaxy,
     pub switched: bool,
 }
@@ -17,8 +29,35 @@ pub(crate) fn wormhole_position(galaxy: Galaxy) -> Vec3 {
     match galaxy {
         // Horizontal gateway suspended directly above the Sun.
         Galaxy::Home => Vec3::new(-520.0, 175.0, 0.0),
-        // Keep the return portal well clear of the new planet cluster.
+        // Primary Vesper portal returns to the solar system.
         Galaxy::Vesper => Vec3::new(350.0, 48.0, 600.0),
+        // Nova's portal returns to Vesper.
+        Galaxy::Nova => Vec3::new(0.0, 70.0, 380.0),
+    }
+}
+
+pub(crate) fn nova_portal_position() -> Vec3 {
+    // Independent Vesper gateway to Nova, well separated from the return portal.
+    Vec3::new(-420.0, 115.0, 520.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vesper_has_separate_home_and_nova_portals() {
+        assert_eq!(Galaxy::Home.portal_destination(), Galaxy::Vesper);
+        assert_eq!(Galaxy::Vesper.portal_destination(), Galaxy::Home);
+        assert_eq!(Galaxy::Nova.portal_destination(), Galaxy::Vesper);
+        let home_to_vesper = wormhole_position(Galaxy::Home)
+            .sub(wormhole_position(Galaxy::Vesper));
+        let vesper_to_nova = wormhole_position(Galaxy::Vesper)
+            .sub(wormhole_position(Galaxy::Nova));
+        assert!(home_to_vesper.dot(home_to_vesper) > 1.0);
+        assert!(vesper_to_nova.dot(vesper_to_nova) > 1.0);
+        let separate = nova_portal_position().sub(wormhole_position(Galaxy::Vesper));
+        assert!(separate.dot(separate) > 300.0 * 300.0);
     }
 }
 
