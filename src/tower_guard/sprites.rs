@@ -93,7 +93,7 @@ impl Sprite {
         })
     }
 
-    fn source_at(&self, screen_x: f32, screen_y: f32, pose: SpritePose) -> Option<(usize, usize)> {
+    fn source_uv(&self, screen_x: f32, screen_y: f32, pose: SpritePose) -> Option<(f32, f32)> {
         if pose.height <= 0.0 || pose.alpha <= 0.0 {
             return None;
         }
@@ -109,10 +109,60 @@ impl Sprite {
         if !(0.0..1.0).contains(&u) || !(0.0..1.0).contains(&v) {
             return None;
         }
+        Some((u, v))
+    }
+
+    fn source_at(&self, screen_x: f32, screen_y: f32, pose: SpritePose) -> Option<(usize, usize)> {
+        let (u, v) = self.source_uv(screen_x, screen_y, pose)?;
         Some((
             (u * self.width as f32).floor() as usize,
             (v * self.height as f32).floor() as usize,
         ))
+    }
+
+    fn sample_bilinear(&self, u: f32, v: f32) -> [u8; 4] {
+        let x = (u * self.width as f32 - 0.5).clamp(0.0, self.width.saturating_sub(1) as f32);
+        let y = (v * self.height as f32 - 0.5).clamp(0.0, self.height.saturating_sub(1) as f32);
+        let x0 = x.floor() as usize;
+        let y0 = y.floor() as usize;
+        let x1 = (x0 + 1).min(self.width - 1);
+        let y1 = (y0 + 1).min(self.height - 1);
+        let fx = x - x0 as f32;
+        let fy = y - y0 as f32;
+        let weights = [
+            (1.0 - fx) * (1.0 - fy),
+            fx * (1.0 - fy),
+            (1.0 - fx) * fy,
+            fx * fy,
+        ];
+        let samples = [
+            self.rgba[y0 * self.width + x0],
+            self.rgba[y0 * self.width + x1],
+            self.rgba[y1 * self.width + x0],
+            self.rgba[y1 * self.width + x1],
+        ];
+
+        // Interpolate premultiplied colors so transparent pixels do not add
+        // dark or colored fringes around a character's silhouette.
+        let alpha = samples
+            .iter()
+            .zip(weights)
+            .map(|(pixel, weight)| pixel[3] as f32 * weight)
+            .sum::<f32>();
+        if alpha <= 0.0 {
+            return [0, 0, 0, 0];
+        }
+        let mut result = [0_u8; 4];
+        for channel in 0..3 {
+            let premultiplied = samples
+                .iter()
+                .zip(weights)
+                .map(|(pixel, weight)| pixel[channel] as f32 * pixel[3] as f32 * weight)
+                .sum::<f32>();
+            result[channel] = (premultiplied / alpha).clamp(0.0, 255.0).round() as u8;
+        }
+        result[3] = alpha.clamp(0.0, 255.0).round() as u8;
+        result
     }
 
     pub fn aspect(&self) -> f32 {
@@ -159,10 +209,10 @@ impl Sprite {
         let bottom = (pose.anchor_y + 1.0).ceil().min(frame.height as f32) as usize;
         for y in top..bottom {
             for x in left..right {
-                let Some((sx, sy)) = self.source_at(x as f32 + 0.5, y as f32 + 0.5, pose) else {
+                let Some((u, v)) = self.source_uv(x as f32 + 0.5, y as f32 + 0.5, pose) else {
                     continue;
                 };
-                let color = self.rgba[sy * self.width + sx];
+                let color = self.sample_bilinear(u, v);
                 let alpha = (color[3] as f32 / 255.0 * pose.alpha).clamp(0.0, 1.0);
                 if alpha < 0.01 {
                     continue;

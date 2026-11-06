@@ -1,41 +1,47 @@
-use raylib::core::audio::{RaylibAudio, Sound};
-
 use super::state::AudioCue;
 
-pub struct TowerAudio<'audio> {
-    shot: Option<Sound<'audio>>,
-    impact: Option<Sound<'audio>>,
-    damage: Option<Sound<'audio>>,
-    boss_alert: Option<Sound<'audio>>,
+pub struct TowerAudio {
+    shot: Vec<u16>,
+    impact: Vec<u16>,
+    damage: Vec<u16>,
+    boss_alert: Vec<u16>,
 }
 
-impl<'audio> TowerAudio<'audio> {
-    pub fn load(device: &'audio RaylibAudio) -> Self {
-        let load = |path: &str| device.new_sound(path).ok();
-        let shot = load("assets/minigames/tower_guardian/audio/shot.wav");
-        let impact = load("assets/minigames/tower_guardian/audio/impact.wav");
-        let damage = load("assets/minigames/tower_guardian/audio/damage.wav");
-        let boss_alert = load("assets/minigames/tower_guardian/audio/boss-alert.wav");
-        for sound in [&shot, &impact, &damage, &boss_alert].into_iter().flatten() {
-            sound.set_volume(0.32);
-        }
+impl TowerAudio {
+    pub fn load() -> Self {
+        let path = |value: &str| value.encode_utf16().chain(Some(0)).collect();
         Self {
-            shot,
-            impact,
-            damage,
-            boss_alert,
+            shot: path("assets/minigames/tower_guardian/audio/shot.wav"),
+            impact: path("assets/minigames/tower_guardian/audio/impact.wav"),
+            damage: path("assets/minigames/tower_guardian/audio/damage.wav"),
+            boss_alert: path("assets/minigames/tower_guardian/audio/boss-alert.wav"),
         }
     }
 
     pub fn play(&self, cue: AudioCue) {
-        let sound = match cue {
+        let path = match cue {
             AudioCue::Shot => &self.shot,
             AudioCue::Impact => &self.impact,
             AudioCue::Damage => &self.damage,
             AudioCue::BossAlert => &self.boss_alert,
         };
-        if let Some(sound) = sound {
-            sound.play();
+
+        #[cfg(target_os = "windows")]
+        unsafe {
+            #[link(name = "winmm")]
+            unsafe extern "system" {
+                fn PlaySoundW(sound: *const u16, module: *mut core::ffi::c_void, flags: u32)
+                -> i32;
+            }
+
+            const SND_ASYNC: u32 = 0x0001;
+            const SND_NODEFAULT: u32 = 0x0002;
+            const SND_FILENAME: u32 = 0x0002_0000;
+            PlaySoundW(
+                path.as_ptr(),
+                std::ptr::null_mut(),
+                SND_ASYNC | SND_NODEFAULT | SND_FILENAME,
+            );
         }
     }
 }
