@@ -10,6 +10,10 @@ pub(super) fn draw_hud(game: &TowerGame, frame: &mut Framebuffer) {
     let y_scale = frame.height as f32 / HEIGHT as f32;
     let y = |base: i32| (base as f32 * y_scale) as i32;
 
+    if game.lost_defense_flash > 0.0 {
+        draw_damage_overlay(frame, game.lost_defense_flash / super::DAMAGE_FLASH_SECONDS);
+    }
+
     draw_selection_label(
         frame,
         "TORRE: ULTIMA GUARDIA",
@@ -149,6 +153,74 @@ pub(super) fn draw_hud(game: &TowerGame, frame: &mut Framebuffer) {
             0xff6f5f,
         );
     }
+}
+
+fn draw_damage_overlay(frame: &mut Framebuffer, remaining: f32) {
+    let strength = remaining.clamp(0.0, 1.0).powf(0.72);
+    let band_x = (frame.width as f32 * 0.20).max(1.0);
+    let band_y = (frame.height as f32 * 0.18).max(1.0);
+    for y in 0..frame.height {
+        let edge_y = y.min(frame.height.saturating_sub(1) - y) as f32;
+        for x in 0..frame.width {
+            let edge_x = x.min(frame.width.saturating_sub(1) - x) as f32;
+            let distance = (edge_x / band_x).min(edge_y / band_y).clamp(0.0, 1.0);
+            let falloff = 1.0 - distance;
+            if falloff <= 0.0 {
+                continue;
+            }
+            let alpha = strength * falloff * falloff * 0.66;
+            let index = y * frame.width + x;
+            frame.pixels[index] = tint_toward_blood(frame.pixels[index], alpha);
+        }
+    }
+
+    let w = frame.width as f32;
+    let h = frame.height as f32;
+    let stains = [
+        (0.015, 0.17, 0.040, 0.085),
+        (0.045, 0.39, 0.023, 0.052),
+        (0.020, 0.70, 0.034, 0.075),
+        (0.075, 0.94, 0.031, 0.048),
+        (0.985, 0.23, 0.036, 0.074),
+        (0.955, 0.53, 0.025, 0.059),
+        (0.985, 0.82, 0.039, 0.080),
+        (0.39, 0.015, 0.034, 0.054),
+        (0.70, 0.020, 0.026, 0.046),
+    ];
+    for (cx, cy, rx, ry) in stains {
+        draw_blood_stain(frame, cx * w, cy * h, rx * w, ry * h, strength);
+    }
+}
+
+fn draw_blood_stain(frame: &mut Framebuffer, cx: f32, cy: f32, rx: f32, ry: f32, strength: f32) {
+    let left = (cx - rx).floor().max(0.0) as usize;
+    let right = (cx + rx).ceil().min(frame.width as f32) as usize;
+    let top = (cy - ry).floor().max(0.0) as usize;
+    let bottom = (cy + ry).ceil().min(frame.height as f32) as usize;
+    for y in top..bottom {
+        for x in left..right {
+            let dx = (x as f32 + 0.5 - cx) / rx;
+            let dy = (y as f32 + 0.5 - cy) / ry;
+            let angle = dy.atan2(dx);
+            let rough_edge = 0.84 + (angle * 5.0).sin() * 0.08 + (angle * 9.0).cos() * 0.05;
+            let radius = (dx * dx + dy * dy).sqrt();
+            if radius > rough_edge {
+                continue;
+            }
+            let alpha = strength * (0.20 + (1.0 - radius / rough_edge) * 0.55);
+            let index = y * frame.width + x;
+            frame.pixels[index] = tint_toward_blood(frame.pixels[index], alpha);
+        }
+    }
+}
+
+fn tint_toward_blood(color: u32, alpha: f32) -> u32 {
+    let channel = |shift: u32, target: u32| {
+        let base = ((color >> shift) & 0xff) as f32;
+        let mixed = base + (target as f32 - base) * alpha.clamp(0.0, 1.0);
+        mixed.round() as u32
+    };
+    (channel(16, 156) << 16) | (channel(8, 8) << 8) | channel(0, 20)
 }
 
 fn draw_result(game: &TowerGame, frame: &mut Framebuffer, center_x: i32, y_scale: f32, scale: i32) {

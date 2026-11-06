@@ -27,6 +27,7 @@ pub use state::{InputFrame, Phase};
 
 const BOSS_INTRO_SECONDS: f32 = 2.4;
 const BOSS_DEFEAT_SECONDS: f32 = 2.1;
+pub(super) const DAMAGE_FLASH_SECONDS: f32 = 0.78;
 const ENEMY_FALL_SECONDS: f32 = 1.1;
 const AIM_ARROW_SPEED: f32 = 0.62;
 const MAX_HELPERS: usize = 2;
@@ -393,7 +394,7 @@ impl TowerGame {
         self.queue_audio(AudioCue::Damage);
         self.defenses = self.defenses.saturating_sub(1);
         self.stats.escapes += 1;
-        self.lost_defense_flash = 0.42;
+        self.lost_defense_flash = DAMAGE_FLASH_SECONDS;
         if self.defenses == 0 {
             self.phase = Phase::Defeat;
             self.boss = None;
