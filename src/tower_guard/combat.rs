@@ -111,7 +111,7 @@ impl TowerGame {
                 if enemy.health == 0 {
                     enemy.resolved = true;
                     enemy.state = LifeState::Falling;
-                    enemy.state_timer = 0.65;
+                    enemy.state_timer = super::ENEMY_FALL_SECONDS;
                     self.stats.kills += 1;
                     self.stats.score += 500;
                     self.hit_marker_headshot = region == PixelRegion::Head;
