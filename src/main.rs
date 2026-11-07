@@ -10,6 +10,7 @@ mod tower_guard;
 mod triangle;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::cell::{Cell, RefCell};
 use std::f32::consts::{PI, TAU};
 use std::fs::File;
 use std::sync::OnceLock;
@@ -35,6 +36,114 @@ use triangle::{ScreenVertex, draw_triangle_shaded_region};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
+const BENCHMARK_WARMUP_FRAMES: usize = 180;
+const BENCHMARK_SAMPLE_FRAMES: usize = 600;
+
+#[derive(Clone, Copy, Default)]
+struct BenchmarkSample {
+    frame_ms: f32,
+    update_scene_ms: f32,
+    geometry_ms: f32,
+    sort_ms: f32,
+    raster_ms: f32,
+    post_ms: f32,
+    copy_ms: f32,
+    present_ms: f32,
+    models_visible: usize,
+    models_culled: usize,
+    vertices: usize,
+    triangles: usize,
+    race_geometry_ms: [f32; 7],
+    race_vertices: [usize; 7],
+    race_triangles: [usize; 7],
+}
+
+struct BenchmarkRun {
+    scene: String,
+    warmup_left: usize,
+    samples: Vec<BenchmarkSample>,
+}
+
+impl BenchmarkRun {
+    fn from_environment() -> Option<Self> {
+        std::env::var("GRAPH_BENCH_SCENE").ok().map(|scene| Self {
+            scene,
+            warmup_left: BENCHMARK_WARMUP_FRAMES,
+            samples: Vec::with_capacity(BENCHMARK_SAMPLE_FRAMES),
+        })
+    }
+
+    fn record(&mut self, sample: BenchmarkSample) -> bool {
+        if self.warmup_left > 0 {
+            self.warmup_left -= 1;
+            return false;
+        }
+        self.samples.push(sample);
+        self.samples.len() == BENCHMARK_SAMPLE_FRAMES
+    }
+
+    fn print(&self, workers: usize, advanced_lighting: bool) {
+        fn percentile(mut values: Vec<f32>, fraction: f32) -> f32 {
+            values.sort_unstable_by(f32::total_cmp);
+            let index = ((values.len() - 1) as f32 * fraction).ceil() as usize;
+            values[index]
+        }
+        fn mean(values: impl Iterator<Item = f32>, count: usize) -> f32 {
+            values.sum::<f32>() / count as f32
+        }
+        let count = self.samples.len();
+        let frames: Vec<f32> = self.samples.iter().map(|s| s.frame_ms).collect();
+        let mean_frame = mean(frames.iter().copied(), count);
+        println!(
+            "BENCH scene={} frames={} resolution={}x{} workers={} advanced={}",
+            self.scene, count, WIDTH, HEIGHT, workers, advanced_lighting
+        );
+        if self.scene == "race" {
+            const LABELS: [&str; 7] = [
+                "cielo",
+                "terreno",
+                "bosques",
+                "arcos",
+                "pista",
+                "jugador",
+                "rivales",
+            ];
+            for (index, label) in LABELS.iter().enumerate() {
+                println!(
+                    "BENCH race_category={label} geometry={:.4} vertices={:.1} triangles={:.1}",
+                    mean(self.samples.iter().map(|s| s.race_geometry_ms[index]), count),
+                    mean(self.samples.iter().map(|s| s.race_vertices[index] as f32), count),
+                    mean(self.samples.iter().map(|s| s.race_triangles[index] as f32), count),
+                );
+            }
+        }
+        println!(
+            "BENCH frame avg={mean_frame:.4} min={:.4} max={:.4} p95={:.4} p99={:.4} fps={:.3}",
+            percentile(frames.clone(), 0.0),
+            percentile(frames.clone(), 1.0),
+            percentile(frames.clone(), 0.95),
+            percentile(frames, 0.99),
+            1_000.0 / mean_frame
+        );
+        println!(
+            "BENCH stages update_scene={:.4} geometry={:.4} sort={:.4} raster={:.4} post={:.4} copy={:.4} present={:.4}",
+            mean(self.samples.iter().map(|s| s.update_scene_ms), count),
+            mean(self.samples.iter().map(|s| s.geometry_ms), count),
+            mean(self.samples.iter().map(|s| s.sort_ms), count),
+            mean(self.samples.iter().map(|s| s.raster_ms), count),
+            mean(self.samples.iter().map(|s| s.post_ms), count),
+            mean(self.samples.iter().map(|s| s.copy_ms), count),
+            mean(self.samples.iter().map(|s| s.present_ms), count)
+        );
+        println!(
+            "BENCH counters visible={:.1} culled={:.1} vertices={:.1} triangles={:.1}",
+            mean(self.samples.iter().map(|s| s.models_visible as f32), count),
+            mean(self.samples.iter().map(|s| s.models_culled as f32), count),
+            mean(self.samples.iter().map(|s| s.vertices as f32), count),
+            mean(self.samples.iter().map(|s| s.triangles as f32), count)
+        );
+    }
+}
 const START_FULLSCREEN: bool = true;
 const NEAR_PLANE: f32 = 0.2;
 const FAR_PLANE: f32 = 750.0;
@@ -109,7 +218,12 @@ fn water_reward_position() -> Vec3 {
 
 fn render_worker_count() -> usize {
     static WORKER_COUNT: OnceLock<usize> = OnceLock::new();
-    *WORKER_COUNT.get_or_init(|| thread::available_parallelism().map_or(1, usize::from))
+    *WORKER_COUNT.get_or_init(|| {
+        std::env::var("GRAPH_BENCH_WORKERS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or_else(|| thread::available_parallelism().map_or(1, usize::from))
+    })
 }
 
 struct DynamicResolution {
@@ -4149,6 +4263,70 @@ struct RenderStats {
     raster_ms: f32,
 }
 
+thread_local! {
+    static LOCAL_RENDER_STATS: Cell<(RenderStats, usize)> = const {
+        Cell::new((RenderStats {
+            models_visible: 0,
+            models_culled: 0,
+            vertices_transformed: 0,
+            triangles_submitted: 0,
+            geometry_ms: 0.0,
+            sort_ms: 0.0,
+            raster_ms: 0.0,
+        }, 0))
+    };
+}
+
+thread_local! {
+    static RACE_BENCHMARK_CATEGORIES: Cell<([f32; 7], [usize; 7], [usize; 7])> =
+        const { Cell::new(([0.0; 7], [0; 7], [0; 7])) };
+}
+
+fn reset_race_benchmark_categories() {
+    RACE_BENCHMARK_CATEGORIES.with(|categories| categories.set(([0.0; 7], [0; 7], [0; 7])));
+}
+
+fn take_race_benchmark_categories() -> ([f32; 7], [usize; 7], [usize; 7]) {
+    RACE_BENCHMARK_CATEGORIES.with(|categories| {
+        categories.replace(([0.0; 7], [0; 7], [0; 7]))
+    })
+}
+
+fn record_race_benchmark_category(index: usize, before: RenderStats, after: RenderStats) {
+    if std::env::var_os("GRAPH_BENCH_SCENE").is_none() {
+        return;
+    }
+    RACE_BENCHMARK_CATEGORIES.with(|categories| {
+        let (mut geometry, mut vertices, mut triangles) = categories.get();
+        geometry[index] += after.geometry_ms - before.geometry_ms;
+        vertices[index] += after.vertices_transformed - before.vertices_transformed;
+        triangles[index] += after.triangles_submitted - before.triangles_submitted;
+        categories.set((geometry, vertices, triangles));
+    });
+}
+
+fn reset_local_render_stats() {
+    LOCAL_RENDER_STATS.with(|stats| stats.set((RenderStats::default(), 0)));
+}
+
+fn take_local_render_stats() -> (RenderStats, usize) {
+    LOCAL_RENDER_STATS.with(|stats| stats.replace((RenderStats::default(), 0)))
+}
+
+fn accumulate_local_render_stats(frame: RenderStats) {
+    LOCAL_RENDER_STATS.with(|stats| {
+        let (mut total, calls) = stats.get();
+        total.models_visible += frame.models_visible;
+        total.models_culled += frame.models_culled;
+        total.vertices_transformed += frame.vertices_transformed;
+        total.triangles_submitted += frame.triangles_submitted;
+        total.geometry_ms += frame.geometry_ms;
+        total.sort_ms += frame.sort_ms;
+        total.raster_ms += frame.raster_ms;
+        stats.set((total, calls + 1));
+    });
+}
+
 #[derive(Clone, Copy)]
 struct ProjectionCache {
     tan_half_vertical: f32,
@@ -4182,6 +4360,11 @@ struct TriangleBatch {
     viewport_height: usize,
     projection: ProjectionCache,
     stats: RenderStats,
+}
+
+thread_local! {
+    static MODEL_RENDER_BATCH: RefCell<TriangleBatch> =
+        RefCell::new(TriangleBatch::new(1, 1));
 }
 
 impl TriangleBatch {
@@ -4260,8 +4443,15 @@ impl TriangleBatch {
                 let region_y = tile_index * tile_height;
                 scope.spawn(move || {
                     let region_height = tile_depth.len() / width;
+                    let region_end_y = region_y + region_height;
                     let mut occlusion = None;
                     for (command_index, command) in commands.iter().enumerate() {
+                        let [a, b, c] = command.vertices;
+                        let triangle_min_y = a.y.min(b.y).min(c.y).floor().max(0.0) as usize;
+                        let triangle_max_y = a.y.max(b.y).max(c.y).ceil().max(0.0) as usize;
+                        if triangle_max_y < region_y || triangle_min_y >= region_end_y {
+                            continue;
+                        }
                         if command_index == 256 || command_index == 1024 {
                             occlusion = Some(CoarseOcclusion::build(
                                 tile_depth,
@@ -4270,7 +4460,6 @@ impl TriangleBatch {
                                 region_height,
                             ));
                         }
-                        let [a, b, c] = command.vertices;
                         if occlusion
                             .as_ref()
                             .is_some_and(|grid| grid.hides([a, b, c], width))
@@ -4381,16 +4570,24 @@ fn render_model<F>(
 ) where
     F: Fn(Vec3) -> Vec3 + Sync,
 {
-    let mut batch = TriangleBatch::new(framebuffer.width, framebuffer.height);
-    queue_model(
-        model,
-        &mut batch,
-        camera,
-        transform,
-        water_time,
-        effect_spec,
-    );
-    batch.flush(framebuffer);
+    MODEL_RENDER_BATCH.with_borrow_mut(|batch| {
+        batch.begin_frame();
+        if (batch.viewport_width, batch.viewport_height) != (framebuffer.width, framebuffer.height) {
+            batch.resize(framebuffer.width, framebuffer.height);
+        }
+        queue_model(
+            model,
+            batch,
+            camera,
+            transform,
+            water_time,
+            effect_spec,
+        );
+        batch.flush(framebuffer);
+        if std::env::var_os("GRAPH_BENCH_SCENE").is_some() {
+            accumulate_local_render_stats(batch.stats());
+        }
+    });
 }
 
 fn queue_model<F>(
@@ -6238,15 +6435,22 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             ),
         ],
     ];
-    let (mut selected_ship, initial_form) = loop {
-        if menu::show(&mut window, &mut framebuffer, false)? == menu::Action::Quit {
-            return Ok(false);
-        }
-        if let Some(index) = select_ship(&mut window, &mut framebuffer, &choices, &ship_forms, 0)? {
-            break index;
-        }
-        if !window.is_open() {
-            return Ok(false);
+    let mut benchmark = BenchmarkRun::from_environment();
+    let (mut selected_ship, initial_form) = if benchmark.is_some() {
+        (2, 0)
+    } else {
+        loop {
+            if menu::show(&mut window, &mut framebuffer, false)? == menu::Action::Quit {
+                return Ok(false);
+            }
+            if let Some(index) =
+                select_ship(&mut window, &mut framebuffer, &choices, &ship_forms, 0)?
+            {
+                break index;
+            }
+            if !window.is_open() {
+                return Ok(false);
+            }
         }
     };
     let (mut ship_model, mut ship_spec) = choices[selected_ship];
@@ -6413,11 +6617,16 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut world_time = 0.0_f32;
     let mut distance = 0.0_f32;
     let mut performance_hud = false;
-    let mut advanced_lighting = false;
+    let mut advanced_lighting = std::env::var_os("GRAPH_BENCH_ADVANCED").is_some();
     let mut last_tower_cursor = (0.5_f32, 0.52_f32);
     let mut tower_mouse_down = false;
 
     while window.is_open() {
+        let benchmark_frame_start = Instant::now();
+        if benchmark.is_some() {
+            reset_local_render_stats();
+            reset_race_benchmark_categories();
+        }
         if game_mode == GameMode::Racing
             && (crate::input::pressed(Key::Escape) || crate::input::pressed(Key::P))
         {
@@ -6567,7 +6776,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         }
         let now = Instant::now();
         let frame_time = now.duration_since(previous).as_secs_f32();
-        let delta_time = frame_time.min(0.05);
+        let delta_time = if benchmark.is_some() {
+            1.0 / 60.0
+        } else {
+            frame_time.min(0.05)
+        };
         previous = now;
         world_time += delta_time;
 
@@ -6767,6 +6980,30 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             firing: window.is_key_down(Key::Enter) && !entered_level,
         };
 
+        if let Some(run) = benchmark.as_ref() {
+            match run.scene.as_str() {
+                "free" if game_mode != GameMode::FreeWorld => game_mode = GameMode::FreeWorld,
+                "race" if game_mode != GameMode::Racing => {
+                    ship_controller = ShipController::new(&ASTRA_CAR_SPEC);
+                    race_track.enter(&mut ship_controller, selected_ship, &race_vehicles);
+                    game_mode = GameMode::Racing;
+                }
+                "water" if game_mode != GameMode::WaterLevel => {
+                    ship_controller = ShipController::new(level_ship_spec);
+                    game_mode = GameMode::WaterLevel;
+                }
+                "guardian" if game_mode != GameMode::CoreGuardian => {
+                    game_mode = GameMode::CoreGuardian
+                }
+                "tower" if game_mode != GameMode::TowerGuard => game_mode = GameMode::TowerGuard,
+                _ => {}
+            }
+            if run.scene == "free" && !ship_controller.ship.planet_locked {
+                place_ship_near_race_planet(&mut ship_controller, world_time);
+            }
+        }
+
+        let update_scene_start = Instant::now();
         let active_model = if selected_ship == 4 {
             &buzz_variants[if game_mode == GameMode::WaterLevel {
                 2
@@ -7231,10 +7468,15 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             });
         }
 
+        let update_scene_ms = update_scene_start.elapsed().as_secs_f32() * 1_000.0;
+        let post_start = Instant::now();
         if advanced_lighting && game_mode != GameMode::TowerGuard {
             hybrid_ray_tracing.apply_high(&mut scene_framebuffer);
         }
+        let post_ms = post_start.elapsed().as_secs_f32() * 1_000.0;
+        let copy_start = Instant::now();
         upscale_scene(&scene_framebuffer, &mut framebuffer);
+        let copy_ms = copy_start.elapsed().as_secs_f32() * 1_000.0;
         if performance_hud {
             let stats = triangle_batch.stats();
             let summary = format!(
@@ -7540,7 +7782,46 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             println!("Captura guardada: captura.png");
         }
         crate::input::clear();
+        let present_start = Instant::now();
         window.update_with_buffer(&framebuffer.pixels, WIDTH, HEIGHT)?;
+        let present_ms = present_start.elapsed().as_secs_f32() * 1_000.0;
+        if let Some(run) = benchmark.as_mut() {
+            let mut stats = triangle_batch.stats();
+            let (local_stats, local_calls) = take_local_render_stats();
+            let (race_geometry_ms, race_vertices, race_triangles) =
+                take_race_benchmark_categories();
+            stats.models_visible += local_stats.models_visible;
+            stats.models_culled += local_stats.models_culled;
+            stats.vertices_transformed += local_stats.vertices_transformed;
+            stats.triangles_submitted += local_stats.triangles_submitted;
+            stats.geometry_ms += local_stats.geometry_ms;
+            stats.sort_ms += local_stats.sort_ms;
+            stats.raster_ms += local_stats.raster_ms;
+            if run.warmup_left == 0 && run.samples.is_empty() {
+                println!("BENCH local_render_calls={local_calls}");
+            }
+            let finished = run.record(BenchmarkSample {
+                frame_ms: benchmark_frame_start.elapsed().as_secs_f32() * 1_000.0,
+                update_scene_ms,
+                geometry_ms: stats.geometry_ms,
+                sort_ms: stats.sort_ms,
+                raster_ms: stats.raster_ms,
+                post_ms,
+                copy_ms,
+                present_ms,
+                models_visible: stats.models_visible,
+                models_culled: stats.models_culled,
+                vertices: stats.vertices_transformed,
+                triangles: stats.triangles_submitted,
+                race_geometry_ms,
+                race_vertices,
+                race_triangles,
+            });
+            if finished {
+                run.print(render_worker_count(), advanced_lighting);
+                return Ok(false);
+            }
+        }
     }
     Ok(false)
 }
@@ -8288,8 +8569,32 @@ mod tests {
     }
 
     #[test]
+    fn reused_model_batch_matches_a_fresh_batch() {
+        let camera = test_camera();
+        let model = test_triangle(5.0);
+        let mut reused = Framebuffer::new(64, 64);
+        let mut fresh = Framebuffer::new(64, 64);
+
+        render_model(&model, &mut reused, &camera, |vertex| vertex, None, None);
+
+        let mut fresh_batch = TriangleBatch::new(fresh.width, fresh.height);
+        queue_model(
+            &model,
+            &mut fresh_batch,
+            &camera,
+            |vertex| vertex,
+            None,
+            None,
+        );
+        fresh_batch.flush(&mut fresh);
+
+        assert_eq!(reused.pixels, fresh.pixels);
+    }
+
+    #[test]
     fn tiled_rasterizer_preserves_depth_across_tile_boundaries() {
         let mut framebuffer = Framebuffer::new(64, 64);
+        let mut single_worker = Framebuffer::new(64, 64);
         let vertices = |z| {
             [
                 ScreenVertex { x: 4.0, y: 4.0, z },
@@ -8302,6 +8607,15 @@ mod tests {
             ]
         };
         let mut batch = TriangleBatch::new(framebuffer.width, framebuffer.height);
+        let mut reference_batch = TriangleBatch::new(single_worker.width, single_worker.height);
+        reference_batch.commands.push(TriangleCommand {
+            vertices: vertices(0.5),
+            style: TriangleStyle::Flat(0xff0000),
+        });
+        reference_batch.commands.push(TriangleCommand {
+            vertices: vertices(1.0),
+            style: TriangleStyle::Flat(0x00ff00),
+        });
         batch.commands.push(TriangleCommand {
             vertices: vertices(0.5),
             style: TriangleStyle::Flat(0xff0000),
@@ -8311,7 +8625,9 @@ mod tests {
             style: TriangleStyle::Flat(0x00ff00),
         });
         batch.flush_with_workers(&mut framebuffer, 2);
+        reference_batch.flush_with_workers(&mut single_worker, 1);
 
+        assert_eq!(framebuffer.pixels, single_worker.pixels);
         assert_eq!(framebuffer.pixels[31 * 64 + 32], 0x00ff00);
         assert_eq!(framebuffer.pixels[32 * 64 + 32], 0x00ff00);
         assert!(batch.commands.is_empty());

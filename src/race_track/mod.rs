@@ -32,7 +32,10 @@ const REWARD_COLLECT_TIME: f32 = 2.8;
 const REWARD_RECEIVE_TIME: f32 = 3.35;
 const FOREST_RENDER_DISTANCE: f32 = 320.0;
 const FOREST_FULL_DETAIL_DISTANCE: f32 = 240.0;
-const RIVAL_FULL_DETAIL_DISTANCE: f32 = 85.0;
+// Screen-space hysteresis keeps detailed rivals while they are visually large
+// and avoids switching back and forth near the LOD boundary.
+const RIVAL_LOD_ENTER_RADIUS_PX: f32 = 28.0;
+const RIVAL_LOD_EXIT_RADIUS_PX: f32 = 38.0;
 const RIVAL_TURBO_DISTANCE: f32 = 105.0;
 pub(crate) type RaceVehicles<'a> = [Option<(&'a Model, &'static ShipSpec)>; 6];
 
@@ -317,6 +320,7 @@ impl RaceTrack {
             target_camera
         };
         self.camera = Some(camera);
+        let category_start = batch.stats();
         // These celestial bodies are placed in race-world coordinates, so
         // they remain fixed while the chase camera and car move around the loop.
         queue_model(
@@ -347,8 +351,12 @@ impl RaceTrack {
             &camera,
             None,
         );
+        crate::record_race_benchmark_category(0, category_start, batch.stats());
+        let category_start = batch.stats();
         queue_model(&self.scenery.terrain, batch, &camera, |v| v, None, None);
         queue_model(&self.scenery.hills, batch, &camera, |v| v, None, None);
+        crate::record_race_benchmark_category(1, category_start, batch.stats());
+        let category_start = batch.stats();
         for (forest, lod) in self
             .scenery
             .forests
@@ -368,9 +376,13 @@ impl RaceTrack {
                 queue_model(visible, batch, &camera, |v| v, None, None);
             }
         }
+        crate::record_race_benchmark_category(2, category_start, batch.stats());
+        let category_start = batch.stats();
         for arch in &self.scenery.arches {
             queue_model(arch, batch, &camera, |v| v, None, None);
         }
+        crate::record_race_benchmark_category(3, category_start, batch.stats());
+        let category_start = batch.stats();
         for model in &self.course.barriers {
             queue_model(model, batch, &camera, |v| v, None, None);
         }
@@ -383,6 +395,8 @@ impl RaceTrack {
         for model in &self.course.markings {
             queue_model(model, batch, &camera, |v| v, None, None);
         }
+        crate::record_race_benchmark_category(4, category_start, batch.stats());
+        let category_start = batch.stats();
         let speed_power = (self.drive.speed.abs() / self.drive.max_speed()).clamp(0.0, 1.0);
         let turbo = (speed_power * 0.18 + self.drive.boost_flash * 0.68).clamp(0.0, 1.0);
         let (vehicle, _) =
@@ -402,15 +416,21 @@ impl RaceTrack {
             true,
             1.55,
         );
-        if let Some(rivals) = &self.rivals {
+        crate::record_race_benchmark_category(5, category_start, batch.stats());
+        let category_start = batch.stats();
+        if let Some(rivals) = &mut self.rivals {
             for rival in rivals {
                 let Some((full_model, _)) = vehicles[rival.vehicle_index] else {
                     continue;
                 };
-                let distance = rival.controller.ship.position.sub(camera.position);
-                let model = if distance.dot(distance)
-                    > RIVAL_FULL_DETAIL_DISTANCE * RIVAL_FULL_DETAIL_DISTANCE
-                {
+                let offset = rival.controller.ship.position.sub(camera.position);
+                let camera_depth = offset.dot(camera.forward).max(0.001);
+                let (_, model_radius) = full_model.bounds();
+                let projected_radius =
+                    model_radius * rival.controller.ship.spec.model_scale * batch.projection.focal
+                        / camera_depth;
+                rival.use_lod = rival_uses_lod(rival.use_lod, projected_radius);
+                let model = if rival.use_lod {
                     self.vehicle_lods[rival.vehicle_index]
                         .as_ref()
                         .unwrap_or(full_model)
@@ -436,11 +456,12 @@ impl RaceTrack {
                     time,
                     (speed_power * 0.12 + rival.drive.boost_flash * 0.5).clamp(0.0, 1.0),
                     0.0,
-                    distance.dot(distance) < RIVAL_TURBO_DISTANCE * RIVAL_TURBO_DISTANCE,
+                    offset.dot(offset) < RIVAL_TURBO_DISTANCE * RIVAL_TURBO_DISTANCE,
                     1.55,
                 );
             }
         }
+        crate::record_race_benchmark_category(6, category_start, batch.stats());
         if self.phase == RacePhase::Finished {
             let descent = (self.reward_elapsed / 2.2).clamp(0.0, 1.0);
             let descent = descent * descent * (3.0 - 2.0 * descent);
@@ -530,6 +551,15 @@ impl RaceTrack {
         place_for_player(player, &rival_standings)
     }
 }
+
+fn rival_uses_lod(current: bool, projected_radius: f32) -> bool {
+    if current {
+        projected_radius < RIVAL_LOD_EXIT_RADIUS_PX
+    } else {
+        projected_radius < RIVAL_LOD_ENTER_RADIUS_PX
+    }
+}
+
 
 fn distant_vehicle_lod(spec: &ShipSpec, vehicle_index: usize) -> Model {
     let colors = [
@@ -840,6 +870,15 @@ mod standings_tests {
         let world_radius = radius * KIRBY_CAR_SPEC.model_scale;
         assert!((1.5..2.2).contains(&world_radius), "unexpected LOD radius {world_radius}");
     }
+
+    #[test]
+    fn rival_lod_uses_screen_size_and_hysteresis() {
+        assert!(!rival_uses_lod(false, RIVAL_LOD_ENTER_RADIUS_PX + 1.0));
+        assert!(rival_uses_lod(false, RIVAL_LOD_ENTER_RADIUS_PX - 1.0));
+        assert!(rival_uses_lod(true, RIVAL_LOD_EXIT_RADIUS_PX - 1.0));
+        assert!(!rival_uses_lod(true, RIVAL_LOD_EXIT_RADIUS_PX + 1.0));
+    }
+
 
     #[test]
     fn finished_race_freezes_the_car_until_the_reward_animation_completes() {
