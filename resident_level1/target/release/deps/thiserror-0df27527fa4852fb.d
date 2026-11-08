@@ -1,0 +1,9 @@
+C:\Users\leejo\Desktop\graph-proy3\resident_level1\target\release\deps\thiserror-0df27527fa4852fb.d: C:\Users\leejo\Desktop\graph-proy3\target\cargo-local\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\lib.rs C:\Users\leejo\Desktop\graph-proy3\target\cargo-local\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\aserror.rs C:\Users\leejo\Desktop\graph-proy3\target\cargo-local\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\display.rs
+
+C:\Users\leejo\Desktop\graph-proy3\resident_level1\target\release\deps\libthiserror-0df27527fa4852fb.rlib: C:\Users\leejo\Desktop\graph-proy3\target\cargo-local\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\lib.rs C:\Users\leejo\Desktop\graph-proy3\target\cargo-local\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\aserror.rs C:\Users\leejo\Desktop\graph-proy3\target\cargo-local\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\display.rs
+
+C:\Users\leejo\Desktop\graph-proy3\resident_level1\target\release\deps\libthiserror-0df27527fa4852fb.rmeta: C:\Users\leejo\Desktop\graph-proy3\target\cargo-local\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\lib.rs C:\Users\leejo\Desktop\graph-proy3\target\cargo-local\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\aserror.rs C:\Users\leejo\Desktop\graph-proy3\target\cargo-local\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\display.rs
+
+C:\Users\leejo\Desktop\graph-proy3\target\cargo-local\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\lib.rs:
+C:\Users\leejo\Desktop\graph-proy3\target\cargo-local\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\aserror.rs:
+C:\Users\leejo\Desktop\graph-proy3\target\cargo-local\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\display.rs:

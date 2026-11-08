@@ -149,9 +149,7 @@ impl RaceCourse {
                             .position
                             .add(barrier_next.position)
                             .mul(0.5)
-                            .add(barrier_side.mul(
-                                (HALF_ROAD + CURB_WIDTH + 1.0) * direction,
-                            )),
+                            .add(barrier_side.mul((HALF_ROAD + CURB_WIDTH + 1.0) * direction)),
                         tangent,
                         delta.dot(delta).sqrt() * 0.5 + 0.08,
                         0.8,
@@ -445,7 +443,11 @@ mod tests {
             )));
         assert!(!course.curbs.iter().any(|chunk| chunk.faces.is_empty()));
         assert_eq!(
-            course.barriers.iter().map(|chunk| chunk.faces.len()).sum::<usize>(),
+            course
+                .barriers
+                .iter()
+                .map(|chunk| chunk.faces.len())
+                .sum::<usize>(),
             course.samples.len() * 12
         );
     }

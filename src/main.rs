@@ -10,8 +10,8 @@ mod ship;
 mod tower_guard;
 mod triangle;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
 use std::cell::{Cell, RefCell};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::f32::consts::{PI, TAU};
 use std::fs::File;
 use std::sync::OnceLock;
@@ -21,19 +21,19 @@ use std::time::Instant;
 use core_guardian::{CoreGuardian, GuardianAction, GuardianInput};
 use framebuffer::Framebuffer;
 use galaxy::{
-    Galaxy, GalaxyTransit, crossed_wormhole, draw_hyperspace_transition, nova_portal_position,
-    wormhole_position,
+    crossed_wormhole, draw_hyperspace_transition, nova_portal_position, wormhole_position, Galaxy,
+    GalaxyTransit,
 };
 use minifb::{Key, ScaleMode, Window, WindowOptions};
-use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
+use obj_loader::{load_obj, Face, MaterialColor, Model, SurfaceShader, Vec3};
 use ship::{
-    ARWING_CAR_SPEC, ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_CAR_SPEC, ASTRA_SPEC,
-    ASTRA_SUBMARINE_SPEC, BUZZ_CAR_SPEC, BUZZ_SPEC, BUZZ_SUBMARINE_SPEC, COWBOYB_CAR_SPEC,
-    COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_CAR_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC,
-    MCQUEEN_CAR_SPEC, MCQUEEN_SPEC, MCQUEEN_SUBMARINE_SPEC, Projectile, Ship, ShipController,
-    ShipInput, ShipSpec,
+    Projectile, Ship, ShipController, ShipInput, ShipSpec, ARWING_CAR_SPEC, ARWING_SPEC,
+    ARWING_SUBMARINE_SPEC, ASTRA_CAR_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_CAR_SPEC,
+    BUZZ_SPEC, BUZZ_SUBMARINE_SPEC, COWBOYB_CAR_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC,
+    KIRBY_CAR_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC, MCQUEEN_CAR_SPEC, MCQUEEN_SPEC,
+    MCQUEEN_SUBMARINE_SPEC,
 };
-use triangle::{ScreenVertex, draw_triangle_shaded_region};
+use triangle::{draw_triangle_shaded_region, ScreenVertex};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
@@ -102,20 +102,23 @@ impl BenchmarkRun {
         );
         if self.scene == "race" {
             const LABELS: [&str; 7] = [
-                "cielo",
-                "terreno",
-                "bosques",
-                "arcos",
-                "pista",
-                "jugador",
-                "rivales",
+                "cielo", "terreno", "bosques", "arcos", "pista", "jugador", "rivales",
             ];
             for (index, label) in LABELS.iter().enumerate() {
                 println!(
                     "BENCH race_category={label} geometry={:.4} vertices={:.1} triangles={:.1}",
-                    mean(self.samples.iter().map(|s| s.race_geometry_ms[index]), count),
-                    mean(self.samples.iter().map(|s| s.race_vertices[index] as f32), count),
-                    mean(self.samples.iter().map(|s| s.race_triangles[index] as f32), count),
+                    mean(
+                        self.samples.iter().map(|s| s.race_geometry_ms[index]),
+                        count
+                    ),
+                    mean(
+                        self.samples.iter().map(|s| s.race_vertices[index] as f32),
+                        count
+                    ),
+                    mean(
+                        self.samples.iter().map(|s| s.race_triangles[index] as f32),
+                        count
+                    ),
                 );
             }
         }
@@ -4214,8 +4217,7 @@ fn depth_bucket(depth: f32) -> usize {
     // Reciprocal depth spans several orders of magnitude. Logarithmic buckets
     // keep useful front-to-back order without sorting every triangle exactly.
     let exponent = depth.max(f32::MIN_POSITIVE).log2();
-    (((exponent + 12.0) / 16.0).clamp(0.0, 1.0) * (TRIANGLE_DEPTH_BUCKETS - 1) as f32)
-        as usize
+    (((exponent + 12.0) / 16.0).clamp(0.0, 1.0) * (TRIANGLE_DEPTH_BUCKETS - 1) as f32) as usize
 }
 
 const OCCLUSION_BLOCK_SIZE: usize = 16;
@@ -4334,9 +4336,7 @@ fn reset_race_benchmark_categories() {
 }
 
 fn take_race_benchmark_categories() -> ([f32; 7], [usize; 7], [usize; 7]) {
-    RACE_BENCHMARK_CATEGORIES.with(|categories| {
-        categories.replace(([0.0; 7], [0; 7], [0; 7]))
-    })
+    RACE_BENCHMARK_CATEGORIES.with(|categories| categories.replace(([0.0; 7], [0; 7], [0; 7])))
 }
 
 fn record_race_benchmark_category(index: usize, before: RenderStats, after: RenderStats) {
@@ -4419,9 +4419,7 @@ impl TriangleBatch {
     fn new(viewport_width: usize, viewport_height: usize) -> Self {
         Self {
             commands: Vec::new(),
-            depth_buckets: (0..TRIANGLE_DEPTH_BUCKETS)
-                .map(|_| Vec::new())
-                .collect(),
+            depth_buckets: (0..TRIANGLE_DEPTH_BUCKETS).map(|_| Vec::new()).collect(),
             camera_vertex_scratch: Vec::new(),
             camera_normal_scratch: Vec::new(),
             viewport_width,
@@ -4459,8 +4457,7 @@ impl TriangleBatch {
         if self.commands.len() > 128 {
             for command in self.commands.drain(..) {
                 let average_depth =
-                    (command.vertices[0].z + command.vertices[1].z + command.vertices[2].z)
-                        / 3.0;
+                    (command.vertices[0].z + command.vertices[1].z + command.vertices[2].z) / 3.0;
                 let bucket = depth_bucket(average_depth);
                 self.depth_buckets[bucket].push(command);
             }
@@ -4628,17 +4625,11 @@ fn render_model<F>(
 {
     MODEL_RENDER_BATCH.with_borrow_mut(|batch| {
         batch.begin_frame();
-        if (batch.viewport_width, batch.viewport_height) != (framebuffer.width, framebuffer.height) {
+        if (batch.viewport_width, batch.viewport_height) != (framebuffer.width, framebuffer.height)
+        {
             batch.resize(framebuffer.width, framebuffer.height);
         }
-        queue_model(
-            model,
-            batch,
-            camera,
-            transform,
-            water_time,
-            effect_spec,
-        );
+        queue_model(model, batch, camera, transform, water_time, effect_spec);
         batch.flush(framebuffer);
         if std::env::var_os("GRAPH_BENCH_SCENE").is_some() {
             accumulate_local_render_stats(batch.stats());
@@ -4940,12 +4931,15 @@ fn render_scene(
             Some(world_time),
             None,
         );
-        let water_lod = planet_lod_states[0].update_detailed(projected_planet_radius(
-            &camera,
-            planet_position,
-            WATER_PLANET_RADIUS,
-            batch.projection.focal,
-        ), fast_flight);
+        let water_lod = planet_lod_states[0].update_detailed(
+            projected_planet_radius(
+                &camera,
+                planet_position,
+                WATER_PLANET_RADIUS,
+                batch.projection.focal,
+            ),
+            fast_flight,
+        );
         let water_model = match water_lod {
             0 => planet,
             1 => &planet_lods[0].medium,
@@ -4974,12 +4968,15 @@ fn render_scene(
         );
         let spiky_rotation = world_time * SPIKY_PLANET_ROTATION_SPEED;
         let spiky_position = spiky_planet_position(world_time);
-        let spiky_lod = planet_lod_states[1].update_detailed(projected_planet_radius(
-            &camera,
-            spiky_position,
-            SPIKY_PLANET_RADIUS,
-            batch.projection.focal,
-        ), fast_flight);
+        let spiky_lod = planet_lod_states[1].update_detailed(
+            projected_planet_radius(
+                &camera,
+                spiky_position,
+                SPIKY_PLANET_RADIUS,
+                batch.projection.focal,
+            ),
+            fast_flight,
+        );
         let spiky_model = match spiky_lod {
             0 => spiky_planet,
             1 => &planet_lods[1].medium,
@@ -5008,12 +5005,15 @@ fn render_scene(
             None,
         );
         let race_position = race_planet_position(world_time);
-        let race_lod = planet_lod_states[2].update_detailed(projected_planet_radius(
-            &camera,
-            race_position,
-            race_track::PLANET_RADIUS,
-            batch.projection.focal,
-        ), fast_flight);
+        let race_lod = planet_lod_states[2].update_detailed(
+            projected_planet_radius(
+                &camera,
+                race_position,
+                race_track::PLANET_RADIUS,
+                batch.projection.focal,
+            ),
+            fast_flight,
+        );
         let race_model = match race_lod {
             0 => race_planet,
             1 => &planet_lods[2].medium,
@@ -7010,16 +7010,33 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     "Rescate a Contratiempo | A/D girar | W/S altura | Flechas avanzar | E rescatar",
                 );
             } else if active_galaxy == Galaxy::Vesper && vesper_orbit_index == Some(2) {
-                tower_game = tower_guard::TowerGame::new(&tower_sprites);
-                tower_audio.start_music();
-                game_mode = GameMode::TowerGuard;
+                window.set_cursor_visibility(true);
+                let resident_directory = std::env::current_dir()?.join("resident_level1");
+                let resident_executable =
+                    resident_directory.join("target/release/pacman_polygon.exe");
+                if !resident_executable.is_file() {
+                    let build = std::process::Command::new("cargo")
+                        .args([
+                            "build",
+                            "--release",
+                            "--manifest-path",
+                            "resident_level1/Cargo.toml",
+                        ])
+                        .status();
+                    if !build.is_ok_and(|status| status.success()) {
+                        eprintln!("No se pudo compilar Resident Evil nivel 1");
+                    }
+                }
+                let resident_result = std::process::Command::new(&resident_executable)
+                    .current_dir(&resident_directory)
+                    .status();
+                if let Err(error) = resident_result {
+                    eprintln!("No se pudo iniciar Resident Evil nivel 1: {error}");
+                }
+                game_mode = GameMode::FreeWorld;
+                launch_ship_after_guardian_exit(&mut ship_controller, world_time);
                 entered_level = true;
-                window.set_cursor_visibility(false);
-                tower_mouse_down = false;
-                last_tower_cursor = (0.5, 0.52);
-                window.set_title(
-                    "Torre: Ultima Guardia | Mouse: apuntar | Clic/Espacio: disparar | P: pausa",
-                );
+                window.set_title("Galaxia Vesper | Resident Evil completado | Vuelo libre");
             } else if active_galaxy == Galaxy::Vesper {
                 // Vesper's other bodies have no minigame; keep the player in
                 // orbit instead of accidentally launching the water level.
@@ -7309,7 +7326,15 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             1 => "Farol",
                             _ => "Casa Torre",
                         };
-                        window.set_title(&format!("{planet_name} | En orbita | Backspace: salir"));
+                        if vesper_orbit_index == Some(2) {
+                            window.set_title(
+                                "Casa Torre | Enter: jugar Resident Evil nivel 1 | Backspace: salir",
+                            );
+                        } else {
+                            window.set_title(&format!(
+                                "{planet_name} | En orbita | Backspace: salir"
+                            ));
+                        }
                     } else {
                         window.set_title(
                             "Planeta acuatico | Enter: iniciar nivel | Backspace: salir",
@@ -7518,10 +7543,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             - window.is_key_down(Key::Left) as i8,
                         arrow_y: window.is_key_down(Key::Down) as i8
                             - window.is_key_down(Key::Up) as i8,
-                        move_x: window.is_key_down(Key::D) as i8
-                            - window.is_key_down(Key::A) as i8,
-                        move_y: window.is_key_down(Key::W) as i8
-                            - window.is_key_down(Key::S) as i8,
+                        move_x: window.is_key_down(Key::D) as i8 - window.is_key_down(Key::A) as i8,
+                        move_y: window.is_key_down(Key::W) as i8 - window.is_key_down(Key::S) as i8,
                         interact: crate::input::pressed(Key::E),
                         look_x: mouse_look.0,
                         look_y: mouse_look.1,
@@ -7922,13 +7945,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             const PANEL_LEFT: usize = 16;
             const PANEL_TOP: usize = 366;
             const PANEL_WIDTH: usize = 450;
-            hud_rect(
-                &mut framebuffer,
-                PANEL_LEFT,
-                PANEL_TOP,
-                PANEL_WIDTH,
-                132,
-            );
+            hud_rect(&mut framebuffer, PANEL_LEFT, PANEL_TOP, PANEL_WIDTH, 132);
             let center = (PANEL_LEFT + PANEL_WIDTH / 2) as i32;
             draw_selection_label(
                 &mut framebuffer,
@@ -8196,12 +8213,10 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let model =
             load_obj(root.join("assets/vehicles/mcqueen/mcqueen_submarino_detallado.obj")).unwrap();
-        assert!(
-            model
-                .vertices
-                .iter()
-                .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
-        );
+        assert!(model
+            .vertices
+            .iter()
+            .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
         assert!(model.faces.iter().all(|face| {
             face.indices
                 .iter()
@@ -8224,16 +8239,14 @@ mod tests {
         }
         assert!(!model.faces.iter().any(|face| face.group == "Neumatico"));
         for side in [-1.0_f32, 1.0] {
-            assert!(
-                model
-                    .faces
+            assert!(model
+                .faces
+                .iter()
+                .filter(|face| face.group == "Aro_helice")
+                .any(|face| face
+                    .indices
                     .iter()
-                    .filter(|face| face.group == "Aro_helice")
-                    .any(|face| face
-                        .indices
-                        .iter()
-                        .all(|&i| model.vertices[i].x * side > 1.0))
-            );
+                    .all(|&i| model.vertices[i].x * side > 1.0)));
         }
         for (material, rgb) in [
             ("mcqueen_red", [225, 26, 35]),
@@ -8241,17 +8254,14 @@ mod tests {
             ("mcqueen_blue", [32, 105, 220]),
             ("mcqueen_white", [247, 249, 252]),
         ] {
-            assert!(
-                model.faces.iter().any(
-                    |face| face.material == material && face.color == MaterialColor::Fixed(rgb)
-                )
-            );
+            assert!(model
+                .faces
+                .iter()
+                .any(|face| face.material == material && face.color == MaterialColor::Fixed(rgb)));
         }
         let center = model_center(&model);
-        assert!(
-            (1.4..2.5)
-                .contains(&(model_radius(&model, center) * MCQUEEN_SUBMARINE_SPEC.model_scale))
-        );
+        assert!((1.4..2.5)
+            .contains(&(model_radius(&model, center) * MCQUEEN_SUBMARINE_SPEC.model_scale)));
         let mut frame = Framebuffer::new(WIDTH, HEIGHT);
         frame.clear(0x080e1d);
         for (index, angle) in [0.35_f32, 1.57, 3.5].into_iter().enumerate() {
@@ -8293,19 +8303,16 @@ mod tests {
         let spaceship =
             load_obj(root.join("assets/vehicles/mcqueen/mcqueen_nave_detallada.obj")).unwrap();
         assert_ne!(model.faces.len(), spaceship.faces.len());
-        assert!(
-            model
-                .vertices
-                .iter()
-                .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
-        );
+        assert!(model
+            .vertices
+            .iter()
+            .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
         let mut wheel_vertices = HashSet::new();
         for face in &model.faces {
-            assert!(
-                face.indices
-                    .iter()
-                    .all(|&index| index < model.vertices.len())
-            );
+            assert!(face
+                .indices
+                .iter()
+                .all(|&index| index < model.vertices.len()));
             if face.group == "Neumatico" {
                 wheel_vertices.extend(face.indices);
             }
@@ -8328,17 +8335,13 @@ mod tests {
             ("Iris", [32, 105, 220]),
             ("Neumatico", [26, 29, 38]),
         ] {
-            assert!(
-                model
-                    .faces
-                    .iter()
-                    .any(|face| face.group == group && face.color == MaterialColor::Fixed(color))
-            );
+            assert!(model
+                .faces
+                .iter()
+                .any(|face| face.group == group && face.color == MaterialColor::Fixed(color)));
         }
         let center = model_center(&model);
-        assert!(
-            (1.5..2.5).contains(&(model_radius(&model, center) * MCQUEEN_CAR_SPEC.model_scale))
-        );
+        assert!((1.5..2.5).contains(&(model_radius(&model, center) * MCQUEEN_CAR_SPEC.model_scale)));
         let mut frame = Framebuffer::new(WIDTH, HEIGHT);
         frame.clear(0x080e1d);
         for (index, angle) in [0.35_f32, 1.57, 3.5].into_iter().enumerate() {
@@ -8377,29 +8380,24 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let model =
             load_obj(root.join("assets/vehicles/mcqueen/mcqueen_nave_detallada.obj")).unwrap();
-        assert!(
-            model
-                .vertices
-                .iter()
-                .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
-        );
-        assert!(
-            model
-                .faces
-                .iter()
-                .all(|face| face.indices.iter().all(|&i| i < model.vertices.len()))
-        );
+        assert!(model
+            .vertices
+            .iter()
+            .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
+        assert!(model
+            .faces
+            .iter()
+            .all(|face| face.indices.iter().all(|&i| i < model.vertices.len())));
         for (material, rgb) in [
             ("mcqueen_red", [225, 26, 35]),
             ("mcqueen_yellow", [255, 211, 36]),
             ("mcqueen_blue", [32, 105, 220]),
             ("mcqueen_white", [247, 249, 252]),
         ] {
-            assert!(
-                model.faces.iter().any(
-                    |face| face.material == material && face.color == MaterialColor::Fixed(rgb)
-                )
-            );
+            assert!(model
+                .faces
+                .iter()
+                .any(|face| face.material == material && face.color == MaterialColor::Fixed(rgb)));
         }
         for group in [
             "Numero_95",
@@ -8489,24 +8487,19 @@ mod tests {
                     && face.shader == SurfaceShader::McQueenEmission
                     && face.color == MaterialColor::Fixed([255, 82, 14])
             }));
-            assert!(
-                model
-                    .faces
-                    .iter()
-                    .any(|face| { face.group.contains("Ojo") || face.group.contains("Iris") })
-            );
-            assert!(
-                model
-                    .faces
-                    .iter()
-                    .any(|face| { face.group == "Pupila" && face.material == "mcqueen_dark" })
-            );
+            assert!(model
+                .faces
+                .iter()
+                .any(|face| { face.group.contains("Ojo") || face.group.contains("Iris") }));
+            assert!(model
+                .faces
+                .iter()
+                .any(|face| { face.group == "Pupila" && face.material == "mcqueen_dark" }));
             for glass_group in ["Cabina_azul", "Parabrisas", "Cupula"] {
-                assert!(
-                    !model.faces.iter().any(|face| {
-                        face.group == glass_group && face.material == "mcqueen_glass"
-                    })
-                );
+                assert!(!model
+                    .faces
+                    .iter()
+                    .any(|face| { face.group == glass_group && face.material == "mcqueen_glass" }));
             }
 
             let mut points = model
@@ -9216,34 +9209,28 @@ mod tests {
 
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let detailed = load_obj(root.join("assets/planets/water_planet.obj")).unwrap();
-        assert!(
-            detailed
-                .faces
-                .iter()
-                .any(|face| face.shader == SurfaceShader::WaterPlanetSandTexture)
-        );
-        assert!(
-            detailed
-                .faces
-                .iter()
-                .any(|face| face.shader == SurfaceShader::WaterPlanetGrassTexture)
-        );
+        assert!(detailed
+            .faces
+            .iter()
+            .any(|face| face.shader == SurfaceShader::WaterPlanetSandTexture));
+        assert!(detailed
+            .faces
+            .iter()
+            .any(|face| face.shader == SurfaceShader::WaterPlanetGrassTexture));
         assert!(detailed.faces.iter().any(|face| {
             face.material.to_ascii_lowercase().contains("oceano")
                 && face.shader == SurfaceShader::Ocean
         }));
 
         let lod = make_planet_lod(WATER_PLANET_RADIUS, 6, 10, PlanetVisual::Water);
-        assert!(
-            lod.faces
-                .iter()
-                .any(|face| face.shader == SurfaceShader::WaterPlanetSandTexture)
-        );
-        assert!(
-            lod.faces
-                .iter()
-                .any(|face| face.shader == SurfaceShader::WaterPlanetGrassTexture)
-        );
+        assert!(lod
+            .faces
+            .iter()
+            .any(|face| face.shader == SurfaceShader::WaterPlanetSandTexture));
+        assert!(lod
+            .faces
+            .iter()
+            .any(|face| face.shader == SurfaceShader::WaterPlanetGrassTexture));
     }
 
     #[test]
@@ -9270,11 +9257,9 @@ mod tests {
             })
             .collect();
         assert!(!pillars.is_empty());
-        assert!(
-            pillars
-                .iter()
-                .all(|face| face.shader == SurfaceShader::WaterPlanetPillarTexture)
-        );
+        assert!(pillars
+            .iter()
+            .all(|face| face.shader == SurfaceShader::WaterPlanetPillarTexture));
         assert!(planet.faces.iter().any(|face| {
             face.group.to_ascii_lowercase().starts_with("roca_")
                 && face.group.to_ascii_lowercase().contains("_cesped_")
@@ -9303,18 +9288,14 @@ mod tests {
             .filter(|face| face.material.to_ascii_lowercase() == "03_|_tierra.002")
             .collect();
         assert!(!earth_faces.is_empty());
-        assert!(
-            earth_faces
-                .iter()
-                .all(|face| face.shader == SurfaceShader::WaterPlanetEarthTexture)
-        );
-        assert!(
-            planet
-                .faces
-                .iter()
-                .filter(|face| face.material.to_ascii_lowercase() == "04_|_cesped.002")
-                .all(|face| face.shader == SurfaceShader::WaterPlanetGrassTexture)
-        );
+        assert!(earth_faces
+            .iter()
+            .all(|face| face.shader == SurfaceShader::WaterPlanetEarthTexture));
+        assert!(planet
+            .faces
+            .iter()
+            .filter(|face| face.material.to_ascii_lowercase() == "04_|_cesped.002")
+            .all(|face| face.shader == SurfaceShader::WaterPlanetGrassTexture));
     }
 
     #[test]
@@ -9331,11 +9312,9 @@ mod tests {
                 .filter(|face| face.material.to_ascii_lowercase() == material)
                 .collect();
             assert!(!faces.is_empty(), "missing stone material {material}");
-            assert!(
-                faces
-                    .iter()
-                    .all(|face| face.shader == SurfaceShader::WaterLevelRockTexture)
-            );
+            assert!(faces
+                .iter()
+                .all(|face| face.shader == SurfaceShader::WaterLevelRockTexture));
         }
         let sand: Vec<_> = level
             .faces
@@ -9343,10 +9322,9 @@ mod tests {
             .filter(|face| face.material.to_ascii_lowercase() == "underwater_sand")
             .collect();
         assert!(!sand.is_empty());
-        assert!(
-            sand.iter()
-                .all(|face| face.shader == SurfaceShader::WaterLevelSandTexture)
-        );
+        assert!(sand
+            .iter()
+            .all(|face| face.shader == SurfaceShader::WaterLevelSandTexture));
     }
 
     #[test]
@@ -9387,11 +9365,9 @@ mod tests {
             .filter(|face| face.material.eq_ignore_ascii_case("Rosa_cuerpo"))
             .collect();
         assert!(!sphere.is_empty());
-        assert!(
-            sphere
-                .iter()
-                .all(|face| { face.shader == SurfaceShader::CoreGuardianEnvironmentTexture })
-        );
+        assert!(sphere
+            .iter()
+            .all(|face| { face.shader == SurfaceShader::CoreGuardianEnvironmentTexture }));
 
         let tentacle_materials = [
             "Fucsia",
@@ -9410,18 +9386,15 @@ mod tests {
             })
             .collect();
         assert!(!tentacles.is_empty());
-        assert!(
-            tentacles
-                .iter()
-                .all(|face| { face.shader == SurfaceShader::WaterMonsterTissueTexture })
-        );
+        assert!(tentacles
+            .iter()
+            .all(|face| { face.shader == SurfaceShader::WaterMonsterTissueTexture }));
 
         let lod = make_planet_lod(SPIKY_PLANET_RADIUS, 6, 10, PlanetVisual::Spiky);
-        assert!(
-            lod.faces
-                .iter()
-                .all(|face| { face.shader == SurfaceShader::CoreGuardianEnvironmentTexture })
-        );
+        assert!(lod
+            .faces
+            .iter()
+            .all(|face| { face.shader == SurfaceShader::CoreGuardianEnvironmentTexture }));
     }
 
     #[test]
@@ -9433,22 +9406,17 @@ mod tests {
             face.group == "Race_Planet_Terrain"
                 && face.shader == SurfaceShader::RacePlanetGrassTexture
         }));
-        assert!(
-            detailed
-                .faces
-                .iter()
-                .filter(|face| {
-                    face.group.contains("Track") || face.group.contains("Boost_Light")
-                })
-                .all(|face| face.shader != SurfaceShader::RacePlanetGrassTexture)
-        );
+        assert!(detailed
+            .faces
+            .iter()
+            .filter(|face| { face.group.contains("Track") || face.group.contains("Boost_Light") })
+            .all(|face| face.shader != SurfaceShader::RacePlanetGrassTexture));
 
         let lod = make_planet_lod(race_track::PLANET_RADIUS, 6, 10, PlanetVisual::Racing);
-        assert!(
-            lod.faces
-                .iter()
-                .any(|face| { face.shader == SurfaceShader::RacePlanetGrassTexture })
-        );
+        assert!(lod
+            .faces
+            .iter()
+            .any(|face| { face.shader == SurfaceShader::RacePlanetGrassTexture }));
         assert!(lod.faces.iter().any(|face| {
             face.material == "race_rgb_245_208_42"
                 && face.shader != SurfaceShader::RacePlanetGrassTexture
@@ -9557,12 +9525,10 @@ mod tests {
                 || face.group.starts_with("obstacle_arch_top")
         }));
         for sector in 1..=3 {
-            assert!(
-                level
-                    .faces
-                    .iter()
-                    .any(|face| { face.group == format!("TERRAIN_MAIN_SECTOR_{sector}") })
-            );
+            assert!(level
+                .faces
+                .iter()
+                .any(|face| { face.group == format!("TERRAIN_MAIN_SECTOR_{sector}") }));
         }
         assert!(level.faces.iter().any(|face| {
             face.group.starts_with("LONG_LEVEL_CRYSTAL_") && face.material == "Crystal_Cyan"
@@ -9692,12 +9658,10 @@ mod tests {
         ship.position = Vec3::new(-20.0, 6.5, 0.0);
         state.update_enemy_attacks(&ship, 0.1);
         assert!(!state.enemy_projectiles.is_empty());
-        assert!(
-            state
-                .enemy_projectiles
-                .iter()
-                .all(|shot| shot.direction.dot(shot.direction) > 0.99)
-        );
+        assert!(state
+            .enemy_projectiles
+            .iter()
+            .all(|shot| shot.direction.dot(shot.direction) > 0.99));
     }
 
     #[test]
@@ -9834,18 +9798,14 @@ mod tests {
                 .count(),
             10
         );
-        assert!(
-            reward
-                .faces
-                .iter()
-                .any(|face| face.group == "dragon_star_0")
-        );
-        assert!(
-            !reward
-                .faces
-                .iter()
-                .any(|face| face.group == "dragon_star_1")
-        );
+        assert!(reward
+            .faces
+            .iter()
+            .any(|face| face.group == "dragon_star_0"));
+        assert!(!reward
+            .faces
+            .iter()
+            .any(|face| face.group == "dragon_star_1"));
     }
 
     #[test]
@@ -9860,19 +9820,15 @@ mod tests {
             30
         );
         for star in 0..3 {
-            assert!(
-                reward
-                    .faces
-                    .iter()
-                    .any(|face| face.group == format!("dragon_star_{star}"))
-            );
-        }
-        assert!(
-            !reward
+            assert!(reward
                 .faces
                 .iter()
-                .any(|face| face.group == "dragon_star_3")
-        );
+                .any(|face| face.group == format!("dragon_star_{star}")));
+        }
+        assert!(!reward
+            .faces
+            .iter()
+            .any(|face| face.group == "dragon_star_3"));
     }
 
     #[test]
@@ -9888,17 +9844,14 @@ mod tests {
                 .filter(|face| face.group == "dragon_ball")
                 .collect();
             assert!(!shell.is_empty());
-            assert!(
-                shell
-                    .iter()
-                    .all(|face| face.shader == SurfaceShader::DragonBallGlass && face.smooth)
-            );
-            assert!(
-                ball.faces
-                    .iter()
-                    .filter(|face| face.group.starts_with("dragon_star_"))
-                    .all(|face| face.shader != SurfaceShader::DragonBallGlass)
-            );
+            assert!(shell
+                .iter()
+                .all(|face| face.shader == SurfaceShader::DragonBallGlass && face.smooth));
+            assert!(ball
+                .faces
+                .iter()
+                .filter(|face| face.group.starts_with("dragon_star_"))
+                .all(|face| face.shader != SurfaceShader::DragonBallGlass));
         }
 
         let background = vec![0x204060; 16 * 16];
@@ -10064,18 +10017,14 @@ mod tests {
         ] {
             let model = load_obj(root.join("assets/vehicles/buzz").join(filename)).unwrap();
             assert!(model.vertices.len() > minimum.0 && model.faces.len() > minimum.1);
-            assert!(
-                model
-                    .vertices
-                    .iter()
-                    .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
-            );
-            assert!(
-                model
-                    .faces
-                    .iter()
-                    .all(|face| face.indices.iter().all(|&i| i < model.vertices.len()))
-            );
+            assert!(model
+                .vertices
+                .iter()
+                .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
+            assert!(model
+                .faces
+                .iter()
+                .all(|face| face.indices.iter().all(|&i| i < model.vertices.len())));
             for material in [
                 "buzz_white",
                 "buzz_green",
@@ -10163,12 +10112,10 @@ mod tests {
             (1.5..2.5).contains(&submarine_radius),
             "unexpected submarine radius {submarine_radius}"
         );
-        assert!(
-            submarine
-                .faces
-                .iter()
-                .any(|face| { face.group.contains("aro_helice") && face.material == "fin_blue" })
-        );
+        assert!(submarine
+            .faces
+            .iter()
+            .any(|face| { face.group.contains("aro_helice") && face.material == "fin_blue" }));
         for candidate in [&model, &submarine] {
             for material in [
                 "hull_white",
@@ -10417,11 +10364,10 @@ mod tests {
             "sun_dark_cells",
             "sun_corona_flare",
         ] {
-            assert!(
-                sun.faces
-                    .iter()
-                    .any(|face| { face.material == material && face.shader == SurfaceShader::Sun })
-            );
+            assert!(sun
+                .faces
+                .iter()
+                .any(|face| { face.material == material && face.shader == SurfaceShader::Sun }));
         }
     }
 
@@ -10432,12 +10378,10 @@ mod tests {
         assert!(model.vertices.len() > 14_000);
         assert!(model.faces.len() > 29_000);
         assert!(model.faces.iter().any(|face| face.smooth));
-        assert!(
-            model
-                .vertex_normals
-                .iter()
-                .any(|normal| normal.dot(*normal) > 0.9)
-        );
+        assert!(model
+            .vertex_normals
+            .iter()
+            .any(|normal| normal.dot(*normal) > 0.9));
         let radius = model_radius(&model, model_center(&model)) * KIRBY_SPEC.model_scale;
         assert!((1.5..2.0).contains(&radius), "unexpected radius {radius}");
 
@@ -10459,36 +10403,28 @@ mod tests {
                 .contains("kirby_smooth_pink")
                 && face.color == MaterialColor::Fixed([255, 158, 198])
         }));
-        assert!(
-            model
-                .faces
-                .iter()
-                .any(|face| face.group == "Kirby_Star_Emblem")
-        );
-        assert!(
-            model
-                .faces
-                .iter()
-                .any(|face| face.group == "Thruster_Guard_L")
-        );
+        assert!(model
+            .faces
+            .iter()
+            .any(|face| face.group == "Kirby_Star_Emblem"));
+        assert!(model
+            .faces
+            .iter()
+            .any(|face| face.group == "Thruster_Guard_L"));
 
         let submarine =
             load_obj(root.join("assets/vehicles/kirby/kirbysub_detallado.obj")).unwrap();
         assert!(submarine.vertices.len() > 10_000);
         assert!(submarine.faces.len() > 21_000);
         assert!(submarine.faces.iter().any(|face| face.smooth));
-        assert!(
-            submarine
-                .faces
-                .iter()
-                .any(|face| face.group == "Submarine_Star_Emblem")
-        );
-        assert!(
-            submarine
-                .faces
-                .iter()
-                .any(|face| face.group == "Sub_Propeller_Guard_L")
-        );
+        assert!(submarine
+            .faces
+            .iter()
+            .any(|face| face.group == "Submarine_Star_Emblem"));
+        assert!(submarine
+            .faces
+            .iter()
+            .any(|face| face.group == "Sub_Propeller_Guard_L"));
 
         let emitter_offset = |candidate: &Model, group: &str, scale: f32| {
             let mut points = candidate

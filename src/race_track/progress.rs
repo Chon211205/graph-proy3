@@ -1,6 +1,6 @@
 use crate::obj_loader::Vec3;
 
-use super::course::{HALF_ROAD, RaceCourse};
+use super::course::{RaceCourse, HALF_ROAD};
 
 pub(super) const TOTAL_LAPS: u8 = 4;
 const CHECKPOINT_COUNT: usize = 12;

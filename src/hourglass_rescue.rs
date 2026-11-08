@@ -14,7 +14,7 @@ use crate::obj_loader::Vec3;
 use crate::ship::Ship;
 
 use audio::{Audio, Cue};
-use scene::{CAPSULE_COUNT, CAPSULE_POSITIONS, Scene};
+use scene::{Scene, CAPSULE_COUNT, CAPSULE_POSITIONS};
 
 const MISSION_SECONDS: f32 = 240.0;
 const INVERSION_AT: f32 = 120.0;

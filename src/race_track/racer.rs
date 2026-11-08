@@ -4,7 +4,7 @@ use crate::{
 };
 
 use super::{
-    course::{HALF_ROAD, RaceCourse},
+    course::{RaceCourse, HALF_ROAD},
     drive::{DriveState, RaceInput},
     progress::{ProgressEvent, RaceProgress},
 };

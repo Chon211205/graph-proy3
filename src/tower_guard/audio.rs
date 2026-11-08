@@ -30,12 +30,6 @@ impl TowerAudio {
         command(&format!("play {alias} from 0"));
     }
 
-    pub fn start_music(&self) {
-        command("close re_mansion");
-        command("open \"assets/minigames/tower_guardian/audio/mansion.mp3\" type mpegvideo alias re_mansion");
-        command("play re_mansion repeat");
-    }
-
     pub fn stop_music(&self) {
         command("close re_mansion");
     }

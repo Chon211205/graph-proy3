@@ -1,0 +1,10 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/Users/leejo/Desktop/graph-proy3/resident_level1/target/release/build/raylib-sys-d0bbb2a622abf1cf/out/build/cmake_install.cmake",
+		"C:/Users/leejo/Desktop/graph-proy3/resident_level1/target/release/build/raylib-sys-d0bbb2a622abf1cf/out/build/raylib/cmake_install.cmake",
+		"C:/Users/leejo/Desktop/graph-proy3/resident_level1/target/release/build/raylib-sys-d0bbb2a622abf1cf/out/build/raylib/external/glfw/cmake_install.cmake",
+		"C:/Users/leejo/Desktop/graph-proy3/resident_level1/target/release/build/raylib-sys-d0bbb2a622abf1cf/out/build/raylib/external/glfw/src/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

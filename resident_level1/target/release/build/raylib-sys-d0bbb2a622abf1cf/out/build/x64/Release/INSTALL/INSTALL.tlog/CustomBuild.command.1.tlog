@@ -1,0 +1,10 @@
+^C:\USERS\LEEJO\DESKTOP\GRAPH-PROY3\RESIDENT_LEVEL1\TARGET\RELEASE\BUILD\RAYLIB-SYS-D0BBB2A622ABF1CF\OUT\BUILD\CMAKEFILES\DAECBBBFF79AC3D38B7B66B4E7FC0185\INSTALL_FORCE.RULE
+setlocal
+cd .
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

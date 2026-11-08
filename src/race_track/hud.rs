@@ -1,14 +1,14 @@
 use crate::{
-    HEIGHT, WIDTH, draw_selection_label as label, draw_selection_panel as panel,
-    framebuffer::Framebuffer, obj_loader::Vec3,
+    draw_selection_label as label, draw_selection_panel as panel, framebuffer::Framebuffer,
+    obj_loader::Vec3, HEIGHT, WIDTH,
 };
 
 use super::{
-    RacePhase,
     course::RaceCourse,
     drive::DriveState,
     progress::{ProgressEvent, RaceProgress},
     racer::Rival,
+    RacePhase,
 };
 
 pub(super) fn draw(
@@ -147,11 +147,21 @@ pub(super) fn draw(
                 2,
                 0xffdf6b,
             );
-            label(frame, "ESFERA DE 1 ESTRELLA OBTENIDA", 600, 400, 2, 0xffa62b);
+            label(
+                frame,
+                "ESFERA DE 1 ESTRELLA OBTENIDA",
+                600,
+                400,
+                2,
+                0xffa62b,
+            );
             label(frame, "4 VUELTAS COMPLETADAS", 600, 440, 2, 0x9fffd2);
             label(
                 frame,
-                &format!("REGRESO AL MUNDO LIBRE EN {}", reward_remaining.ceil() as u32),
+                &format!(
+                    "REGRESO AL MUNDO LIBRE EN {}",
+                    reward_remaining.ceil() as u32
+                ),
                 600,
                 495,
                 1,
@@ -349,7 +359,11 @@ fn draw_ring_ticks(frame: &mut Framebuffer, cx: i32, cy: i32, radius: i32) {
     for index in 0..12 {
         let angle = index as f32 * std::f32::consts::TAU / 12.0;
         let outer = radius + 8;
-        let inner = if index % 3 == 0 { radius + 1 } else { radius + 4 };
+        let inner = if index % 3 == 0 {
+            radius + 1
+        } else {
+            radius + 4
+        };
         draw_line(
             frame,
             cx + (angle.cos() * inner as f32) as i32,

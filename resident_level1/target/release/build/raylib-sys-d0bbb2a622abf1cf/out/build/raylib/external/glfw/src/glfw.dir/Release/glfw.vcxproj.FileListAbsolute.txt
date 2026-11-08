@@ -1,0 +1,1 @@
+C:\Users\leejo\Desktop\graph-proy3\resident_level1\target\release\build\raylib-sys-d0bbb2a622abf1cf\out\build\raylib\external\glfw\src\glfw.dir\Release\glfw.lib

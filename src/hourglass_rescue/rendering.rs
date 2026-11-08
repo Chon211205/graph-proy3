@@ -1,9 +1,9 @@
 use crate::framebuffer::Framebuffer;
 use crate::obj_loader::{Model, Vec3};
 use crate::ship::Ship;
-use crate::{Camera, model_center, render_model};
+use crate::{model_center, render_model, Camera};
 
-use super::{CAPSULE_COUNT, CAPSULE_POSITIONS, EXIT_POSITION, HourglassRescue};
+use super::{HourglassRescue, CAPSULE_COUNT, CAPSULE_POSITIONS, EXIT_POSITION};
 
 impl HourglassRescue {
     pub fn render(&self, frame: &mut Framebuffer, ship_model: &Model, ship: &Ship) {

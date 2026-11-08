@@ -2,7 +2,7 @@ use crate::ship::Ship;
 
 use super::scene::dune_height;
 use super::{
-    CAPSULE_COUNT, CAPSULE_POSITIONS, CapsuleState, Cue, HourglassRescue, Input, RESCUE_DISTANCE,
+    CapsuleState, Cue, HourglassRescue, Input, CAPSULE_COUNT, CAPSULE_POSITIONS, RESCUE_DISTANCE,
     RESCUE_MAX_SPEED, RESCUE_SECONDS,
 };
 

@@ -3,7 +3,7 @@ use crate::{draw_selection_label, framebuffer::Framebuffer};
 
 use super::scene::CAPSULE_POSITIONS;
 use super::ui::{bar, draw_overlay, panel, shield_icon};
-use super::{CAPSULE_COUNT, EXIT_POSITION, HourglassRescue, Phase};
+use super::{HourglassRescue, Phase, CAPSULE_COUNT, EXIT_POSITION};
 
 pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship) {
     let w = frame.width as i32;

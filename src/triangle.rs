@@ -172,9 +172,21 @@ mod tests {
     fn depth_rejection_happens_before_expensive_shading() {
         let mut framebuffer = Framebuffer::new(8, 8);
         let vertices = [
-            ScreenVertex { x: 1.0, y: 1.0, z: 1.0 },
-            ScreenVertex { x: 6.0, y: 1.0, z: 1.0 },
-            ScreenVertex { x: 1.0, y: 6.0, z: 1.0 },
+            ScreenVertex {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
+            ScreenVertex {
+                x: 6.0,
+                y: 1.0,
+                z: 1.0,
+            },
+            ScreenVertex {
+                x: 1.0,
+                y: 6.0,
+                z: 1.0,
+            },
         ];
         draw_triangle(
             &mut framebuffer,

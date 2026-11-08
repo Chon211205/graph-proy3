@@ -198,7 +198,8 @@ impl Model {
 
     pub fn recalculate_normals(&mut self) {
         self.vertex_normals.clear();
-        self.vertex_normals.resize(self.vertices.len(), Vec3::default());
+        self.vertex_normals
+            .resize(self.vertices.len(), Vec3::default());
         for face in &self.faces {
             if !face.smooth {
                 continue;
@@ -335,7 +336,8 @@ fn classify_surface(name: &str) -> SurfaceShader {
         SurfaceShader::Waterfall
     } else if name.contains("roca_oscura") || name.contains("deep_cave_rock") {
         SurfaceShader::DarkRock
-    } else if name.contains("roca") || name.contains("piedra")
+    } else if name.contains("roca")
+        || name.contains("piedra")
         || name.contains("underwater_rock")
         || name.contains("blue_stone")
     {
@@ -753,8 +755,7 @@ pub fn load_obj(path: impl AsRef<Path>) -> Result<Model, String> {
                         face.shader = SurfaceShader::SharkBlueMetal;
                     }
                     let normalized_group = group.to_ascii_lowercase();
-                    if normalized_group.starts_with("roca_")
-                        && normalized_group.contains("_pilar_")
+                    if normalized_group.starts_with("roca_") && normalized_group.contains("_pilar_")
                     {
                         face.shader = SurfaceShader::WaterPlanetPillarTexture;
                     }
@@ -763,11 +764,7 @@ pub fn load_obj(path: impl AsRef<Path>) -> Result<Model, String> {
                             SurfaceShader::CoreGuardianEnvironmentTexture
                         } else if matches!(
                             material.to_ascii_lowercase().as_str(),
-                            "fucsia"
-                                | "magenta_sombra"
-                                | "coral_claro"
-                                | "durazno"
-                                | "crema"
+                            "fucsia" | "magenta_sombra" | "coral_claro" | "durazno" | "crema"
                         ) {
                             SurfaceShader::WaterMonsterTissueTexture
                         } else {
@@ -856,7 +853,11 @@ mod tests {
             ("cockpit_blue", [15, 47, 74], SurfaceShader::ArwingGlass),
             ("dark_metal", [25, 31, 42], SurfaceShader::ArwingDarkMetal),
             ("engine_cyan", [40, 225, 242], SurfaceShader::ArwingEmission),
-            ("warning_yellow", [250, 194, 34], SurfaceShader::ArwingYellow),
+            (
+                "warning_yellow",
+                [250, 194, 34],
+                SurfaceShader::ArwingYellow,
+            ),
         ];
 
         for (name, color, shader) in cases {

@@ -1,0 +1,10 @@
+^C:\USERS\LEEJO\DESKTOP\GRAPH-PROY3\TARGET\CARGO-LOCAL\REGISTRY\SRC\INDEX.CRATES.IO-1949CF8C6B5B557F\RAYLIB-SYS-5.5.1\RAYLIB\SRC\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/leejo/Desktop/graph-proy3/target/cargo-local/registry/src/index.crates.io-1949cf8c6b5b557f/raylib-sys-5.5.1/raylib -BC:/Users/leejo/Desktop/graph-proy3/resident_level1/target/release/build/raylib-sys-d0bbb2a622abf1cf/out/build --check-stamp-file C:/Users/leejo/Desktop/graph-proy3/resident_level1/target/release/build/raylib-sys-d0bbb2a622abf1cf/out/build/raylib/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

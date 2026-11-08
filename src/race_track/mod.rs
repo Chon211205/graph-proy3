@@ -8,18 +8,19 @@ mod scenery;
 use std::f32::consts::TAU;
 
 use crate::{
-    Camera, TriangleBatch, draw_projectile_glow,
+    draw_projectile_glow,
     framebuffer::Framebuffer,
-    obj_loader::{Model, Vec3, load_obj},
+    obj_loader::{load_obj, Model, Vec3},
     queue_model, render_ship_components,
     ship::{ShipController, ShipSpec},
+    Camera, TriangleBatch,
 };
 
 use self::{
     course::RaceCourse,
     drive::DriveState,
     progress::{ProgressEvent, RaceProgress},
-    racer::{Rival, yaw_from_direction},
+    racer::{yaw_from_direction, Rival},
     scenery::RaceScenery,
 };
 
@@ -149,20 +150,24 @@ impl RaceTrack {
         self.finish_position = 1;
         self.camera = None;
         self.last_render_time = 0.0;
-        self.rivals = Some((0..RIVAL_COUNT).map(|rival_index| {
-            // Twelve rivals means every one of the six available cars appears
-            // exactly twice, including the model selected by the player.
-            let vehicle_index = rival_vehicle_indices[rival_index % rival_vehicle_indices.len()];
-            let (_, spec) = vehicles[vehicle_index].expect("validated rival vehicle");
-            let row = rival_index / 3;
-            let grid = 16.0 + row as f32 * 13.0;
-            let lane = [-5.8, 0.0, 5.8][rival_index % 3];
-            let skill = [
-                0.99, 0.94, 0.97, 0.91, 1.00, 0.95,
-                0.98, 0.92, 0.96, 0.90, 0.97, 0.93,
-            ][rival_index];
-            Rival::new(&self.course, vehicle_index, spec, grid, lane, skill)
-        }).collect());
+        self.rivals = Some(
+            (0..RIVAL_COUNT)
+                .map(|rival_index| {
+                    // Twelve rivals means every one of the six available cars appears
+                    // exactly twice, including the model selected by the player.
+                    let vehicle_index =
+                        rival_vehicle_indices[rival_index % rival_vehicle_indices.len()];
+                    let (_, spec) = vehicles[vehicle_index].expect("validated rival vehicle");
+                    let row = rival_index / 3;
+                    let grid = 16.0 + row as f32 * 13.0;
+                    let lane = [-5.8, 0.0, 5.8][rival_index % 3];
+                    let skill = [
+                        0.99, 0.94, 0.97, 0.91, 1.00, 0.95, 0.98, 0.92, 0.96, 0.90, 0.97, 0.93,
+                    ][rival_index];
+                    Rival::new(&self.course, vehicle_index, spec, grid, lane, skill)
+                })
+                .collect(),
+        );
         self.phase = RacePhase::Countdown;
         self.countdown = 3.25;
         self.reward_elapsed = 0.0;
@@ -326,7 +331,11 @@ impl RaceTrack {
             sky.sun,
             batch,
             &camera,
-            |v| v.sub(sky.sun_center).mul(0.60).add(Vec3::new(-280.0, 170.0, -130.0)),
+            |v| {
+                v.sub(sky.sun_center)
+                    .mul(0.60)
+                    .add(Vec3::new(-280.0, 170.0, -130.0))
+            },
             Some(time),
             None,
         );
@@ -453,15 +462,14 @@ impl RaceTrack {
             let descent = (self.reward_elapsed / 2.2).clamp(0.0, 1.0);
             let descent = descent * descent * (3.0 - 2.0 * descent);
             let hover = (self.reward_elapsed * 3.2).sin() * 0.22;
-            let position = self
-                .reward_position
-                .add(Vec3::new(0.0, 13.0 - descent * 8.0 + hover, 0.0));
+            let position =
+                self.reward_position
+                    .add(Vec3::new(0.0, 13.0 - descent * 8.0 + hover, 0.0));
             let center = crate::model_center(dragon_ball);
             let rotation = self.reward_elapsed * 1.8;
             let (sin, cos) = rotation.sin_cos();
             let collect_scale =
-                (1.0 - (self.reward_elapsed - REWARD_COLLECT_TIME).max(0.0) / 0.55)
-                    .clamp(0.0, 1.0);
+                (1.0 - (self.reward_elapsed - REWARD_COLLECT_TIME).max(0.0) / 0.55).clamp(0.0, 1.0);
             if collect_scale > 0.0 {
                 queue_model(
                     dragon_ball,
@@ -739,8 +747,8 @@ fn apply_distant_mist(frame: &mut Framebuffer) {
 mod standings_tests {
     use super::*;
     use crate::ship::{
-        ARWING_CAR_SPEC, ASTRA_CAR_SPEC, BUZZ_CAR_SPEC, COWBOYB_CAR_SPEC,
-        KIRBY_CAR_SPEC, MCQUEEN_CAR_SPEC,
+        ARWING_CAR_SPEC, ASTRA_CAR_SPEC, BUZZ_CAR_SPEC, COWBOYB_CAR_SPEC, KIRBY_CAR_SPEC,
+        MCQUEEN_CAR_SPEC,
     };
 
     #[test]
@@ -761,7 +769,11 @@ mod standings_tests {
         let rivals = track.rivals.as_ref().unwrap();
         assert_eq!(rivals.len(), RIVAL_COUNT);
         assert_eq!(
-            track.vehicle_centers.iter().filter(|center| center.is_some()).count(),
+            track
+                .vehicle_centers
+                .iter()
+                .filter(|center| center.is_some())
+                .count(),
             6
         );
         for vehicle_index in 0..vehicles.len() {
@@ -783,7 +795,6 @@ mod standings_tests {
         assert!(!forest_uses_lod(true, FOREST_LOD_EXIT_RADIUS_PX + 1.0));
     }
 
-
     #[test]
     fn finished_race_freezes_the_car_until_the_reward_animation_completes() {
         let mut track = RaceTrack::load().unwrap();
@@ -796,9 +807,14 @@ mod standings_tests {
         track.drive.speed = 40.0;
 
         track.update(&mut controller, RaceInput::default(), REWARD_DURATION * 0.5);
-        assert!(controller.ship.position.sub(reward_position).dot(
-            controller.ship.position.sub(reward_position)
-        ) < 0.0001);
+        assert!(
+            controller
+                .ship
+                .position
+                .sub(reward_position)
+                .dot(controller.ship.position.sub(reward_position))
+                < 0.0001
+        );
         assert_eq!(controller.ship.speed, 0.0);
         assert!(!track.reward_complete());
 

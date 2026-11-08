@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
 
-use super::course::{CURB_WIDTH, HALF_ROAD, RaceCourse};
+use super::course::{RaceCourse, CURB_WIDTH, HALF_ROAD};
 
 pub(super) struct RaceScenery {
     pub forests: Vec<Model>,
@@ -291,24 +291,18 @@ impl MeshBuilder {
         }
     }
 
-    fn tapered_trunk_lod(
-        &mut self,
-        base: Vec3,
-        height: f32,
-        bottom: f32,
-        top: f32,
-        seed: f32,
-    ) {
+    fn tapered_trunk_lod(&mut self, base: Vec3, height: f32, bottom: f32, top: f32, seed: f32) {
         let sides = 7;
         let start = self.vertices.len();
         for side in 0..sides {
             let angle = side as f32 * std::f32::consts::TAU / sides as f32 + seed;
-            self.vertices.push(
-                base.add(Vec3::new(angle.cos() * bottom, 0.0, angle.sin() * bottom)),
-            );
-            self.vertices.push(
-                base.add(Vec3::new(angle.cos() * top, height, angle.sin() * top)),
-            );
+            self.vertices.push(base.add(Vec3::new(
+                angle.cos() * bottom,
+                0.0,
+                angle.sin() * bottom,
+            )));
+            self.vertices
+                .push(base.add(Vec3::new(angle.cos() * top, height, angle.sin() * top)));
         }
         for side in 0..sides {
             let next = (side + 1) % sides;
@@ -568,14 +562,9 @@ impl MeshBuilder {
         for (index, sample) in course.samples.iter().step_by(10).enumerate() {
             let side = Vec3::new(-sample.tangent.z, 0.0, sample.tangent.x);
             for direction in [-1.0, 1.0] {
-                let Some(center) = safe_offset_from_course(
-                    course,
-                    sample.position,
-                    side,
-                    direction,
-                    86.0,
-                    68.0,
-                ) else {
+                let Some(center) =
+                    safe_offset_from_course(course, sample.position, side, direction, 86.0, 68.0)
+                else {
                     continue;
                 };
                 let radius = 34.0 + (index % 4) as f32 * 4.0;
@@ -705,7 +694,11 @@ mod tests {
         assert!(scenery.terrain.len() > 1);
         assert!(scenery.hills.len() > 1);
         assert_eq!(
-            scenery.terrain.iter().map(|model| model.faces.len()).sum::<usize>(),
+            scenery
+                .terrain
+                .iter()
+                .map(|model| model.faces.len())
+                .sum::<usize>(),
             44 * 36 * 2 + 30 * 2
         );
         assert!(scenery
@@ -725,8 +718,7 @@ mod tests {
                 assert!(lod.faces.iter().any(|face| face.group == group));
             }
             assert!(lod.faces.iter().all(|face| {
-                face.group != "smooth_canopies"
-                    || face.shader == SurfaceShader::RaceGrassTexture
+                face.group != "smooth_canopies" || face.shader == SurfaceShader::RaceGrassTexture
             }));
         }
         for model in scenery.forests.iter().chain(&scenery.hills) {
@@ -768,10 +760,10 @@ mod tests {
             assert!(sample.position.z - terrain_min_z > 240.0);
             assert!(terrain_max_z - sample.position.z > 240.0);
         }
-        assert!(scenery
-            .forests
+        assert!(scenery.forests.iter().any(|model| model
+            .faces
             .iter()
-            .any(|model| model.faces.iter().any(|face| face.group == "alien_tree_roots")));
+            .any(|face| face.group == "alien_tree_roots")));
         for group in ["alien_tree_trunks", "smooth_canopies"] {
             assert!(scenery.forests.iter().any(|model| model
                 .faces
@@ -781,12 +773,15 @@ mod tests {
         assert!(scenery.forests.iter().all(|model| model
             .faces
             .iter()
-            .filter(|face| matches!(face.group.as_str(), "alien_tree_trunks" | "alien_tree_roots"))
+            .filter(|face| matches!(
+                face.group.as_str(),
+                "alien_tree_trunks" | "alien_tree_roots"
+            ))
             .all(|face| face.shader == SurfaceShader::RaceBarkTexture)));
-        assert!(scenery
-            .arches
+        assert!(scenery.arches.iter().any(|model| model
+            .faces
             .iter()
-            .any(|model| model.faces.iter().any(|face| face.group == "arch_carved_capitals")));
+            .any(|face| face.group == "arch_carved_capitals")));
         assert!(scenery.arches.iter().all(|model| model
             .faces
             .iter()
@@ -800,10 +795,16 @@ mod tests {
             .iter()
             .flat_map(|model| &model.faces)
             .any(|face| face.group == "detailed_hill_peaks"));
-        assert!(scenery.hills.iter().flat_map(|model| &model.faces).all(|face| {
-            !matches!(face.group.as_str(), "misty_green_hills" | "detailed_hill_peaks")
-                || face.shader == SurfaceShader::RaceGroundTexture
-        }));
+        assert!(scenery
+            .hills
+            .iter()
+            .flat_map(|model| &model.faces)
+            .all(|face| {
+                !matches!(
+                    face.group.as_str(),
+                    "misty_green_hills" | "detailed_hill_peaks"
+                ) || face.shader == SurfaceShader::RaceGroundTexture
+            }));
         assert!(scenery.forests.iter().all(|model| model
             .faces
             .iter()

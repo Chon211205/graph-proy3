@@ -183,7 +183,8 @@ impl CoreGuardian {
         let horizontal = input.horizontal.clamp(-1.0, 1.0);
         let vertical = input.vertical.clamp(-1.0, 1.0);
         self.velocity_x += (horizontal * PLAYER_SPEED - self.velocity_x) * response;
-        self.velocity_y += (vertical * PLAYER_SPEED * PLAYER_VERTICAL_SPEED - self.velocity_y) * response;
+        self.velocity_y +=
+            (vertical * PLAYER_SPEED * PLAYER_VERTICAL_SPEED - self.velocity_y) * response;
         self.player_x = (self.player_x + self.velocity_x * dt).clamp(0.12, 0.88);
         self.player_y = (self.player_y + self.velocity_y * dt).clamp(-0.72, 0.48);
         self.roll += ((-horizontal * 0.22) - self.roll) * (1.0 - (-7.0 * dt).exp());
@@ -283,8 +284,16 @@ impl CoreGuardian {
         } else if self.fire_was_down {
             let charged = self.fire_charge >= PLAYER_CHARGED_THRESHOLD;
             let charge_ratio = (self.fire_charge / PLAYER_MAX_CHARGE).clamp(0.0, 1.0);
-            let scale = if charged { 1.5 + charge_ratio * 2.5 } else { 1.0 };
-            let damage = if charged { 1 + (charge_ratio * 2.0).ceil() as u32 } else { 1 };
+            let scale = if charged {
+                1.5 + charge_ratio * 2.5
+            } else {
+                1.0
+            };
+            let damage = if charged {
+                1 + (charge_ratio * 2.0).ceil() as u32
+            } else {
+                1
+            };
             let muzzle_offsets: &[f32] = if charged { &[0.0] } else { &[-0.018, 0.018] };
             for offset in muzzle_offsets {
                 let shot = PlayerShot {
@@ -561,7 +570,9 @@ impl CoreGuardian {
     }
 
     pub fn reward_seconds_remaining(&self) -> u32 {
-        (VICTORY_SEQUENCE_DURATION - self.phase_time).max(0.0).ceil() as u32
+        (VICTORY_SEQUENCE_DURATION - self.phase_time)
+            .max(0.0)
+            .ceil() as u32
     }
 
     pub fn is_defeat(&self) -> bool {

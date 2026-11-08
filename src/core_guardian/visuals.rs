@@ -1,11 +1,10 @@
 use super::{
-    CoreGuardian, Phase, STARTING_SHIELDS, VICTORY_EXPLOSION_DURATION,
-    VICTORY_REWARD_COLLECT_TIME,
+    CoreGuardian, Phase, STARTING_SHIELDS, VICTORY_EXPLOSION_DURATION, VICTORY_REWARD_COLLECT_TIME,
 };
 use crate::framebuffer::Framebuffer;
 use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
 use crate::ship::ShipSpec;
-use crate::{Camera, render_model};
+use crate::{render_model, Camera};
 use std::sync::OnceLock;
 
 static GUARDIAN_BODY: OnceLock<Model> = OnceLock::new();
@@ -165,8 +164,7 @@ fn draw_damage_smoke(
 ) {
     let puff_count = damage as usize * 3;
     for index in 0..puff_count {
-        let phase = (elapsed * (1.8 + damage as f32 * 0.2) + index as f32 * 0.37)
-            .rem_euclid(1.0);
+        let phase = (elapsed * (1.8 + damage as f32 * 0.2) + index as f32 * 0.37).rem_euclid(1.0);
         let engine = if index % 2 == 0 { -1.0 } else { 1.0 };
         let spread = 5.0 + phase * (10.0 + damage as f32 * 2.0);
         let drift = (elapsed * 2.6 + index as f32 * 1.7).sin() * (3.0 + damage as f32);
@@ -174,16 +172,24 @@ fn draw_damage_smoke(
         let y = ship_center.1 + 18.0 + phase * (24.0 + damage as f32 * 5.0);
         let radius = 3.0 + phase * 4.0 + damage as f32 * 0.7;
         circle(framebuffer, x, y, radius, 0x39333f);
-        circle(framebuffer, x - radius * 0.12, y - radius * 0.12, radius * 0.68, 0x706a73);
-        circle(framebuffer, x - radius * 0.18, y - radius * 0.2, radius * 0.34, 0xaaa2a8);
+        circle(
+            framebuffer,
+            x - radius * 0.12,
+            y - radius * 0.12,
+            radius * 0.68,
+            0x706a73,
+        );
+        circle(
+            framebuffer,
+            x - radius * 0.18,
+            y - radius * 0.2,
+            radius * 0.34,
+            0xaaa2a8,
+        );
     }
 }
 
-fn draw_boss_explosion(
-    framebuffer: &mut Framebuffer,
-    screen_center: (f32, f32),
-    phase_time: f32,
-) {
+fn draw_boss_explosion(framebuffer: &mut Framebuffer, screen_center: (f32, f32), phase_time: f32) {
     let progress = (phase_time / VICTORY_EXPLOSION_DURATION).clamp(0.0, 1.0);
     let origin = scene_position(framebuffer, screen_center, 14.0);
     let camera = scene_camera();
@@ -395,7 +401,11 @@ fn draw_boss_spheres(
         body,
         framebuffer,
         &camera,
-        |vertex| vertex.mul(1.0 + (elapsed * 1.7).sin() * 0.035).add(body_center),
+        |vertex| {
+            vertex
+                .mul(1.0 + (elapsed * 1.7).sin() * 0.035)
+                .add(body_center)
+        },
         None,
         None,
     );
@@ -590,7 +600,8 @@ fn draw_projectiles_3d(
                 }
                 let x = screen_x + dx;
                 let y = screen_y + dy;
-                if x < 0 || y < 0 || x >= framebuffer.width as i32 || y >= framebuffer.height as i32 {
+                if x < 0 || y < 0 || x >= framebuffer.width as i32 || y >= framebuffer.height as i32
+                {
                     continue;
                 }
                 let strength = (1.0 - distance / glow_radius as f32).powf(2.0) * 0.65;
@@ -599,10 +610,10 @@ fn draw_projectiles_3d(
                 let add = |channel: u32, color: u8| {
                     (channel as f32 + color as f32 * strength).min(255.0) as u32
                 };
-                framebuffer.pixels[index] =
-                    (add((old >> 16) & 255, ship_spec.laser_color[0]) << 16)
-                        | (add((old >> 8) & 255, ship_spec.laser_color[1]) << 8)
-                        | add(old & 255, ship_spec.laser_color[2]);
+                framebuffer.pixels[index] = (add((old >> 16) & 255, ship_spec.laser_color[0])
+                    << 16)
+                    | (add((old >> 8) & 255, ship_spec.laser_color[1]) << 8)
+                    | add(old & 255, ship_spec.laser_color[2]);
             }
         }
     }
@@ -648,7 +659,11 @@ fn player_bolt_model() -> Model {
         .map(|(index, indices)| {
             let face = Face::new(
                 indices,
-                if index % 2 == 0 { "laser_core" } else { "laser_glow" },
+                if index % 2 == 0 {
+                    "laser_core"
+                } else {
+                    "laser_glow"
+                },
                 "player_bolt",
             );
             face
@@ -858,9 +873,8 @@ fn cavern_tunnel_model() -> Model {
             let b = a + sectors + 1;
             let c = a + 1;
             let d = b + 1;
-            let mineral_band = (angle_from_sector(sector, sectors) * 2.2
-                + ring as f32 * 0.37)
-                .sin();
+            let mineral_band =
+                (angle_from_sector(sector, sectors) * 2.2 + ring as f32 * 0.37).sin();
             let color_index = if mineral_band > 0.48 {
                 3
             } else if mineral_band > -0.05 {
@@ -1104,8 +1118,7 @@ mod texture_tests {
         assert!(seed.faces.iter().all(|face| {
             !matches!(
                 face.shader,
-                SurfaceShader::WaterMonsterCoreTexture
-                    | SurfaceShader::WaterMonsterTissueTexture
+                SurfaceShader::WaterMonsterCoreTexture | SurfaceShader::WaterMonsterTissueTexture
             )
         }));
 
@@ -1113,24 +1126,28 @@ mod texture_tests {
         let growths = cavern_spines_model();
         for model in [&tunnel, &growths] {
             assert!(!model.faces.is_empty());
-            assert!(model.faces.iter().all(|face| {
-                face.shader == SurfaceShader::CoreGuardianEnvironmentTexture
-            }));
+            assert!(model
+                .faces
+                .iter()
+                .all(|face| { face.shader == SurfaceShader::CoreGuardianEnvironmentTexture }));
         }
         let crystals = crystal_cluster_model();
-        assert!(crystals.faces.iter().all(|face| {
-            face.shader != SurfaceShader::CoreGuardianEnvironmentTexture
-        }));
+        assert!(crystals
+            .faces
+            .iter()
+            .all(|face| { face.shader != SurfaceShader::CoreGuardianEnvironmentTexture }));
 
         for variant in 0..2 {
             let rock = obstacle_model(variant);
-            assert!(rock.faces.iter().all(|face| {
-                face.shader == SurfaceShader::CoreGuardianEnvironmentTexture
-            }));
+            assert!(rock
+                .faces
+                .iter()
+                .all(|face| { face.shader == SurfaceShader::CoreGuardianEnvironmentTexture }));
         }
         let yellow_rock = obstacle_model(2);
-        assert!(yellow_rock.faces.iter().all(|face| {
-            face.shader == SurfaceShader::WaterMonsterCoreTexture
-        }));
+        assert!(yellow_rock
+            .faces
+            .iter()
+            .all(|face| { face.shader == SurfaceShader::WaterMonsterCoreTexture }));
     }
 }

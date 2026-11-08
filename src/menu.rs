@@ -3,8 +3,8 @@ use std::{fs::File, sync::OnceLock};
 use minifb::{Key, Window};
 
 use crate::{
-    HEIGHT, WIDTH, draw_selection_label as text, draw_selection_panel as panel, draw_skybox,
-    framebuffer::Framebuffer,
+    draw_selection_label as text, draw_selection_panel as panel, draw_skybox,
+    framebuffer::Framebuffer, HEIGHT, WIDTH,
 };
 
 static MENU_BACKGROUND: OnceLock<Option<Vec<u32>>> = OnceLock::new();
@@ -35,10 +35,12 @@ fn load_background() -> Option<Vec<u32>> {
             let source_x = crop_left + x * crop_width / WIDTH;
             let offset = (source_y * width + source_x) * channels;
             let (r, g, b) = match info.color_type {
-                png::ColorType::Rgb | png::ColorType::Rgba =>
-                    (source[offset], source[offset + 1], source[offset + 2]),
-                png::ColorType::Grayscale | png::ColorType::GrayscaleAlpha =>
-                    (source[offset], source[offset], source[offset]),
+                png::ColorType::Rgb | png::ColorType::Rgba => {
+                    (source[offset], source[offset + 1], source[offset + 2])
+                }
+                png::ColorType::Grayscale | png::ColorType::GrayscaleAlpha => {
+                    (source[offset], source[offset], source[offset])
+                }
                 png::ColorType::Indexed => unreachable!(),
             };
             pixels[y * WIDTH + x] = ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
@@ -96,7 +98,14 @@ pub fn instructions(window: &mut Window, frame: &mut Framebuffer) -> Result<(), 
         }
         draw_backdrop(frame);
         brand(frame, true);
-        left_text(frame, "EXPLORA EL ESPACIO Y COMPLETA EL NIVEL SUBMARINO", 85, 155, 2, 0x91a9bd);
+        left_text(
+            frame,
+            "EXPLORA EL ESPACIO Y COMPLETA EL NIVEL SUBMARINO",
+            85,
+            155,
+            2,
+            0x91a9bd,
+        );
         panel(frame, 55, 215, 580, 565, false);
         panel(frame, 605, 215, 1145, 565, false);
         text(frame, "PILOTA TU VEHICULO", 318, 240, 2, 0x99e226);
@@ -209,7 +218,14 @@ pub fn show(
                 }
             }
         }
-        left_text(frame, "UP DOWN / W S  ELEGIR     ENTER  CONFIRMAR", 84, 710, 1, 0xf0eee7);
+        left_text(
+            frame,
+            "UP DOWN / W S  ELEGIR     ENTER  CONFIRMAR",
+            84,
+            710,
+            1,
+            0xf0eee7,
+        );
         crate::input::clear();
         window.update_with_buffer(&frame.pixels, WIDTH, HEIGHT)?;
     }

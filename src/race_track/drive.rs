@@ -1,6 +1,6 @@
 use crate::{obj_loader::Vec3, ship::Ship};
 
-use super::course::{HALF_ROAD, RaceCourse};
+use super::course::{RaceCourse, HALF_ROAD};
 
 const MAX_SPEED: f32 = 42.0;
 const CRUISE_SPEED: f32 = 37.0;
@@ -205,14 +205,16 @@ impl DriveState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ship::{ASTRA_CAR_SPEC, ShipController};
+    use crate::ship::{ShipController, ASTRA_CAR_SPEC};
 
     #[test]
     fn player_coasts_at_rival_pace_and_throttle_reaches_the_shared_top_speed() {
         let course = RaceCourse::new();
         let start = course.sample_at(0.0);
         let mut controller = ShipController::new(&ASTRA_CAR_SPEC);
-        controller.ship.position = start.position.add(crate::obj_loader::Vec3::new(0.0, 1.2, 0.0));
+        controller.ship.position = start
+            .position
+            .add(crate::obj_loader::Vec3::new(0.0, 1.2, 0.0));
         controller.ship.yaw = (-start.tangent.z).atan2(-start.tangent.x);
         let mut drive = DriveState::new();
 
@@ -245,7 +247,9 @@ mod tests {
         let course = RaceCourse::new();
         let start = course.sample_at(0.0);
         let mut controller = ShipController::new(&ASTRA_CAR_SPEC);
-        controller.ship.position = start.position.add(crate::obj_loader::Vec3::new(0.0, 1.2, 0.0));
+        controller.ship.position = start
+            .position
+            .add(crate::obj_loader::Vec3::new(0.0, 1.2, 0.0));
         controller.ship.yaw = (-start.tangent.z).atan2(-start.tangent.x);
         let mut drive = DriveState::new();
         drive.speed = 20.0;
@@ -274,20 +278,16 @@ mod tests {
             .add(side.mul(HALF_ROAD + 5.0))
             .add(crate::obj_loader::Vec3::new(0.0, 1.2, 0.0));
         let (_, _, nearest) = course.nearest(outside);
-        let nearest_side = crate::obj_loader::Vec3::new(
-            -nearest.tangent.z,
-            0.0,
-            nearest.tangent.x,
-        );
+        let nearest_side = crate::obj_loader::Vec3::new(-nearest.tangent.z, 0.0, nearest.tangent.x);
         let safe_edge = HALF_ROAD + 0.8 - SAFE_EDGE_MARGIN;
-        let corrected = nearest
-            .position
-            .add(nearest_side.mul(
+        let corrected = nearest.position.add(
+            nearest_side.mul(
                 outside
                     .sub(nearest.position)
                     .dot(nearest_side)
                     .clamp(-safe_edge, safe_edge),
-            ));
+            ),
+        );
         let (_, corrected_distance, _) = course.nearest(corrected);
         assert!(corrected_distance <= safe_edge + 0.05);
     }

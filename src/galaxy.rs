@@ -50,10 +50,8 @@ mod tests {
         assert_eq!(Galaxy::Home.portal_destination(), Galaxy::Vesper);
         assert_eq!(Galaxy::Vesper.portal_destination(), Galaxy::Home);
         assert_eq!(Galaxy::Nova.portal_destination(), Galaxy::Vesper);
-        let home_to_vesper = wormhole_position(Galaxy::Home)
-            .sub(wormhole_position(Galaxy::Vesper));
-        let vesper_to_nova = wormhole_position(Galaxy::Vesper)
-            .sub(wormhole_position(Galaxy::Nova));
+        let home_to_vesper = wormhole_position(Galaxy::Home).sub(wormhole_position(Galaxy::Vesper));
+        let vesper_to_nova = wormhole_position(Galaxy::Vesper).sub(wormhole_position(Galaxy::Nova));
         assert!(home_to_vesper.dot(home_to_vesper) > 1.0);
         assert!(vesper_to_nova.dot(vesper_to_nova) > 1.0);
         let separate = nova_portal_position().sub(wormhole_position(Galaxy::Vesper));
