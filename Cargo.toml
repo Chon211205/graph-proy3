@@ -6,3 +6,8 @@ edition = "2024"
 [dependencies]
 minifb = "0.28"
 png = "0.17"
+
+[profile.dev]
+# The software renderer transforms and rasterizes triangles on the CPU. A small
+# optimization level keeps `cargo run` responsive without release-only debug info.
+opt-level = 1

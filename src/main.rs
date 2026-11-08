@@ -209,9 +209,8 @@ const LEVEL_RENDER_AHEAD: f32 = 112.0;
 const COLLISION_GRID_CELL_SIZE: f32 = 12.0;
 const MAX_BUBBLE_PARTICLES: usize = 256;
 const MIN_SURFACE_TEXTURE_SIZE: usize = 512;
-// The CPU renderer uses the full presentation resolution by default. Running
-// at 150% supersampling multiplied raster and post-processing work by 2.25,
-// which was wasteful on machines without a dedicated GPU.
+// Keep the optimized renderer at the native presentation resolution. Dynamic
+// downscaling from main conflicts with optimization3's visual contract.
 const RESOLUTION_SCALES: [f32; 1] = [1.0];
 
 fn water_reward_position() -> Vec3 {
@@ -3332,6 +3331,7 @@ enum PlanetVisual {
 }
 
 struct PlanetLodModels {
+    medium: Model,
     low: Model,
 }
 
@@ -3383,6 +3383,29 @@ impl PlanetLodState {
         };
         self.level
     }
+
+    fn update_detailed(&mut self, projected_radius: f32, fast_flight: bool) -> usize {
+        if fast_flight {
+            // Keep the authored model whenever the planet is close enough to
+            // be a major part of the view, even during a turbo pass.
+            self.level = if projected_radius >= 110.0 {
+                0
+            } else if projected_radius < 24.0 {
+                2
+            } else {
+                1
+            };
+            return self.level;
+        }
+        self.level = match self.level {
+            0 if projected_radius < 90.0 => 1,
+            1 if projected_radius < 24.0 => 2,
+            1 if projected_radius > 110.0 => 0,
+            2 if projected_radius > 34.0 => 1,
+            level => level,
+        };
+        self.level
+    }
 }
 
 fn make_planet_lod(radius: f32, stacks: usize, slices: usize, visual: PlanetVisual) -> Model {
@@ -3422,6 +3445,7 @@ fn make_planet_lod(radius: f32, stacks: usize, slices: usize, visual: PlanetVisu
 
 fn make_planet_lods(radius: f32, visual: PlanetVisual) -> PlanetLodModels {
     PlanetLodModels {
+        medium: make_planet_lod(radius, 24, 40, visual),
         low: make_planet_lod(radius, 6, 10, visual),
     }
 }
@@ -4182,6 +4206,16 @@ struct TriangleCommand {
     style: TriangleStyle,
 }
 
+const TRIANGLE_DEPTH_BUCKETS: usize = 256;
+
+fn depth_bucket(depth: f32) -> usize {
+    // Reciprocal depth spans several orders of magnitude. Logarithmic buckets
+    // keep useful front-to-back order without sorting every triangle exactly.
+    let exponent = depth.max(f32::MIN_POSITIVE).log2();
+    (((exponent + 12.0) / 16.0).clamp(0.0, 1.0) * (TRIANGLE_DEPTH_BUCKETS - 1) as f32)
+        as usize
+}
+
 const OCCLUSION_BLOCK_SIZE: usize = 16;
 
 struct CoarseOcclusion {
@@ -4365,6 +4399,7 @@ impl ProjectionCache {
 
 struct TriangleBatch {
     commands: Vec<TriangleCommand>,
+    depth_buckets: Vec<Vec<TriangleCommand>>,
     camera_vertex_scratch: Vec<Vec3>,
     camera_normal_scratch: Vec<Vec3>,
     viewport_width: usize,
@@ -4382,6 +4417,9 @@ impl TriangleBatch {
     fn new(viewport_width: usize, viewport_height: usize) -> Self {
         Self {
             commands: Vec::new(),
+            depth_buckets: (0..TRIANGLE_DEPTH_BUCKETS)
+                .map(|_| Vec::new())
+                .collect(),
             camera_vertex_scratch: Vec::new(),
             camera_normal_scratch: Vec::new(),
             viewport_width,
@@ -4417,11 +4455,16 @@ impl TriangleBatch {
         }
         let sort_start = Instant::now();
         if self.commands.len() > 128 {
-            self.commands.sort_unstable_by(|a, b| {
-                let a_depth = (a.vertices[0].z + a.vertices[1].z + a.vertices[2].z) / 3.0;
-                let b_depth = (b.vertices[0].z + b.vertices[1].z + b.vertices[2].z) / 3.0;
-                b_depth.total_cmp(&a_depth)
-            });
+            for command in self.commands.drain(..) {
+                let average_depth =
+                    (command.vertices[0].z + command.vertices[1].z + command.vertices[2].z)
+                        / 3.0;
+                let bucket = depth_bucket(average_depth);
+                self.depth_buckets[bucket].push(command);
+            }
+            for bucket in self.depth_buckets.iter_mut().rev() {
+                self.commands.append(bucket);
+            }
         }
         self.stats.sort_ms += sort_start.elapsed().as_secs_f32() * 1_000.0;
         let raster_start = Instant::now();
@@ -4862,6 +4905,7 @@ fn render_scene(
     world_time: f32,
     travel: f32,
     turbo_power: f32,
+    fast_flight: bool,
     fire_charge: f32,
 ) {
     framebuffer.clear(0);
@@ -4894,14 +4938,15 @@ fn render_scene(
             Some(world_time),
             None,
         );
-        let water_lod = planet_lod_states[0].update(projected_planet_radius(
+        let water_lod = planet_lod_states[0].update_detailed(projected_planet_radius(
             &camera,
             planet_position,
             WATER_PLANET_RADIUS,
             batch.projection.focal,
-        ));
+        ), fast_flight);
         let water_model = match water_lod {
             0 => planet,
+            1 => &planet_lods[0].medium,
             _ => &planet_lods[0].low,
         };
         queue_model(
@@ -4927,14 +4972,15 @@ fn render_scene(
         );
         let spiky_rotation = world_time * SPIKY_PLANET_ROTATION_SPEED;
         let spiky_position = spiky_planet_position(world_time);
-        let spiky_lod = planet_lod_states[1].update(projected_planet_radius(
+        let spiky_lod = planet_lod_states[1].update_detailed(projected_planet_radius(
             &camera,
             spiky_position,
             SPIKY_PLANET_RADIUS,
             batch.projection.focal,
-        ));
+        ), fast_flight);
         let spiky_model = match spiky_lod {
             0 => spiky_planet,
+            1 => &planet_lods[1].medium,
             _ => &planet_lods[1].low,
         };
         queue_model(
@@ -4960,14 +5006,15 @@ fn render_scene(
             None,
         );
         let race_position = race_planet_position(world_time);
-        let race_lod = planet_lod_states[2].update(projected_planet_radius(
+        let race_lod = planet_lod_states[2].update_detailed(projected_planet_radius(
             &camera,
             race_position,
             race_track::PLANET_RADIUS,
             batch.projection.focal,
-        ));
+        ), fast_flight);
         let race_model = match race_lod {
             0 => race_planet,
+            1 => &planet_lods[2].medium,
             _ => &planet_lods[2].low,
         };
         queue_model(
@@ -6835,8 +6882,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
         }
 
-        let mut resolution_changed = dynamic_resolution.update(frame_time, triangle_batch.stats());
-        resolution_changed |= dynamic_resolution.prefer_native_resolution("HD NATIVO");
+        let resolution_changed = dynamic_resolution.update(frame_time, triangle_batch.stats());
         let toggled_resolution = if crate::input::pressed(Key::F2) {
             dynamic_resolution.toggle()
         } else {
@@ -7282,6 +7328,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         })
                     .rem_euclid(1.0),
                     turbo_power,
+                    light_speed,
                     ship_controller.charge_ratio(),
                 );
                 if let Some(transit) = &galaxy_transition {
@@ -7488,36 +7535,6 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         let copy_start = Instant::now();
         upscale_scene(&scene_framebuffer, &mut framebuffer);
         let copy_ms = copy_start.elapsed().as_secs_f32() * 1_000.0;
-        if performance_hud {
-            let stats = triangle_batch.stats();
-            let summary = format!(
-                "PERF {:>3.0} FPS AVG {:>4.1} MS GEO {:>4.1} SORT {:>3.1} RAST {:>4.1}",
-                dynamic_resolution.fps_average,
-                dynamic_resolution.frame_ms_average,
-                stats.geometry_ms,
-                stats.sort_ms,
-                stats.raster_ms,
-            );
-            let displayed_lods = if active_galaxy == Galaxy::Vesper {
-                &vesper_lod_states
-            } else {
-                &planet_lod_states
-            };
-            let geometry = format!(
-                "MODELOS {} CULL {} VERT {} TRI {} RES {}% DRS {} LOD {}/{}/{}",
-                stats.models_visible,
-                stats.models_culled,
-                stats.vertices_transformed,
-                stats.triangles_submitted,
-                dynamic_resolution.percentage(),
-                dynamic_resolution.status,
-                displayed_lods[0].level,
-                displayed_lods[1].level,
-                displayed_lods[2].level,
-            );
-            draw_selection_label(&mut framebuffer, &summary, 600, 92, 1, 0x9fffd2);
-            draw_selection_label(&mut framebuffer, &geometry, 600, 108, 1, 0xc6d8ff);
-        }
         if game_mode == GameMode::Racing {
             race_track.hud(&mut framebuffer, &ship_controller);
         }
@@ -7787,6 +7804,84 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         }
         if game_mode == GameMode::TowerGuard {
             tower_game.draw_hud(&mut framebuffer);
+        }
+        if performance_hud {
+            let stats = triangle_batch.stats();
+            let displayed_lods = if active_galaxy == Galaxy::Vesper {
+                &vesper_lod_states
+            } else {
+                &planet_lod_states
+            };
+            // Keep diagnostics away from the top-center objective and draw
+            // them after gameplay HUDs so the opaque panel stays readable.
+            const PANEL_LEFT: usize = 16;
+            const PANEL_TOP: usize = 366;
+            const PANEL_WIDTH: usize = 450;
+            hud_rect(
+                &mut framebuffer,
+                PANEL_LEFT,
+                PANEL_TOP,
+                PANEL_WIDTH,
+                132,
+            );
+            let center = (PANEL_LEFT + PANEL_WIDTH / 2) as i32;
+            draw_selection_label(
+                &mut framebuffer,
+                "RENDIMIENTO",
+                center,
+                PANEL_TOP as i32 + 8,
+                2,
+                0x46e6ff,
+            );
+            draw_selection_label(
+                &mut framebuffer,
+                &format!(
+                    "FPS {:.0} FRAME {:.0} MS",
+                    dynamic_resolution.fps_average, dynamic_resolution.frame_ms_average
+                ),
+                center,
+                PANEL_TOP as i32 + 30,
+                2,
+                0xffffff,
+            );
+            draw_selection_label(
+                &mut framebuffer,
+                &format!(
+                    "GEO {:.0} SORT {:.0} RAST {:.0} MS",
+                    stats.geometry_ms, stats.sort_ms, stats.raster_ms
+                ),
+                center,
+                PANEL_TOP as i32 + 52,
+                2,
+                0xc6d8ff,
+            );
+            draw_selection_label(
+                &mut framebuffer,
+                &format!(
+                    "MODELOS {} TRI {} RES {}%",
+                    stats.models_visible,
+                    stats.triangles_submitted,
+                    dynamic_resolution.percentage()
+                ),
+                center,
+                PANEL_TOP as i32 + 74,
+                2,
+                0x9fffd2,
+            );
+            draw_selection_label(
+                &mut framebuffer,
+                &format!(
+                    "DRS {} LOD {}/{}/{}",
+                    dynamic_resolution.status,
+                    displayed_lods[0].level,
+                    displayed_lods[1].level,
+                    displayed_lods[2].level,
+                ),
+                center,
+                PANEL_TOP as i32 + 96,
+                2,
+                0xffd78a,
+            );
         }
         if crate::input::pressed(Key::P) {
             framebuffer.save_png("captura.png")?;
