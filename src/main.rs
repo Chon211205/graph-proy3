@@ -1,6 +1,7 @@
 mod core_guardian;
 mod framebuffer;
 mod galaxy;
+mod hourglass_rescue;
 mod input;
 mod menu;
 mod obj_loader;
@@ -690,6 +691,7 @@ enum GameMode {
     FreeWorld,
     WaterLevel,
     CoreGuardian,
+    HourglassRescue,
     Racing,
     TowerGuard,
 }
@@ -6670,6 +6672,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut water_level_state = WaterLevelState::new();
     let mut bubble_emitter = BubbleEmitter::new();
     let mut guardian_fight = CoreGuardian::new();
+    let mut hourglass_rescue = hourglass_rescue::HourglassRescue::new();
     let mut tower_game = tower_guard::TowerGame::new(&tower_sprites);
     let mut previous = Instant::now();
     let mut world_time = 0.0_f32;
@@ -6760,7 +6763,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             crate::input::clear();
             continue;
         }
-        if game_mode != GameMode::TowerGuard && crate::input::pressed(Key::Escape) {
+        if game_mode != GameMode::TowerGuard
+            && game_mode != GameMode::HourglassRescue
+            && crate::input::pressed(Key::Escape)
+        {
             match menu::show(&mut window, &mut framebuffer, true)? {
                 menu::Action::Quit => return Ok(false),
                 menu::Action::Hangar => {
@@ -6907,7 +6913,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 window.set_cursor_visibility(false);
             }
         }
-        if game_mode != GameMode::TowerGuard && crate::input::pressed(Key::R) {
+        if game_mode != GameMode::TowerGuard
+            && game_mode != GameMode::HourglassRescue
+            && crate::input::pressed(Key::R)
+        {
             if game_mode == GameMode::Racing {
                 race_track.recover(&mut ship_controller);
             } else if game_mode == GameMode::CoreGuardian {
@@ -6982,6 +6991,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     window.set_title("Carrera: esta nave aún no tiene modelo de carro");
                     println!("Falta un OBJ de carro para esta nave: {missing_model}");
                 }
+            } else if active_galaxy == Galaxy::Vesper && vesper_orbit_index == Some(0) {
+                hourglass_rescue = hourglass_rescue::HourglassRescue::new();
+                hourglass_rescue.place_ship_at_start(&mut ship_controller.ship);
+                game_mode = GameMode::HourglassRescue;
+                entered_level = true;
+                window.set_title("Rescate a Contratiempo | WASD mover | Space/Ctrl altura | E rescatar");
             } else if active_galaxy == Galaxy::Vesper && vesper_orbit_index == Some(2) {
                 tower_game = tower_guard::TowerGame::new(&tower_sprites);
                 game_mode = GameMode::TowerGuard;
@@ -7517,6 +7532,40 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     tower_guard::Phase::Victory | tower_guard::Phase::Defeat
                 ));
             }
+            GameMode::HourglassRescue => {
+                let restart_pressed = crate::input::pressed(Key::R);
+                let rescue_input = hourglass_rescue::Input {
+                    forward: window.is_key_down(Key::W) || window.is_key_down(Key::Up),
+                    brake: window.is_key_down(Key::S) || window.is_key_down(Key::Down),
+                    left: window.is_key_down(Key::A) || window.is_key_down(Key::Left),
+                    right: window.is_key_down(Key::D) || window.is_key_down(Key::Right),
+                    rise: window.is_key_down(Key::Space),
+                    descend: window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl),
+                    boost: window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift),
+                    rescue: window.is_key_down(Key::E),
+                    pause: crate::input::pressed(Key::P) || crate::input::pressed(Key::Escape),
+                    exit: crate::input::pressed(Key::Backspace),
+                    restart: restart_pressed,
+                    recover: restart_pressed,
+                };
+                if hourglass_rescue.update(&mut ship_controller.ship, rescue_input, delta_time)
+                    == hourglass_rescue::Action::Exit
+                {
+                    game_mode = GameMode::FreeWorld;
+                    launch_ship_from_planet(
+                        &mut ship_controller,
+                        vesper_planets[0].center,
+                        vesper_planets[0].radius,
+                    );
+                    window.set_title("Galaxia Vesper | Vuelo libre | Reloj de Arena");
+                    continue;
+                }
+                hourglass_rescue.render(
+                    &mut scene_framebuffer,
+                    active_model,
+                    &ship_controller.ship,
+                );
+            }
         }
 
         if galaxy_transition
@@ -7533,7 +7582,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 
         let update_scene_ms = update_scene_start.elapsed().as_secs_f32() * 1_000.0;
         let post_start = Instant::now();
-        if advanced_lighting && game_mode != GameMode::TowerGuard {
+        if advanced_lighting
+            && game_mode != GameMode::TowerGuard
+            && game_mode != GameMode::HourglassRescue
+        {
             hybrid_ray_tracing.apply_high(&mut scene_framebuffer);
         }
         let post_ms = post_start.elapsed().as_secs_f32() * 1_000.0;
@@ -7580,6 +7632,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 2,
                 0xffffff,
             );
+        } else if game_mode == GameMode::HourglassRescue {
+            hourglass_rescue.draw_hud(&mut framebuffer, &ship_controller.ship);
         } else if game_mode != GameMode::TowerGuard {
             let form = if game_mode == GameMode::Racing {
                 race_vehicles[selected_ship]
@@ -7726,6 +7780,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::CoreGuardian if guardian_fight.is_exposed() => "ATACA EL NUCLEO EXPUESTO",
             GameMode::CoreGuardian => "SOBREVIVE Y ABRE EL NUCLEO",
             GameMode::TowerGuard => "DEFIENDE LA TORRE",
+            GameMode::HourglassRescue => "RESCATA LAS CINCO CAPSULAS",
         };
         let shield_ratio = match game_mode {
             GameMode::WaterLevel => {
@@ -7738,6 +7793,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::WaterLevel => water_level_state.defeated_enemies as u32 * 1_250,
             GameMode::CoreGuardian => ((1.0 - guardian_fight.health_ratio()) * 100_000.0) as u32,
             GameMode::TowerGuard => tower_game.score(),
+            GameMode::HourglassRescue => hourglass_rescue.rescued_count() as u32 * 1_000,
             GameMode::Racing => {
                 (ship_controller.ship.position.x.abs() + ship_controller.ship.position.z.abs())
                     as u32
@@ -7773,7 +7829,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         };
         // Racing has its own purpose-built HUD. Do not layer the combat
         // reticle, blaster charge, shields, contacts or combat objective over it.
-        if game_mode != GameMode::Racing && game_mode != GameMode::TowerGuard {
+        if game_mode != GameMode::Racing
+            && game_mode != GameMode::TowerGuard
+            && game_mode != GameMode::HourglassRescue
+        {
             draw_unified_combat_hud(
                 &mut framebuffer,
                 objective,
