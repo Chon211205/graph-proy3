@@ -16,14 +16,14 @@ const ROUND_TWO: &[&[EnemyKind]] = &[
     &[EnemyKind::BlueClaw, EnemyKind::WhiteShirt],
     &[EnemyKind::GreenBrute],
     &[EnemyKind::BlackCreature, EnemyKind::OrangeClaw],
-    &[EnemyKind::BlueVest, EnemyKind::BlueClaw],
+    &[EnemyKind::BlueVest, EnemyKind::WhiteShirt],
 ];
 const ROUND_FOUR: &[&[EnemyKind]] = &[
     &[EnemyKind::GreenBrute],
     &[EnemyKind::BlueClaw, EnemyKind::WhiteShirt],
     &[EnemyKind::OrangeClaw, EnemyKind::BlackCreature],
     &[EnemyKind::GreenBrute],
-    &[EnemyKind::BlueVest, EnemyKind::BlueClaw],
+    &[EnemyKind::BlueVest, EnemyKind::WhiteShirt],
     &[EnemyKind::OrangeClaw, EnemyKind::WhiteShirt],
 ];
 

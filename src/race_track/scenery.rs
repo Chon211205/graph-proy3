@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
 
 use super::course::{CURB_WIDTH, HALF_ROAD, RaceCourse};
@@ -6,13 +8,14 @@ pub(super) struct RaceScenery {
     pub forests: Vec<Model>,
     pub forest_lods: Vec<Model>,
     pub arches: Vec<Model>,
-    pub terrain: Model,
-    pub hills: Model,
+    pub terrain: Vec<Model>,
+    pub hills: Vec<Model>,
 }
 
 impl RaceScenery {
     pub fn new(course: &RaceCourse) -> Self {
         let mut forests = Vec::new();
+        let mut forest_lods = Vec::new();
         let mut arches = Vec::new();
         // Small spatial chunks let the renderer reject most vegetation before
         // transforming its detailed smooth geometry. This matters especially
@@ -23,6 +26,7 @@ impl RaceScenery {
             let start = chunk * chunk_size;
             let end = ((chunk + 1) * chunk_size).min(course.samples.len());
             let mut forest = MeshBuilder::default();
+            let mut forest_lod = MeshBuilder::default();
             for index in (start..end).step_by(5) {
                 let sample = course.samples[index];
                 let side = Vec3::new(-sample.tangent.z, 0.0, sample.tangent.x);
@@ -43,6 +47,7 @@ impl RaceScenery {
                         continue;
                     };
                     forest.tree(position, tree_height, seed);
+                    forest_lod.tree_lod(position, tree_height, seed);
                     forest.fern(
                         position.add(side.mul(direction * 7.0)),
                         sample.tangent,
@@ -51,6 +56,7 @@ impl RaceScenery {
                 }
             }
             forests.push(forest.finish());
+            forest_lods.push(forest_lod.finish());
 
             let mut arch = MeshBuilder::default();
             let center_index = (start + end) / 2;
@@ -64,39 +70,56 @@ impl RaceScenery {
         hills.hills(course);
         let mut terrain = MeshBuilder::default();
         terrain.terrain();
-        let forest_lods = forests
-            .iter()
-            .map(|forest| reduced_model(forest, 3))
-            .collect();
         Self {
             forests,
             forest_lods,
             arches,
-            terrain: terrain.finish(),
-            hills: hills.finish(),
+            terrain: spatial_chunks(terrain.finish(), 100.0),
+            hills: spatial_chunks(hills.finish(), 100.0),
         }
     }
 }
 
-fn reduced_model(model: &Model, stride: usize) -> Model {
-    let mut remap = vec![usize::MAX; model.vertices.len()];
-    let mut vertices = Vec::new();
-    let mut faces = Vec::new();
-    for source in model.faces.iter().step_by(stride.max(1)) {
-        let indices = source.indices.map(|old| {
-            if remap[old] == usize::MAX {
-                remap[old] = vertices.len();
-                vertices.push(model.vertices[old]);
-            }
-            remap[old]
-        });
-        let mut face = Face::new(indices, source.material.clone(), source.group.clone());
-        face.shader = source.shader;
-        face.color = source.color;
-        face.smooth = source.smooth;
-        faces.push(face);
+fn spatial_chunks(model: Model, cell_size: f32) -> Vec<Model> {
+    let mut cells: BTreeMap<(i32, i32), Vec<Face>> = BTreeMap::new();
+    for source in model.faces {
+        let center = source
+            .indices
+            .iter()
+            .map(|&index| model.vertices[index])
+            .fold(Vec3::default(), |sum, vertex| sum.add(vertex))
+            .mul(1.0 / 3.0);
+        let key = (
+            (center.x / cell_size).floor() as i32,
+            (center.z / cell_size).floor() as i32,
+        );
+        cells.entry(key).or_default().push(source);
     }
-    Model::new(vertices, faces)
+    cells
+        .into_values()
+        .map(|faces| {
+            let mut remap = vec![usize::MAX; model.vertices.len()];
+            let mut vertices = Vec::new();
+            let faces = faces
+                .into_iter()
+                .map(|source| {
+                    let indices = source.indices.map(|old| {
+                        if remap[old] == usize::MAX {
+                            remap[old] = vertices.len();
+                            vertices.push(model.vertices[old]);
+                        }
+                        remap[old]
+                    });
+                    let mut face = Face::new(indices, source.material, source.group);
+                    face.shader = source.shader;
+                    face.color = source.color;
+                    face.smooth = source.smooth;
+                    face
+                })
+                .collect();
+            Model::new(vertices, faces)
+        })
+        .collect()
 }
 
 fn safe_offset_from_course(
@@ -210,6 +233,95 @@ impl MeshBuilder {
                 [83, 70, 50],
                 "alien_tree_roots",
             );
+        }
+    }
+
+    /// A closed, deliberately authored distant tree.  The old LOD kept every
+    /// third triangle from the detailed mesh, leaving visible holes in trunks
+    /// and crowns.  Fewer complete volumes are both cheaper and read as a tree
+    /// much more clearly at small screen sizes.
+    fn tree_lod(&mut self, base: Vec3, height: f32, seed: f32) {
+        let trunk_height = height * 0.55;
+        self.tapered_trunk_lod(base, trunk_height, 1.15, 0.47, seed);
+        let crown = base.add(Vec3::new(0.0, trunk_height + height * 0.11, 0.0));
+        self.sphere(
+            crown,
+            Vec3::new(height * 0.58, height * 0.34, height * 0.58),
+            7,
+            4,
+            if seed as i32 % 2 == 0 {
+                [39, 128, 86]
+            } else {
+                [48, 145, 103]
+            },
+        );
+        let branch = crown.add(Vec3::new(
+            seed.sin() * height * 0.3,
+            height * 0.12,
+            seed.cos() * height * 0.25,
+        ));
+        self.sphere(
+            branch,
+            Vec3::new(height * 0.35, height * 0.24, height * 0.35),
+            6,
+            3,
+            [82, 166, 108],
+        );
+        let glow_leaf = crown.add(Vec3::new(-height * 0.2, height * 0.2, height * 0.14));
+        self.sphere(
+            glow_leaf,
+            Vec3::new(height * 0.16, height * 0.25, height * 0.16),
+            5,
+            3,
+            if (seed as i32).rem_euclid(4) == 0 {
+                [189, 171, 96]
+            } else {
+                [135, 190, 115]
+            },
+        );
+        for root in 0..3 {
+            let angle = seed + root as f32 * std::f32::consts::TAU / 3.0;
+            self.box_aligned(
+                base.add(Vec3::new(angle.cos() * 0.75, 0.12, angle.sin() * 0.75)),
+                Vec3::new(angle.cos(), 0.0, angle.sin()),
+                Vec3::new(0.24, 0.18, 1.05),
+                [83, 70, 50],
+                "alien_tree_roots",
+            );
+        }
+    }
+
+    fn tapered_trunk_lod(
+        &mut self,
+        base: Vec3,
+        height: f32,
+        bottom: f32,
+        top: f32,
+        seed: f32,
+    ) {
+        let sides = 7;
+        let start = self.vertices.len();
+        for side in 0..sides {
+            let angle = side as f32 * std::f32::consts::TAU / sides as f32 + seed;
+            self.vertices.push(
+                base.add(Vec3::new(angle.cos() * bottom, 0.0, angle.sin() * bottom)),
+            );
+            self.vertices.push(
+                base.add(Vec3::new(angle.cos() * top, height, angle.sin() * top)),
+            );
+        }
+        for side in 0..sides {
+            let next = (side + 1) % sides;
+            for indices in [
+                [start + side * 2, start + next * 2, start + next * 2 + 1],
+                [start + side * 2, start + next * 2 + 1, start + side * 2 + 1],
+            ] {
+                let mut face = Face::new(indices, "procedural", "alien_tree_trunks");
+                face.color = MaterialColor::Fixed([91, 75, 54]);
+                face.shader = SurfaceShader::RaceBarkTexture;
+                face.smooth = true;
+                self.faces.push(face);
+            }
         }
     }
 
@@ -590,16 +702,34 @@ mod tests {
         assert_eq!(scenery.forests.len(), 18);
         assert_eq!(scenery.forest_lods.len(), scenery.forests.len());
         assert_eq!(scenery.arches.len(), 18);
+        assert!(scenery.terrain.len() > 1);
+        assert!(scenery.hills.len() > 1);
+        assert_eq!(
+            scenery.terrain.iter().map(|model| model.faces.len()).sum::<usize>(),
+            44 * 36 * 2 + 30 * 2
+        );
         assert!(scenery
             .terrain
-            .faces
             .iter()
+            .chain(&scenery.hills)
+            .all(|model| !model.faces.is_empty() && !model.vertices.is_empty()));
+        assert!(scenery
+            .terrain
+            .iter()
+            .flat_map(|model| &model.faces)
             .filter(|face| face.group == "lush_track_ground")
             .all(|face| face.shader == SurfaceShader::RaceGrassTexture));
         for (detailed, lod) in scenery.forests.iter().zip(&scenery.forest_lods) {
             assert!(lod.faces.len() <= detailed.faces.len().div_ceil(3));
+            for group in ["alien_tree_trunks", "alien_tree_roots", "smooth_canopies"] {
+                assert!(lod.faces.iter().any(|face| face.group == group));
+            }
+            assert!(lod.faces.iter().all(|face| {
+                face.group != "smooth_canopies"
+                    || face.shader == SurfaceShader::RaceGrassTexture
+            }));
         }
-        for model in scenery.forests.iter().chain(std::iter::once(&scenery.hills)) {
+        for model in scenery.forests.iter().chain(&scenery.hills) {
             for vertex in &model.vertices {
                 let (_, distance, _) = course.nearest(*vertex);
                 assert!(
@@ -610,26 +740,26 @@ mod tests {
         }
         let terrain_min_x = scenery
             .terrain
-            .vertices
             .iter()
+            .flat_map(|model| &model.vertices)
             .map(|vertex| vertex.x)
             .fold(f32::INFINITY, f32::min);
         let terrain_max_x = scenery
             .terrain
-            .vertices
             .iter()
+            .flat_map(|model| &model.vertices)
             .map(|vertex| vertex.x)
             .fold(f32::NEG_INFINITY, f32::max);
         let terrain_min_z = scenery
             .terrain
-            .vertices
             .iter()
+            .flat_map(|model| &model.vertices)
             .map(|vertex| vertex.z)
             .fold(f32::INFINITY, f32::min);
         let terrain_max_z = scenery
             .terrain
-            .vertices
             .iter()
+            .flat_map(|model| &model.vertices)
             .map(|vertex| vertex.z)
             .fold(f32::NEG_INFINITY, f32::max);
         for sample in &course.samples {
@@ -667,10 +797,10 @@ mod tests {
             .all(|face| face.shader == SurfaceShader::RaceBricksTexture)));
         assert!(scenery
             .hills
-            .faces
             .iter()
+            .flat_map(|model| &model.faces)
             .any(|face| face.group == "detailed_hill_peaks"));
-        assert!(scenery.hills.faces.iter().all(|face| {
+        assert!(scenery.hills.iter().flat_map(|model| &model.faces).all(|face| {
             !matches!(face.group.as_str(), "misty_green_hills" | "detailed_hill_peaks")
                 || face.shader == SurfaceShader::RaceGroundTexture
         }));
