@@ -6684,6 +6684,14 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 
     while window.is_open() {
         let benchmark_frame_start = Instant::now();
+        if game_mode == GameMode::HourglassRescue && !window.is_active() {
+            // Do not let Alt+Tab or a transient Windows focus change eat the
+            // mission timer or accumulate stale key presses.
+            window.update();
+            previous = Instant::now();
+            crate::input::clear();
+            continue;
+        }
         if benchmark.is_some() {
             reset_local_render_stats();
             reset_race_benchmark_categories();
@@ -6906,7 +6914,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             triangle_batch.resize(render_width, render_height);
         }
 
-        if crate::input::pressed(Key::F11) {
+        // Recreating a fullscreen window during the rescue mission can drop
+        // keyboard focus on Windows. Keep the active mission window stable.
+        if game_mode != GameMode::HourglassRescue && crate::input::pressed(Key::F11) {
             fullscreen = !fullscreen;
             window = create_window(fullscreen)?;
             if game_mode == GameMode::TowerGuard {
