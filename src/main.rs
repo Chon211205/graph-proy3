@@ -7501,6 +7501,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     }
                     tower_guard::TowerAction::Exit => {
                         game_mode = GameMode::FreeWorld;
+                        launch_ship_from_planet(
+                            &mut ship_controller,
+                            vesper_planets[2].center,
+                            vesper_planets[2].radius,
+                        );
                         window.set_cursor_visibility(true);
                         window.set_title("Casa Torre | En orbita | Backspace: salir");
                         continue;
@@ -7803,7 +7808,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             );
         }
         if game_mode == GameMode::TowerGuard {
-            tower_game.draw_hud(&mut framebuffer);
+            tower_game.draw_hud(&mut framebuffer, &tower_sprites);
         }
         if performance_hud {
             let stats = triangle_batch.stats();

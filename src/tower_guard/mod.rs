@@ -27,6 +27,7 @@ pub use state::{InputFrame, Phase};
 
 const BOSS_INTRO_SECONDS: f32 = 2.4;
 const BOSS_DEFEAT_SECONDS: f32 = 2.1;
+pub(super) const DAMAGE_FLASH_SECONDS: f32 = 0.78;
 const ENEMY_FALL_SECONDS: f32 = 1.1;
 const AIM_ARROW_SPEED: f32 = 0.62;
 const MAX_HELPERS: usize = 2;
@@ -149,10 +150,10 @@ impl TowerGame {
             if input.exit {
                 return GameAction::Exit;
             }
-            if input.mouse_clicked && button_contains(self.aim, 0.37, 0.69, 0.63, 0.77) {
+            if input.mouse_clicked && button_contains(self.aim, 0.30, 0.70, 0.70, 0.81) {
                 return GameAction::Restart;
             }
-            if input.mouse_clicked && button_contains(self.aim, 0.37, 0.79, 0.63, 0.87) {
+            if input.mouse_clicked && button_contains(self.aim, 0.30, 0.81, 0.70, 0.93) {
                 return GameAction::Exit;
             }
             return GameAction::Continue;
@@ -393,7 +394,7 @@ impl TowerGame {
         self.queue_audio(AudioCue::Damage);
         self.defenses = self.defenses.saturating_sub(1);
         self.stats.escapes += 1;
-        self.lost_defense_flash = 0.42;
+        self.lost_defense_flash = DAMAGE_FLASH_SECONDS;
         if self.defenses == 0 {
             self.phase = Phase::Defeat;
             self.boss = None;
@@ -589,8 +590,8 @@ impl TowerGame {
         }
     }
 
-    pub fn draw_hud(&self, frame: &mut crate::framebuffer::Framebuffer) {
-        draw_hud(self, frame);
+    pub fn draw_hud(&self, frame: &mut crate::framebuffer::Framebuffer, sprites: &SpriteBank) {
+        draw_hud(self, frame, sprites);
     }
 }
 
@@ -864,7 +865,7 @@ mod tests {
         }
         let mut frame = crate::framebuffer::Framebuffer::new(1200, 800);
         game.render(&mut frame, &sprites);
-        game.draw_hud(&mut frame);
+        game.draw_hud(&mut frame, &sprites);
         frame
             .save_png(&path)
             .expect("preview screenshot should be writable");

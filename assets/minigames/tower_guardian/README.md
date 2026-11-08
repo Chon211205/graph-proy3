@@ -10,6 +10,8 @@ python scripts/prepare_tower_guard_sprites.py
 
 Los sonidos cortos de disparo, impacto, daño y aviso se pueden regenerar sin bibliotecas externas con `python scripts/prepare_tower_guard_audio.py`.
 
+Los títulos transparentes YOU DIED / YOU WIN se preparan a partir de la referencia original con `python scripts/prepare_tower_guard_result_titles.py`.
+
 El script requiere Pillow. Como cada referencia contiene una pose, el movimiento se simula con avance en profundidad, balanceo, inclinación y animaciones de reacción/caída; no son ciclos dibujados de varias poses.
 
 La arena usa la cámara 2D fija del renderizador del proyecto. Los impactos consultan la máscara alfa del mismo sprite y transformación con que se dibuja. Raylib, que ya forma parte del proyecto, reproduce los sonidos; si no hay dispositivo de audio, el juego sigue funcionando en silencio.

@@ -34,6 +34,8 @@ pub struct CharacterSprite {
 
 pub struct SpriteBank {
     characters: Vec<CharacterSprite>,
+    result_died: Sprite,
+    result_win: Sprite,
 }
 
 impl SpriteBank {
@@ -43,7 +45,11 @@ impl SpriteBank {
             let sprite = Sprite::load(&definition.sprite_path)?;
             characters.push(CharacterSprite { definition, sprite });
         }
-        Ok(Self { characters })
+        Ok(Self {
+            characters,
+            result_died: Sprite::load("assets/minigames/tower_guardian/ui/you-died.png")?,
+            result_win: Sprite::load("assets/minigames/tower_guardian/ui/you-win.png")?,
+        })
     }
 
     pub fn get(&self, kind: EnemyKind) -> &CharacterSprite {
@@ -51,6 +57,31 @@ impl SpriteBank {
             .iter()
             .find(|character| character.definition.kind == kind)
             .expect("tower enemy manifest must contain each character exactly once")
+    }
+
+    pub fn draw_result_title(
+        &self,
+        frame: &mut Framebuffer,
+        won: bool,
+        center_x: f32,
+        top: f32,
+        height: f32,
+    ) {
+        let sprite = if won {
+            &self.result_win
+        } else {
+            &self.result_died
+        };
+        sprite.draw(
+            frame,
+            SpritePose {
+                anchor_x: center_x,
+                anchor_y: top + height,
+                height,
+                rotation: 0.0,
+                alpha: 1.0,
+            },
+        );
     }
 }
 
