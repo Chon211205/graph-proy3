@@ -175,8 +175,9 @@ const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
 // Use structure-centered horizontal orbits instead of the complete OBJ bounds.
 const VESPER_ORBIT_HEIGHTS: [f32; 3] = [0.0, 3.0, 12.0];
 const VESPER_ORBIT_RADII: [f32; 3] = [30.0, 26.0, 20.0];
-const ORBIT_CAMERA_DISTANCE: f32 = 55.0;
-const ORBIT_CAMERA_HEIGHT: f32 = 16.0;
+const ORBIT_CAMERA_DISTANCE: f32 = 100.0;
+const ORBIT_CAMERA_HEIGHT: f32 = 28.0;
+const HOME_ORBIT_TARGET_HEIGHT: f32 = 3.0;
 const VESPER_ORBIT_CAMERA_DISTANCE: f32 = 115.0;
 const VESPER_ORBIT_CAMERA_HEIGHT: f32 = 32.0;
 #[cfg(test)]
@@ -3765,13 +3766,14 @@ fn chase_camera(ship: &Ship, vesper_orbit: bool) -> Camera {
         } else {
             ORBIT_CAMERA_HEIGHT
         };
-        let target = if vesper_orbit {
-            // Frame the entire authored planet while keeping the orbiting ship
-            // in the foreground, instead of aiming tightly at the ship.
-            planet_center.add(world_up.mul(4.0))
+        // Aim at the planetary body instead of tightly following the ship, so
+        // the complete planet remains framed while the ship crosses in front.
+        let target_height = if vesper_orbit {
+            4.0
         } else {
-            ship.position.add(forward.mul(3.0))
+            HOME_ORBIT_TARGET_HEIGHT
         };
+        let target = planet_center.add(world_up.mul(target_height));
         (
             planet_center
                 .add(radial.mul(orbit_distance))
@@ -7962,8 +7964,31 @@ mod tests {
         let home_distance = home.position.dot(home.position).sqrt();
         let vesper_distance = vesper.position.dot(vesper.position).sqrt();
 
-        assert!(vesper_distance > home_distance + 55.0);
+        assert!(vesper_distance > home_distance + 10.0);
         assert!((vesper.position.y - VESPER_ORBIT_CAMERA_HEIGHT).abs() < 0.001);
+    }
+
+    #[test]
+    fn home_orbit_camera_frames_the_complete_largest_planet() {
+        let center = Vec3::new(12.0, -4.0, 30.0);
+        let mut ship = Ship::new(&ASTRA_SPEC);
+        ship.position = center.add(Vec3::new(52.0, 0.0, 0.0));
+        ship.orbit_center = Some(center);
+        ship.orbit_camera_blend = 1.0;
+
+        let camera = chase_camera(&ship, false);
+        let target = center.add(Vec3::new(0.0, HOME_ORBIT_TARGET_HEIGHT, 0.0));
+        let target_offset = target.sub(camera.position);
+        assert!(camera.forward.dot(target_offset.normalize()) > 0.9999);
+
+        let center_depth = center.sub(camera.position).dot(camera.forward);
+        let focal = HEIGHT as f32 / (VERTICAL_FOV * 0.5).tan() * 0.5;
+        let largest_planet_radius = race_track::PLANET_RADIUS;
+        let projected_radius = largest_planet_radius * focal / center_depth;
+        assert!(
+            projected_radius < HEIGHT as f32 * 0.42,
+            "planet radius {projected_radius} px does not fit the orbit view"
+        );
     }
 
     #[test]
