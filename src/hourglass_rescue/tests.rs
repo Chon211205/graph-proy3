@@ -199,6 +199,47 @@ fn floating_ruins_stop_the_ship_instead_of_being_fly_through_props() {
 }
 
 #[test]
+fn climb_and_descend_inputs_move_in_the_expected_vertical_direction() {
+    let mut game = HourglassRescue::new();
+    let mut ship = Ship::new(&ARWING_SPEC);
+    game.place_ship_at_start(&mut ship);
+    let start_y = ship.position.y;
+
+    game.move_ship(
+        &mut ship,
+        Input {
+            rise: true,
+            ..Input::default()
+        },
+        0.2,
+    );
+    assert!(ship.position.y > start_y);
+
+    let raised_y = ship.position.y;
+    game.move_ship(
+        &mut ship,
+        Input {
+            descend: true,
+            ..Input::default()
+        },
+        0.2,
+    );
+    assert!(ship.position.y < raised_y);
+}
+
+#[test]
+fn sand_stream_projection_discards_points_too_close_to_the_camera() {
+    let game = HourglassRescue::new();
+    let ship = Ship::new(&ARWING_SPEC);
+    let camera = game.camera(&ship);
+    let near_camera = camera
+        .position
+        .add(camera.forward.mul(0.21))
+        .add(camera.right.mul(1_000.0));
+    assert!(super::rendering::project(&camera, near_camera, 1200, 800).is_none());
+}
+
+#[test]
 fn retry_resets_capsules_timer_and_defense() {
     let mut game = HourglassRescue::new();
     let mut ship = Ship::new(&ARWING_SPEC);
