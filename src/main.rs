@@ -38,6 +38,7 @@ const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
 const BENCHMARK_WARMUP_FRAMES: usize = 180;
 const BENCHMARK_SAMPLE_FRAMES: usize = 600;
+const MIN_VERTICES_PER_TRANSFORM_WORKER: usize = 2_048;
 
 #[derive(Clone, Copy, Default)]
 struct BenchmarkSample {
@@ -224,6 +225,14 @@ fn render_worker_count() -> usize {
             .and_then(|value| value.parse().ok())
             .unwrap_or_else(|| thread::available_parallelism().map_or(1, usize::from))
     })
+}
+
+fn transform_worker_count(vertex_count: usize, available_workers: usize) -> usize {
+    if vertex_count < 4_096 || available_workers <= 1 {
+        1
+    } else {
+        available_workers.min(vertex_count.div_ceil(MIN_VERTICES_PER_TRANSFORM_WORKER))
+    }
 }
 
 struct DynamicResolution {
@@ -4681,8 +4690,8 @@ fn queue_model_with_scratch<F>(
             relative.dot(camera.forward),
         )
     };
-    let worker_count = render_worker_count();
-    if model.vertices.len() >= 4_096 && worker_count > 1 {
+    let worker_count = transform_worker_count(model.vertices.len(), render_worker_count());
+    if worker_count > 1 {
         let chunk_size = model.vertices.len().div_ceil(worker_count);
         camera_vertices.clear();
         camera_vertices.resize(model.vertices.len(), Vec3::default());
@@ -7799,6 +7808,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             stats.raster_ms += local_stats.raster_ms;
             if run.warmup_left == 0 && run.samples.is_empty() {
                 println!("BENCH local_render_calls={local_calls}");
+                if let Ok(path) = std::env::var("GRAPH_BENCH_CAPTURE") {
+                    framebuffer.save_png(&path)?;
+                    println!("BENCH capture={path}");
+                    return Ok(false);
+                }
             }
             let finished = run.record(BenchmarkSample {
                 frame_ms: benchmark_frame_start.elapsed().as_secs_f32() * 1_000.0,
@@ -7829,6 +7843,15 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transform_workers_scale_with_model_size_without_tiny_jobs() {
+        assert_eq!(transform_worker_count(4_095, 32), 1);
+        assert_eq!(transform_worker_count(4_096, 32), 2);
+        assert_eq!(transform_worker_count(26_056, 32), 13);
+        assert_eq!(transform_worker_count(200_000, 32), 32);
+        assert_eq!(transform_worker_count(200_000, 1), 1);
+    }
 
     #[test]
     fn free_flight_selects_the_nearest_planet_for_orbit_collision() {
