@@ -46,7 +46,10 @@ impl HourglassRescue {
 
     pub(super) fn resolve_collisions(&mut self, ship: &mut Ship, _dt: f32) {
         let radius = ship.position.x.hypot(ship.position.z);
-        let room_radius = if ship.position.y > 77.0 { 58.0 } else { 69.0 };
+        // The rescue mission takes place in a broad valley, not inside the
+        // narrow neck of an hourglass. Keep a generous soft boundary so the
+        // pilot can search the whole map at either gravity orientation.
+        let room_radius = 520.0;
         let mut impact = false;
         if radius > room_radius {
             let corrected = ship.position.xz_normalized().mul(room_radius);
@@ -55,12 +58,11 @@ impl HourglassRescue {
             impact = self.speed > 13.0;
             self.speed *= 0.35;
         }
-        if ship.position.y > 49.0 && ship.position.y < 80.0 && radius > 15.5 {
-            let corrected = ship.position.xz_normalized().mul(15.2);
-            ship.position.x = corrected.x;
-            ship.position.z = corrected.z;
-            impact |= self.speed > 13.0;
-            self.speed *= 0.25;
+        if let Some(corrected) = self.scene.resolve_obstacle(ship.position, 3.2) {
+            ship.position = corrected;
+            impact |= self.speed > 9.0;
+            self.speed *= 0.35;
+            self.vertical_speed *= 0.5;
         }
         let sand = -8.0 + dune_height(ship.position.x, ship.position.z) + self.sand_offset;
         if ship.position.y < sand + 4.0 {
@@ -70,8 +72,8 @@ impl HourglassRescue {
             self.feedback = "CONTACTO CON ARENA - GANA ALTURA";
             self.feedback_timer = 1.2;
         }
-        if ship.position.y > 133.0 {
-            ship.position.y = 133.0;
+        if ship.position.y > 210.0 {
+            ship.position.y = 210.0;
             impact |= self.vertical_speed > 8.0;
             self.vertical_speed = 0.0;
         }

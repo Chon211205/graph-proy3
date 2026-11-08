@@ -16,14 +16,14 @@ use crate::ship::Ship;
 use audio::{Audio, Cue};
 use scene::{CAPSULE_COUNT, CAPSULE_POSITIONS, Scene};
 
-const MISSION_SECONDS: f32 = 180.0;
-const INVERSION_AT: f32 = 90.0;
+const MISSION_SECONDS: f32 = 240.0;
+const INVERSION_AT: f32 = 120.0;
 const INVERSION_WARNING: f32 = 6.0;
 const INVERSION_DURATION: f32 = 2.8;
 const RESCUE_SECONDS: f32 = 1.0;
 const RESCUE_DISTANCE: f32 = 10.0;
 const RESCUE_MAX_SPEED: f32 = 4.5;
-const EXIT_POSITION: Vec3 = Vec3::new(0.0, 106.0, -48.0);
+const EXIT_POSITION: Vec3 = Vec3::new(0.0, 155.0, -505.0);
 const SAND_RISE: f32 = 18.0;
 const SAND_FALL_RATE: f32 = (SAND_RISE + 1.8) / (MISSION_SECONDS - INVERSION_AT);
 
@@ -274,18 +274,6 @@ impl HourglassRescue {
 
     fn inversion_countdown(&self) -> f32 {
         (INVERSION_AT - self.elapsed).max(0.0)
-    }
-
-    fn target_label(&self) -> String {
-        if self.rescued as usize == CAPSULE_COUNT {
-            "PORTAL DE SALIDA".to_string()
-        } else if let Some(index) = self.rescue_target {
-            format!("CAPSULA {:02}", index + 1)
-        } else if !self.inversion_complete {
-            "OBJETIVOS TRAS LA INVERSION".to_string()
-        } else {
-            "BUSCA UNA BALIZA".to_string()
-        }
     }
 
     fn target_distance_for_hud(&self, ship: &Ship) -> Option<f32> {

@@ -47,6 +47,62 @@ fn sand_collision_height_tracks_visible_surface_offset() {
 }
 
 #[test]
+fn forward_input_moves_toward_the_first_capsule() {
+    let mut game = HourglassRescue::new();
+    let mut ship = Ship::new(&ARWING_SPEC);
+    game.place_ship_at_start(&mut ship);
+    game.phase = Phase::Playing;
+    let distance_before = ship
+        .position
+        .sub(CAPSULE_POSITIONS[0])
+        .dot(ship.position.sub(CAPSULE_POSITIONS[0]));
+
+    game.update(
+        &mut ship,
+        Input {
+            forward: true,
+            ..Input::default()
+        },
+        0.05,
+    );
+
+    let offset_after = ship.position.sub(CAPSULE_POSITIONS[0]);
+    let distance_after = offset_after.dot(offset_after);
+    assert!(
+        ship.position.z < 42.0,
+        "forward should move along the chamber toward -Z"
+    );
+    assert!(
+        distance_after < distance_before,
+        "the first capsule should get closer"
+    );
+}
+
+#[test]
+fn dune_terrain_is_a_wide_non_degenerate_grid() {
+    let game = HourglassRescue::new();
+    let range = game.scene.sand_vertices.clone();
+    let sand_faces = game
+        .scene
+        .model
+        .faces
+        .iter()
+        .filter(|face| face.group == "sand_surface");
+    let mut count = 0;
+    for face in sand_faces {
+        count += 1;
+        assert!(face.indices.iter().all(|&i| range.contains(&i)));
+        assert_ne!(face.indices[1], face.indices[2]);
+        assert_ne!(face.indices[0], face.indices[1]);
+        assert_ne!(face.indices[0], face.indices[2]);
+    }
+    assert!(
+        count > 3000,
+        "the valley floor should extend beyond the camera view"
+    );
+}
+
+#[test]
 fn rising_sand_hides_and_then_reveals_the_low_capsule() {
     let mut game = HourglassRescue::new();
     game.sand_offset = SAND_RISE;
@@ -108,11 +164,38 @@ fn gravity_inversion_opens_the_upper_route_without_adding_mission_time() {
 fn one_collision_event_only_removes_one_shield() {
     let mut game = HourglassRescue::new();
     let mut ship = Ship::new(&ARWING_SPEC);
-    ship.position = Vec3::new(100.0, 20.0, 0.0);
+    ship.position = Vec3::new(600.0, 20.0, 0.0);
     game.speed = 20.0;
     game.resolve_collisions(&mut ship, 0.05);
     game.resolve_collisions(&mut ship, 0.05);
     assert_eq!(game.shields, 2);
+}
+
+#[test]
+fn capsule_sites_are_spread_across_the_exploration_valley() {
+    let start = Vec3::new(0.0, 12.0, 42.0);
+    let first_distance = CAPSULE_POSITIONS[0].sub(start);
+    assert!(first_distance.dot(first_distance).sqrt() > 150.0);
+
+    for pair in CAPSULE_POSITIONS.windows(2) {
+        let gap = pair[0].sub(pair[1]);
+        assert!(gap.dot(gap).sqrt() > 120.0);
+    }
+    for capsule in CAPSULE_POSITIONS {
+        assert!(capsule.x.hypot(capsule.z) < 520.0);
+    }
+}
+
+#[test]
+fn floating_ruins_stop_the_ship_instead_of_being_fly_through_props() {
+    let game = HourglassRescue::new();
+    let island_center = Vec3::new(-48.0, 75.0, -112.0);
+    let resolved = game
+        .scene
+        .resolve_obstacle(island_center, 3.2)
+        .expect("the island needs a gameplay collider");
+    let separation = resolved.sub(island_center);
+    assert!(separation.dot(separation) > 0.0);
 }
 
 #[test]
@@ -136,4 +219,80 @@ fn retry_resets_capsules_timer_and_defense() {
     assert_eq!(game.rescued, 0);
     assert_eq!(game.shields, 3);
     assert_eq!(game.elapsed, 0.0);
+}
+
+#[test]
+fn write_gameplay_preview_when_capture_path_is_set() {
+    let Ok(path) = std::env::var("HOURGLASS_CAPTURE") else {
+        return;
+    };
+    let model = crate::obj_loader::load_obj("assets/vehicles/arwing/arwing2.obj")
+        .expect("selected ship preview model should load");
+    let mut game = HourglassRescue::new();
+    let mut ship = Ship::new(&ARWING_SPEC);
+    game.place_ship_at_start(&mut ship);
+    game.phase = Phase::Playing;
+    game.elapsed = 8.0;
+    game.rescue_target = Some(0);
+    game.sand_offset = 1.6;
+    game.scene.update_sand(game.sand_offset);
+    game.update_capsule_visibility();
+    let mut frame = crate::framebuffer::Framebuffer::new(crate::WIDTH, crate::HEIGHT);
+    game.render(&mut frame, &model, &ship);
+    game.draw_hud(&mut frame, &ship);
+    frame
+        .save_png(&path)
+        .expect("hourglass rescue preview should be writable");
+}
+
+#[test]
+fn write_result_preview_when_capture_path_is_set() {
+    let Ok(path) = std::env::var("HOURGLASS_RESULT_CAPTURE") else {
+        return;
+    };
+    let model = crate::obj_loader::load_obj("assets/vehicles/arwing/arwing2.obj")
+        .expect("selected ship result preview model should load");
+    let mut game = HourglassRescue::new();
+    let mut ship = Ship::new(&ARWING_SPEC);
+    game.place_ship_at_start(&mut ship);
+    game.phase = Phase::Lost;
+    game.elapsed = MISSION_SECONDS;
+    game.shields = 1;
+    game.rescued = 2;
+    for index in 0..2 {
+        game.capsules[index] = CapsuleState::Rescued;
+        game.scene.hide_capsule(index);
+    }
+    let mut frame = crate::framebuffer::Framebuffer::new(crate::WIDTH, crate::HEIGHT);
+    game.render(&mut frame, &model, &ship);
+    game.draw_hud(&mut frame, &ship);
+    frame
+        .save_png(&path)
+        .expect("hourglass rescue result preview should be writable");
+}
+
+#[test]
+fn write_victory_preview_when_capture_path_is_set() {
+    let Ok(path) = std::env::var("HOURGLASS_WIN_CAPTURE") else {
+        return;
+    };
+    let model = crate::obj_loader::load_obj("assets/vehicles/arwing/arwing2.obj")
+        .expect("selected ship victory preview model should load");
+    let mut game = HourglassRescue::new();
+    let mut ship = Ship::new(&ARWING_SPEC);
+    game.place_ship_at_start(&mut ship);
+    game.phase = Phase::Won;
+    game.elapsed = 112.0;
+    game.rescued = CAPSULE_COUNT as u8;
+    game.inversion_complete = true;
+    game.capsules.fill(CapsuleState::Rescued);
+    for index in 0..CAPSULE_COUNT {
+        game.scene.hide_capsule(index);
+    }
+    let mut frame = crate::framebuffer::Framebuffer::new(crate::WIDTH, crate::HEIGHT);
+    game.render(&mut frame, &model, &ship);
+    game.draw_hud(&mut frame, &ship);
+    frame
+        .save_png(&path)
+        .expect("hourglass rescue victory preview should be writable");
 }

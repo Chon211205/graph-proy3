@@ -1,8 +1,9 @@
 use crate::ship::Ship;
 use crate::{draw_selection_label, framebuffer::Framebuffer};
 
+use super::scene::CAPSULE_POSITIONS;
 use super::ui::{bar, draw_overlay, panel, shield_icon};
-use super::{HourglassRescue, Phase};
+use super::{CAPSULE_COUNT, EXIT_POSITION, HourglassRescue, Phase};
 
 pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship) {
     let w = frame.width as i32;
@@ -46,6 +47,14 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
             (h as f32 * 0.63) as i32,
             scale,
             0xffbd67,
+        );
+        draw_selection_label(
+            frame,
+            "W/S AVANZAR  A/D GIRAR  ESPACIO/CTRL ALTURA  E RESCATAR",
+            w / 2,
+            (h as f32 * 0.68) as i32,
+            (scale / 2).max(1),
+            0xaac9d4,
         );
         return;
     }
@@ -162,28 +171,57 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
         0xaccbd8,
     );
 
-    let target_name = game.target_label();
-    let distance = game
-        .target_distance_for_hud(ship)
-        .map(|d| format!("DISTANCIA {:03}", d.round() as u32))
-        .unwrap_or_else(|| "SIN OBJETIVO DISPONIBLE".to_string());
-    panel(frame, 0.68, 0.78, 0.982, 0.965, 0x15121e, 0x9a6cb2);
-    draw_selection_label(
-        frame,
-        &target_name,
-        (w as f32 * 0.83) as i32,
-        (h as f32 * 0.797) as i32,
-        scale,
-        0xffd68b,
-    );
-    draw_selection_label(
-        frame,
-        &distance,
-        (w as f32 * 0.83) as i32,
-        (h as f32 * 0.837) as i32,
-        scale,
-        0xcddce3,
-    );
+    let target = if game.rescued as usize == CAPSULE_COUNT {
+        Some((EXIT_POSITION, "PORTAL"))
+    } else {
+        game.rescue_target
+            .map(|index| (CAPSULE_POSITIONS[index], "SEÑAL DE RESCATE"))
+    };
+    if let Some((position, label)) = target {
+        let distance = game.target_distance_for_hud(ship).unwrap_or(f32::INFINITY);
+        // Long-range labels used to point straight at each capsule from spawn.
+        // The signal only resolves once the pilot has searched the region.
+        let signal_range = if game.rescued as usize == CAPSULE_COUNT {
+            140.0
+        } else {
+            85.0
+        };
+        let (signal_label, signal_color) = if distance <= signal_range {
+            ("RADAR: CONTACTO", 0x8ce7ef)
+        } else if distance <= 180.0 {
+            ("RADAR: SENAL INTERMITENTE", 0xffd17a)
+        } else if distance <= 300.0 {
+            ("RADAR: ECO DEBIL", 0xc5a9d9)
+        } else {
+            ("RADAR: EXPLORANDO", 0x8b839c)
+        };
+        draw_selection_label(
+            frame,
+            signal_label,
+            (w as f32 * 0.82) as i32,
+            (h as f32 * 0.82) as i32,
+            scale,
+            signal_color,
+        );
+        let camera = game.camera(ship);
+        if distance <= signal_range {
+            if let Some((x, y)) =
+                super::rendering::project(&camera, position, frame.width, frame.height)
+            {
+                if x >= 80 && x < w - 80 && y >= 50 && y < h - 70 {
+                    let distance = distance.round() as u32;
+                    draw_selection_label(
+                        frame,
+                        &format!("{}  {:03}M", label, distance),
+                        x,
+                        y + scale * 8,
+                        (scale / 2).max(1),
+                        0xffe08f,
+                    );
+                }
+            }
+        }
+    }
     if game.rescue_progress > 0.0 {
         draw_selection_label(
             frame,
@@ -204,15 +242,10 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
         );
     }
 
-    draw_selection_label(
-        frame,
-        "W AVANZAR  S FRENAR  A/D GIRAR  SPACE SUBIR  CTRL BAJAR  E RESCATAR  P PAUSA",
-        w / 2,
-        h - scale * 10 - 3,
-        (scale * 2).max(1),
-        0xe3dce9,
-    );
-    if game.feedback_timer > 0.0 && !game.feedback.is_empty() {
+    if game.feedback_timer > 0.0
+        && !game.feedback.is_empty()
+        && game.feedback != "RESCATA LAS CINCO CAPSULAS Y ALCANZA LA SALIDA"
+    {
         draw_selection_label(
             frame,
             game.feedback,
@@ -236,26 +269,26 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
             );
             draw_selection_label(
                 frame,
-                "MANTENE E CERCA Y CASI DETENIDA",
+                "W/S AVANZAR  A/D GIRAR  E MANTENER PARA RESCATAR",
                 w / 2,
                 (h as f32 * 0.48) as i32,
-                scale,
+                (scale / 2).max(1),
                 0xe5dced,
             );
             draw_selection_label(
                 frame,
-                "LA INVERSION ABRIRA EL SANTUARIO",
+                "ESPACIO/CTRL ALTURA  SHIFT IMPULSO  P PAUSA",
                 w / 2,
                 (h as f32 * 0.535) as i32,
-                scale,
+                (scale / 2).max(1),
                 0xbdeaf0,
             );
             draw_selection_label(
                 frame,
-                "BACKSPACE: SALIR AL ESPACIO",
+                "LA INVERSION ABRIRA EL SANTUARIO  //  BACKSPACE: ESPACIO",
                 w / 2,
                 (h as f32 * 0.60) as i32,
-                scale,
+                (scale / 2).max(1),
                 0xd5c4e7,
             );
         }
