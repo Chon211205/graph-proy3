@@ -180,12 +180,21 @@ fn set_pixel(frame: &mut Framebuffer, x: i32, y: i32, color: u32) {
 }
 
 fn draw_line(frame: &mut Framebuffer, start: (i32, i32), end: (i32, i32), color: u32, width: i32) {
-    let dx = end.0 - start.0;
-    let dy = end.1 - start.1;
+    let dx = end.0 as i64 - start.0 as i64;
+    let dy = end.1 as i64 - start.1 as i64;
     let steps = dx.abs().max(dy.abs()).max(1);
+    // This is a decorative sand ribbon, so discard pathological segments
+    // before iteration. Projection can still produce extreme coordinates
+    // when the ship/camera is in an invalid transient state; bounding work
+    // here keeps a bad segment from overflowing or stalling the game loop.
+    let max_steps = frame.width.saturating_add(frame.height).saturating_mul(4) as i64;
+    if steps > max_steps {
+        return;
+    }
     for step in 0..=steps {
-        let x = start.0 + dx * step / steps;
-        let y = start.1 + dy * step / steps;
+        let t = step as f64 / steps as f64;
+        let x = (start.0 as f64 + dx as f64 * t) as i32;
+        let y = (start.1 as f64 + dy as f64 * t) as i32;
         for offset in -width..=width {
             set_pixel(frame, x + offset, y, color);
             set_pixel(frame, x, y + offset, color);
@@ -219,8 +228,19 @@ pub(super) fn project(
         return None;
     }
     let focal = height as f32 / (60.0_f32.to_radians() * 0.5).tan() * 0.5;
-    Some((
-        (width as f32 * 0.5 + x * focal / z) as i32,
-        (height as f32 * 0.5 - y * focal / z) as i32,
-    ))
+    let screen_x = width as f32 * 0.5 + x * focal / z;
+    let screen_y = height as f32 * 0.5 - y * focal / z;
+    // Sand-stream vertices can pass arbitrarily close to the camera. Reject
+    // those extreme projections before converting to integers or rasterizing
+    // a multi-million-pixel line (which used to panic and close the window).
+    if !screen_x.is_finite()
+        || !screen_y.is_finite()
+        || screen_x < -(width as f32) * 2.0
+        || screen_x > width as f32 * 3.0
+        || screen_y < -(height as f32) * 2.0
+        || screen_y > height as f32 * 3.0
+    {
+        return None;
+    }
+    Some((screen_x as i32, screen_y as i32))
 }

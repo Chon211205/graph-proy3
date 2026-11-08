@@ -6684,6 +6684,14 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
 
     while window.is_open() {
         let benchmark_frame_start = Instant::now();
+        if game_mode == GameMode::HourglassRescue && !window.is_active() {
+            // Do not let Alt+Tab or a transient Windows focus change eat the
+            // mission timer or accumulate stale key presses.
+            window.update();
+            previous = Instant::now();
+            crate::input::clear();
+            continue;
+        }
         if benchmark.is_some() {
             reset_local_render_stats();
             reset_race_benchmark_categories();
@@ -6906,7 +6914,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             triangle_batch.resize(render_width, render_height);
         }
 
-        if crate::input::pressed(Key::F11) {
+        // Recreating a fullscreen window during the rescue mission can drop
+        // keyboard focus on Windows. Keep the active mission window stable.
+        if game_mode != GameMode::HourglassRescue && crate::input::pressed(Key::F11) {
             fullscreen = !fullscreen;
             window = create_window(fullscreen)?;
             if game_mode == GameMode::TowerGuard {
@@ -6996,7 +7006,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 hourglass_rescue.place_ship_at_start(&mut ship_controller.ship);
                 game_mode = GameMode::HourglassRescue;
                 entered_level = true;
-                window.set_title("Rescate a Contratiempo | WASD mover | Space/Ctrl altura | E rescatar");
+                window.set_title(
+                    "Rescate a Contratiempo | A/D girar | W/S altura | Flechas avanzar | E rescatar",
+                );
             } else if active_galaxy == Galaxy::Vesper && vesper_orbit_index == Some(2) {
                 tower_game = tower_guard::TowerGame::new(&tower_sprites);
                 game_mode = GameMode::TowerGuard;
@@ -7535,13 +7547,18 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::HourglassRescue => {
                 let restart_pressed = crate::input::pressed(Key::R);
                 let rescue_input = hourglass_rescue::Input {
-                    forward: window.is_key_down(Key::W) || window.is_key_down(Key::Up),
-                    brake: window.is_key_down(Key::S) || window.is_key_down(Key::Down),
+                    // WASD is a consistent four-way flight layout: A/D steer,
+                    // W/S climb and descend. Arrow up/down handle thrust.
+                    forward: window.is_key_down(Key::Up),
+                    brake: window.is_key_down(Key::Down),
                     left: window.is_key_down(Key::A) || window.is_key_down(Key::Left),
                     right: window.is_key_down(Key::D) || window.is_key_down(Key::Right),
-                    rise: window.is_key_down(Key::Space),
-                    descend: window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl),
-                    boost: window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift),
+                    rise: window.is_key_down(Key::W) || window.is_key_down(Key::Space),
+                    descend: window.is_key_down(Key::S)
+                        || window.is_key_down(Key::LeftCtrl)
+                        || window.is_key_down(Key::RightCtrl),
+                    boost: window.is_key_down(Key::LeftShift)
+                        || window.is_key_down(Key::RightShift),
                     rescue: window.is_key_down(Key::E),
                     pause: crate::input::pressed(Key::P) || crate::input::pressed(Key::Escape),
                     exit: crate::input::pressed(Key::Backspace),

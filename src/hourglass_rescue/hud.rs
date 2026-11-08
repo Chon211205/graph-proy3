@@ -50,7 +50,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
         );
         draw_selection_label(
             frame,
-            "W/S AVANZAR  A/D GIRAR  ESPACIO/CTRL ALTURA  E RESCATAR",
+            "FLECHAS AVANZAR  A/D GIRAR  W/S ALTURA  E RESCATAR",
             w / 2,
             (h as f32 * 0.68) as i32,
             (scale / 2).max(1),
