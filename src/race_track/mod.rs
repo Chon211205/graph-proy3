@@ -179,6 +179,7 @@ impl RaceTrack {
         ship.position = planet_position.add(radial.mul(PLANET_RADIUS + 72.0));
         ship.yaw = (-radial.z).atan2(-radial.x).rem_euclid(TAU);
         ship.pitch = radial.y.asin();
+        ship.speed = ship.spec.cruise_speed;
         ship.planet_locked = false;
         ship.race_planet_locked = false;
         ship.spiky_planet_locked = false;
