@@ -10,6 +10,13 @@ pub(super) fn draw_hud(game: &TowerGame, frame: &mut Framebuffer, sprites: &Spri
     let y_scale = frame.height as f32 / HEIGHT as f32;
     let y = |base: i32| (base as f32 * y_scale) as i32;
 
+    // Results replace the whole play HUD so the title, score and actions read
+    // as one dedicated screen at every window size.
+    if matches!(game.phase, Phase::Victory | Phase::Defeat) {
+        draw_result(game, frame, center_x, scale.max(1), sprites);
+        return;
+    }
+
     let injury = (5_u8.saturating_sub(game.defenses) as f32 / 5.0).powf(1.35) * 0.78;
     let impact = game.lost_defense_flash / super::DAMAGE_FLASH_SECONDS;
     if injury > 0.0 || impact > 0.0 {
@@ -142,9 +149,6 @@ pub(super) fn draw_hud(game: &TowerGame, frame: &mut Framebuffer, sprites: &Spri
         game.muzzle_timer > 0.0,
     );
 
-    if matches!(game.phase, Phase::Victory | Phase::Defeat) {
-        draw_result(game, frame, center_x, y_scale, scale.max(1), sprites);
-    }
     if game.lost_defense_flash > 0.0 {
         draw_selection_label(
             frame,
@@ -223,59 +227,98 @@ fn draw_result(
     game: &TowerGame,
     frame: &mut Framebuffer,
     center_x: i32,
-    y_scale: f32,
     scale: i32,
     sprites: &SpriteBank,
 ) {
     let won = game.phase == Phase::Victory;
-    let y = |base: i32| (base as f32 * y_scale) as i32;
-    draw_panel(frame, 0x050709, 0.18, 0.28, 0.82, 0.89);
+    let width = frame.width as f32;
+    let height = frame.height as f32;
+    let px = |ratio: f32| (ratio * width) as i32;
+    let py = |ratio: f32| (ratio * height) as i32;
+    let accent = if won { 0xffc56c } else { 0xd94d4d };
+
+    fill(frame, 0, 0, frame.width as i32, frame.height as i32, 0x08090d);
+    // Framed telemetry treatment, with restrained corner marks and a warm
+    // status stripe to match the tower's industrial amber/red palette.
+    draw_panel(frame, 0x0d1117, 0.035, 0.035, 0.965, 0.965);
+    fill(frame, px(0.08), py(0.055), px(0.84), (height * 0.004).max(2.0) as i32, accent);
+    draw_selection_label(
+        frame,
+        if won { "INFORME DE MISION  //  OBJETIVO COMPLETADO" } else { "INFORME DE MISION  //  DEFENSA CAIDA" },
+        center_x,
+        py(0.085),
+        scale.max(1),
+        0xd3b17c,
+    );
     sprites.draw_result_title(
         frame,
         won,
         center_x as f32,
-        frame.height as f32 * 0.34,
-        frame.height as f32 * 0.105,
+        height * 0.16,
+        height * 0.14,
     );
-    let mini_scale = (scale / 2).max(1);
-    let accuracy = format!(
-        "PUNTUACION {}   PRECISION {}%",
-        game.stats.score,
-        game.stats.accuracy()
-    );
-    draw_selection_label(
+    let card_top = py(0.405);
+    let card_height = py(0.105);
+    let card_width = width * 0.265;
+    let gap = width * 0.025;
+    let labels = ["PUNTUACION", "PRECISION", "ELIMINADOS", "TIROS A LA CABEZA", "DISPAROS", "ESCAPARON"];
+    let values = [
+        format!("{:06}", game.stats.score),
+        format!("{}%", game.stats.accuracy()),
+        game.stats.kills.to_string(),
+        game.stats.headshots.to_string(),
+        game.stats.shots.to_string(),
+        game.stats.escapes.to_string(),
+    ];
+    let stat_scale = (scale as f32 * 0.82).round().clamp(1.0, 3.0) as i32;
+    for index in 0..6 {
+        let column = index % 3;
+        let row = index / 3;
+        let card_center = center_x as f32 + (column as f32 - 1.0) * (card_width + gap);
+        let top = card_top + row as i32 * py(0.13);
+        draw_panel(
+            frame,
+            0x15181d,
+            (card_center - card_width / 2.0) / width,
+            top as f32 / height,
+            (card_center + card_width / 2.0) / width,
+            (top + card_height) as f32 / height,
+        );
+        draw_selection_label(
+            frame,
+            labels[index],
+            card_center as i32,
+            top + py(0.018),
+            stat_scale,
+            0xd0a763,
+        );
+        draw_selection_label(
+            frame,
+            &values[index],
+            card_center as i32,
+            top + py(0.060),
+            (stat_scale + 1).min(3),
+            0xe6e8e4,
+        );
+    }
+    let button_scale = (scale as f32 * 0.9).round().clamp(1.0, 3.0) as i32;
+    draw_button(
         frame,
-        &accuracy,
         center_x,
-        y(HEIGHT as i32 * 54 / 100),
-        mini_scale,
-        0xf1e8d9,
-    );
-    let totals = format!(
-        "ELIMINADOS {}   TIROS A LA CABEZA {}   DISPAROS {}",
-        game.stats.kills, game.stats.headshots, game.stats.shots
-    );
-    draw_selection_label(
-        frame,
-        &totals,
-        center_x,
-        y(HEIGHT as i32 * 61 / 100),
-        mini_scale,
-        0xc6d4d2,
+        py(0.755),
+        "REINTENTAR  [ ENTER ]",
+        0xffc56c,
+        button_scale,
+        accent,
     );
     draw_button(
         frame,
         center_x,
-        y(HEIGHT as i32 * 74 / 100),
-        "REINTENTAR  ENTER",
-        0xffba58,
-    );
-    draw_button(
-        frame,
-        center_x,
-        y(HEIGHT as i32 * 83 / 100),
-        "VOLVER AL ESPACIO  BACKSPACE",
-        0xd0d9d5,
+        py(0.865),
+        "VOLVER AL ESPACIO  [ BACKSPACE ]",
+        0xd6e0dd,
+        button_scale,
+        accent,
     );
 }
 
@@ -312,18 +355,29 @@ fn draw_bar(
     );
 }
 
-fn draw_button(frame: &mut Framebuffer, x: i32, y: i32, label: &str, color: u32) {
-    let width = (label.len() as i32 * 12 + 40).min((frame.width as i32 * 3) / 4);
-    fill(frame, x - width / 2, y - 12, width, 38, 0x20262a);
+fn draw_button(
+    frame: &mut Framebuffer,
+    x: i32,
+    y: i32,
+    label: &str,
+    color: u32,
+    scale: i32,
+    accent: u32,
+) {
+    let text_width = label.len() as i32 * 6 * scale - scale;
+    let width = (text_width + scale * 12).min((frame.width as i32 * 3) / 4);
+    let height = scale * 11 + 12;
+    fill(frame, x - width / 2, y - height / 2, width, height, 0x20262a);
+    fill(frame, x - width / 2 + 2, y - height / 2 + 2, 4, height - 4, accent);
     border(
         frame,
         x - width / 2,
-        y - 12,
+        y - height / 2,
         x + width / 2,
-        y + 26,
-        0xb47b42,
+        y + height / 2,
+        accent,
     );
-    draw_selection_label(frame, label, x, y - 5, 2, color);
+    draw_selection_label(frame, label, x, y - (scale * 3), scale, color);
 }
 
 fn draw_reticle(frame: &mut Framebuffer, x: f32, y: f32, hit: bool, headshot: bool, fired: bool) {

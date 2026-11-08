@@ -150,10 +150,10 @@ impl TowerGame {
             if input.exit {
                 return GameAction::Exit;
             }
-            if input.mouse_clicked && button_contains(self.aim, 0.37, 0.69, 0.63, 0.77) {
+            if input.mouse_clicked && button_contains(self.aim, 0.30, 0.70, 0.70, 0.81) {
                 return GameAction::Restart;
             }
-            if input.mouse_clicked && button_contains(self.aim, 0.37, 0.79, 0.63, 0.87) {
+            if input.mouse_clicked && button_contains(self.aim, 0.30, 0.81, 0.70, 0.93) {
                 return GameAction::Exit;
             }
             return GameAction::Continue;
