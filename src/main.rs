@@ -6035,6 +6035,104 @@ fn draw_guardian_reward_overlay(framebuffer: &mut Framebuffer, remaining: u32) {
     );
 }
 
+fn draw_tower_reward_animation(framebuffer: &mut Framebuffer, remaining: f32) {
+    let progress = (1.0 - remaining / 5.0).clamp(0.0, 1.0);
+    let eased = 1.0 - (1.0 - progress).powi(3);
+    let center_x = WIDTH as i32 / 2;
+    let center_y = (HEIGHT as f32 * (0.88 - eased * 0.43)) as i32;
+    let radius = (18.0 + eased * 72.0 + (progress * 10.0).sin().abs() * 4.0) as i32;
+
+    for glow in (radius..=radius + 24).rev() {
+        let strength = (radius + 24 - glow) as f32 / 24.0;
+        let color = ((75.0 * strength) as u32) << 16
+            | ((38.0 * strength) as u32) << 8
+            | (8.0 * strength) as u32;
+        for step in 0..180 {
+            let angle = step as f32 * std::f32::consts::TAU / 180.0;
+            let x = center_x + (angle.cos() * glow as f32) as i32;
+            let y = center_y + (angle.sin() * glow as f32) as i32;
+            if x >= 0 && y >= 0 && x < WIDTH as i32 && y < HEIGHT as i32 {
+                framebuffer.pixels[y as usize * WIDTH + x as usize] = color;
+            }
+        }
+    }
+    for dy in -radius..=radius {
+        for dx in -radius..=radius {
+            let distance = (dx * dx + dy * dy) as f32;
+            if distance > (radius * radius) as f32 {
+                continue;
+            }
+            let normal_x = dx as f32 / radius as f32;
+            let normal_y = dy as f32 / radius as f32;
+            let light = (0.42 + (-normal_x * 0.45 - normal_y * 0.55).max(0.0)).min(1.0);
+            let edge = (1.0 - distance.sqrt() / radius as f32).sqrt();
+            let red = (255.0 * light).min(255.0) as u32;
+            let green = (118.0 * light + 42.0 * edge) as u32;
+            let blue = (18.0 * light) as u32;
+            let x = center_x + dx;
+            let y = center_y + dy;
+            if x >= 0 && y >= 0 && x < WIDTH as i32 && y < HEIGHT as i32 {
+                framebuffer.pixels[y as usize * WIDTH + x as usize] =
+                    (red << 16) | (green << 8) | blue;
+            }
+        }
+    }
+    let rotation = progress * std::f32::consts::TAU * 1.5;
+    for side in [-1.0_f32, 1.0] {
+        let local_x = side * radius as f32 * 0.28;
+        let local_y = radius as f32 * 0.04;
+        let star_x = center_x + (local_x * rotation.cos() - local_y * rotation.sin()) as i32;
+        let star_y = center_y + (local_x * rotation.sin() + local_y * rotation.cos()) as i32;
+        for ray in 0..5 {
+            let angle = ray as f32 * std::f32::consts::TAU / 5.0 - std::f32::consts::FRAC_PI_2;
+            let end_x = star_x + (angle.cos() * radius as f32 * 0.17) as i32;
+            let end_y = star_y + (angle.sin() * radius as f32 * 0.17) as i32;
+            reward_line(framebuffer, star_x, star_y, end_x, end_y, 0xb51419);
+        }
+    }
+    draw_selection_label(framebuffer, "MISION CUMPLIDA", center_x, 72, 4, 0xffd34e);
+    draw_selection_label(
+        framebuffer,
+        "ESFERA DE 2 ESTRELLAS OBTENIDA",
+        center_x,
+        130,
+        2,
+        0xffa62b,
+    );
+}
+
+fn reward_line(
+    framebuffer: &mut Framebuffer,
+    mut x0: i32,
+    mut y0: i32,
+    x1: i32,
+    y1: i32,
+    color: u32,
+) {
+    let dx = (x1 - x0).abs();
+    let sx = if x0 < x1 { 1 } else { -1 };
+    let dy = -(y1 - y0).abs();
+    let sy = if y0 < y1 { 1 } else { -1 };
+    let mut error = dx + dy;
+    loop {
+        if x0 >= 0 && y0 >= 0 && x0 < WIDTH as i32 && y0 < HEIGHT as i32 {
+            framebuffer.pixels[y0 as usize * WIDTH + x0 as usize] = color;
+        }
+        if x0 == x1 && y0 == y1 {
+            break;
+        }
+        let twice = error * 2;
+        if twice >= dy {
+            error += dy;
+            x0 += sx;
+        }
+        if twice <= dx {
+            error += dx;
+            y0 += sy;
+        }
+    }
+}
+
 fn draw_selection_panel(
     framebuffer: &mut Framebuffer,
     left: usize,
@@ -6681,6 +6779,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut advanced_lighting = std::env::var_os("GRAPH_BENCH_ADVANCED").is_some();
     let mut last_tower_cursor = (0.5_f32, 0.52_f32);
     let mut tower_mouse_down = false;
+    let mut tower_dragon_ball_collected = false;
+    let mut tower_reward_timer = 0.0_f32;
 
     while window.is_open() {
         let benchmark_frame_start = Instant::now();
@@ -6853,6 +6953,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         } else {
             frame_time.min(0.05)
         };
+        tower_reward_timer = (tower_reward_timer - delta_time).max(0.0);
         previous = now;
         world_time += delta_time;
 
@@ -7030,13 +7131,24 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 let resident_result = std::process::Command::new(&resident_executable)
                     .current_dir(&resident_directory)
                     .status();
-                if let Err(error) = resident_result {
-                    eprintln!("No se pudo iniciar Resident Evil nivel 1: {error}");
+                match resident_result {
+                    Ok(status) if status.code() == Some(10) => {
+                        tower_dragon_ball_collected = true;
+                        tower_reward_timer = 5.0;
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        eprintln!("No se pudo iniciar Resident Evil nivel 1: {error}");
+                    }
                 }
                 game_mode = GameMode::FreeWorld;
                 launch_ship_after_guardian_exit(&mut ship_controller, world_time);
                 entered_level = true;
-                window.set_title("Galaxia Vesper | Resident Evil completado | Vuelo libre");
+                window.set_title(if tower_dragon_ball_collected {
+                    "Galaxia Vesper | Esfera de 2 estrellas obtenida | Vuelo libre"
+                } else {
+                    "Galaxia Vesper | Resident Evil | Vuelo libre"
+                });
             } else if active_galaxy == Galaxy::Vesper {
                 // Vesper's other bodies have no minigame; keep the player in
                 // orbit instead of accidentally launching the water level.
@@ -7932,6 +8044,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         }
         if game_mode == GameMode::TowerGuard {
             tower_game.draw_hud(&mut framebuffer);
+        }
+        if tower_reward_timer > 0.0 {
+            draw_tower_reward_animation(&mut framebuffer, tower_reward_timer);
         }
         if performance_hud {
             let stats = triangle_batch.stats();

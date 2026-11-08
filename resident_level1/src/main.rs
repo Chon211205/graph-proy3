@@ -2640,8 +2640,11 @@ fn main() {
                 .enable_cursor();
 
             if ventana.is_key_pressed(KeyboardKey::KEY_ENTER)
-                || ventana.is_key_pressed(KeyboardKey::KEY_BACKSPACE)
                 || gamepad::aceptar(&ventana)
+            {
+                std::process::exit(10);
+            }
+            if ventana.is_key_pressed(KeyboardKey::KEY_BACKSPACE)
                 || gamepad::volver(&ventana)
             {
                 break;
@@ -4251,6 +4254,10 @@ fn main() {
 
             ventana
                 .enable_cursor();
+
+            if nivel_seleccionado == NivelSeleccionado::Mansion {
+                std::process::exit(10);
+            }
 
             continue;
         }
