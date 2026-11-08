@@ -162,11 +162,10 @@ mod tests {
                 .count(),
             1
         );
-        assert!(
-            boss.update(0.03, 0)
-                .iter()
-                .all(|event| *event != BossEvent::LoseDefense)
-        );
+        assert!(boss
+            .update(0.03, 0)
+            .iter()
+            .all(|event| *event != BossEvent::LoseDefense));
     }
 
     #[test]

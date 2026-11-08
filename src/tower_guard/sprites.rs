@@ -2,7 +2,7 @@ use std::{fs::File, io::BufReader};
 
 use crate::framebuffer::Framebuffer;
 
-use super::config::{CharacterDef, EnemyKind, HitBox, load_manifest};
+use super::config::{load_manifest, CharacterDef, EnemyKind, HitBox};
 
 pub struct Sprite {
     width: usize,
@@ -30,10 +30,12 @@ pub enum PixelRegion {
 pub struct CharacterSprite {
     pub definition: CharacterDef,
     pub sprite: Sprite,
+    walking_frames: Vec<Sprite>,
 }
 
 pub struct SpriteBank {
     characters: Vec<CharacterSprite>,
+    background: Sprite,
 }
 
 impl SpriteBank {
@@ -41,9 +43,26 @@ impl SpriteBank {
         let mut characters = Vec::new();
         for definition in load_manifest()? {
             let sprite = Sprite::load(&definition.sprite_path)?;
-            characters.push(CharacterSprite { definition, sprite });
+            let walking_frames = walking_frame_paths(definition.kind)
+                .map(|paths| {
+                    paths
+                        .into_iter()
+                        .map(Sprite::load)
+                        .collect::<Result<Vec<_>, _>>()
+                })
+                .transpose()?
+                .unwrap_or_default();
+            characters.push(CharacterSprite {
+                definition,
+                sprite,
+                walking_frames,
+            });
         }
-        Ok(Self { characters })
+        let background = Sprite::load("assets/textures/towerbg.png")?;
+        Ok(Self {
+            characters,
+            background,
+        })
     }
 
     pub fn get(&self, kind: EnemyKind) -> &CharacterSprite {
@@ -52,6 +71,60 @@ impl SpriteBank {
             .find(|character| character.definition.kind == kind)
             .expect("tower enemy manifest must contain each character exactly once")
     }
+
+    pub fn draw_background(&self, frame: &mut Framebuffer) {
+        let source = &self.background;
+        let source_aspect = source.width as f32 / source.height.max(1) as f32;
+        let target_aspect = frame.width as f32 / frame.height.max(1) as f32;
+        let (crop_x, crop_y, crop_width, crop_height) = if source_aspect > target_aspect {
+            let width = (source.height as f32 * target_aspect).round() as usize;
+            ((source.width - width) / 2, 0, width, source.height)
+        } else {
+            let height = (source.width as f32 / target_aspect).round() as usize;
+            (0, (source.height - height) / 2, source.width, height)
+        };
+        for y in 0..frame.height {
+            let source_y = crop_y + y * crop_height / frame.height.max(1);
+            let target_row = y * frame.width;
+            for x in 0..frame.width {
+                let source_x = crop_x + x * crop_width / frame.width.max(1);
+                let [red, green, blue, _] = source.rgba[source_y * source.width + source_x];
+                frame.pixels[target_row + x] =
+                    ((red as u32) << 16) | ((green as u32) << 8) | blue as u32;
+            }
+        }
+    }
+}
+
+impl CharacterSprite {
+    pub fn walking_frame(&self, elapsed: f32) -> &Sprite {
+        if self.walking_frames.is_empty() {
+            return &self.sprite;
+        }
+        let index = (elapsed.max(0.0) * 6.0).floor() as usize % self.walking_frames.len();
+        &self.walking_frames[index]
+    }
+}
+
+fn walking_frame_paths(kind: EnemyKind) -> Option<[&'static str; 3]> {
+    Some(match kind {
+        EnemyKind::WhiteShirt => [
+            "assets/minigames/tower_guardian/sprites/zombie1.png",
+            "assets/minigames/tower_guardian/sprites/zombie2.png",
+            "assets/minigames/tower_guardian/sprites/zombie3.png",
+        ],
+        EnemyKind::BlueVest => [
+            "assets/minigames/tower_guardian/sprites/zombieV21.png",
+            "assets/minigames/tower_guardian/sprites/zombieV22.png",
+            "assets/minigames/tower_guardian/sprites/zombieV23.png",
+        ],
+        EnemyKind::GreenBrute => [
+            "assets/minigames/tower_guardian/sprites/zombieV31.png",
+            "assets/minigames/tower_guardian/sprites/zombieV32.png",
+            "assets/minigames/tower_guardian/sprites/zombieV33.png",
+        ],
+        _ => return None,
+    })
 }
 
 impl Sprite {
@@ -239,6 +312,19 @@ fn blend(dst: u32, src: [u8; 4], alpha: f32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tower_background_covers_the_complete_framebuffer() {
+        let bank = SpriteBank::load().expect("tower background should load");
+        let marker = 0x00ff00;
+        let mut frame = Framebuffer::new(320, 180);
+        frame.clear(marker);
+
+        bank.draw_background(&mut frame);
+
+        assert!(frame.pixels.iter().all(|&pixel| pixel != marker));
+        assert_ne!(frame.pixels[0], frame.pixels[frame.pixels.len() / 2]);
+    }
 
     fn screen_point(sprite: &Sprite, pose: SpritePose, u: f32, v: f32) -> (f32, f32) {
         let width = pose.height * sprite.aspect();

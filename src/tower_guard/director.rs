@@ -55,7 +55,11 @@ pub fn normal_lifetime(kind: EnemyKind) -> f32 {
 }
 
 pub fn round_intro(round: u8) -> f32 {
-    if round == 1 { 3.0 } else { 1.75 }
+    if round == 1 {
+        3.0
+    } else {
+        1.75
+    }
 }
 
 #[cfg(test)]

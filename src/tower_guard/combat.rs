@@ -1,9 +1,8 @@
 use super::{
-    TowerGame,
-    boss::{BOSS_FIRE_INTERVAL, BossHit},
-    scene,
+    boss::{BossHit, BOSS_FIRE_INTERVAL},
     sprites::{PixelRegion, SpriteBank},
     state::{AudioCue, BossCycle, BossState, LifeState, Phase},
+    TowerGame,
 };
 
 impl TowerGame {
@@ -38,12 +37,9 @@ impl TowerGame {
             if enemy.resolved || enemy.state != LifeState::Walking {
                 continue;
             }
-            if scene::cover_blocks(self.aim.0, self.aim.1, enemy.depth) {
-                continue;
-            }
             let pose = self.enemy_pose(enemy, width, height);
             let character = sprites.get(enemy.kind);
-            if let Some(region) = character.sprite.hit_region(
+            if let Some(region) = character.walking_frame(enemy.elapsed).hit_region(
                 shot_x,
                 shot_y,
                 pose,
@@ -58,15 +54,13 @@ impl TowerGame {
                 let boss_depth = 0.74;
                 let pose = self.boss_pose(boss, width, height);
                 let character = sprites.get(boss.sprite_kind());
-                if !scene::cover_blocks(self.aim.0, self.aim.1, boss_depth)
-                    && let Some(region) = character.sprite.hit_region(
-                        shot_x,
-                        shot_y,
-                        pose,
-                        character.definition.head,
-                        character.definition.weak_point,
-                    )
-                {
+                if let Some(region) = character.sprite.hit_region(
+                    shot_x,
+                    shot_y,
+                    pose,
+                    character.definition.head,
+                    character.definition.weak_point,
+                ) {
                     targets.push((boss_depth, TargetHit::Boss(region)));
                 }
                 if let Some(rocket) = boss.rocket.as_ref().filter(|rocket| !rocket.resolved) {
@@ -80,15 +74,7 @@ impl TowerGame {
         }
         targets.sort_by(|a, b| b.0.total_cmp(&a.0));
         let Some((_, target)) = targets.first().copied() else {
-            let cover_hit = scene::cover_blocks(self.aim.0, self.aim.1, 0.50);
-            self.set_feedback(
-                if cover_hit {
-                    "IMPACTO EN COBERTURA"
-                } else {
-                    "FALLO"
-                },
-                0.45,
-            );
+            self.set_feedback("FALLO", 0.45);
             return;
         };
         match target {

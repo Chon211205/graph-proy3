@@ -1,47 +1,62 @@
 use super::state::AudioCue;
 
-pub struct TowerAudio {
-    shot: Vec<u16>,
-    impact: Vec<u16>,
-    damage: Vec<u16>,
-    boss_alert: Vec<u16>,
-}
+pub struct TowerAudio;
 
 impl TowerAudio {
     pub fn load() -> Self {
-        let path = |value: &str| value.encode_utf16().chain(Some(0)).collect();
-        Self {
-            shot: path("assets/minigames/tower_guardian/audio/shot.wav"),
-            impact: path("assets/minigames/tower_guardian/audio/impact.wav"),
-            damage: path("assets/minigames/tower_guardian/audio/damage.wav"),
-            boss_alert: path("assets/minigames/tower_guardian/audio/boss-alert.wav"),
-        }
+        Self
     }
 
     pub fn play(&self, cue: AudioCue) {
-        let path = match cue {
-            AudioCue::Shot => &self.shot,
-            AudioCue::Impact => &self.impact,
-            AudioCue::Damage => &self.damage,
-            AudioCue::BossAlert => &self.boss_alert,
+        let (alias, file) = match cue {
+            AudioCue::Shot => ("re_shot", "shoot.mp3"),
+            AudioCue::Impact => ("re_impact", "zombie.mp3"),
+            AudioCue::Damage => ("re_damage", "damage.mp3"),
+            AudioCue::BossAlert => ("re_boss", "tyrant.mp3"),
+            AudioCue::Reload => ("re_reload", "reload.mp3"),
+            AudioCue::Door => ("re_door", "door.mp3"),
+            AudioCue::ZombieDie => ("re_die", "zombiedie.mp3"),
+            AudioCue::NoAmmo => ("re_empty", "noammo.mp3"),
+            AudioCue::Axe => ("re_axe", "axe.mp3"),
+            AudioCue::Flame => ("re_flame", "flamethrow.mp3"),
+            AudioCue::Key => ("re_key", "key.mp3"),
+            AudioCue::Heal => ("re_heal", "heal.mp3"),
+            AudioCue::CollectAmmo => ("re_ammo", "collectammo.mp3"),
         };
+        command(&format!("close {alias}"));
+        command(&format!(
+            "open \"assets/minigames/tower_guardian/audio/{file}\" type mpegvideo alias {alias}"
+        ));
+        command(&format!("play {alias} from 0"));
+    }
 
-        #[cfg(target_os = "windows")]
-        unsafe {
-            #[link(name = "winmm")]
-            unsafe extern "system" {
-                fn PlaySoundW(sound: *const u16, module: *mut core::ffi::c_void, flags: u32)
-                -> i32;
-            }
+    pub fn start_music(&self) {
+        command("close re_mansion");
+        command("open \"assets/minigames/tower_guardian/audio/mansion.mp3\" type mpegvideo alias re_mansion");
+        command("play re_mansion repeat");
+    }
 
-            const SND_ASYNC: u32 = 0x0001;
-            const SND_NODEFAULT: u32 = 0x0002;
-            const SND_FILENAME: u32 = 0x0002_0000;
-            PlaySoundW(
-                path.as_ptr(),
-                std::ptr::null_mut(),
-                SND_ASYNC | SND_NODEFAULT | SND_FILENAME,
-            );
-        }
+    pub fn stop_music(&self) {
+        command("close re_mansion");
     }
 }
+
+#[cfg(target_os = "windows")]
+fn command(value: &str) {
+    #[link(name = "winmm")]
+    unsafe extern "system" {
+        fn mciSendStringW(
+            command: *const u16,
+            result: *mut u16,
+            result_len: u32,
+            callback: usize,
+        ) -> u32;
+    }
+    let wide = value.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
+    unsafe {
+        mciSendStringW(wide.as_ptr(), std::ptr::null_mut(), 0, 0);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn command(_: &str) {}

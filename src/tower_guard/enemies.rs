@@ -1,8 +1,8 @@
 use super::{
-    TowerGame,
     config::EnemyKind,
-    director::{GROUP_WARNING_SECONDS, normal_lifetime},
+    director::{normal_lifetime, GROUP_WARNING_SECONDS},
     state::{Enemy, LifeState, Phase, Statistics},
+    TowerGame,
 };
 
 impl TowerGame {

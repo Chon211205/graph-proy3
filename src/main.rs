@@ -6984,6 +6984,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 }
             } else if active_galaxy == Galaxy::Vesper && vesper_orbit_index == Some(2) {
                 tower_game = tower_guard::TowerGame::new(&tower_sprites);
+                tower_audio.start_music();
                 game_mode = GameMode::TowerGuard;
                 entered_level = true;
                 window.set_cursor_visibility(false);
@@ -7467,6 +7468,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     .unwrap_or(last_tower_cursor);
                 let cursor_moved = (cursor.0 - last_tower_cursor.0).abs() > 0.0005
                     || (cursor.1 - last_tower_cursor.1).abs() > 0.0005;
+                let mouse_look = (
+                    cursor.0 - last_tower_cursor.0,
+                    cursor.1 - last_tower_cursor.1,
+                );
                 last_tower_cursor = cursor;
                 let mouse_down = window.get_mouse_down(minifb::MouseButton::Left);
                 let mouse_clicked = mouse_down && !tower_mouse_down;
@@ -7477,6 +7482,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         cursor,
                         cursor_moved,
                         fire: mouse_clicked || crate::input::pressed(Key::Space),
+                        fire_held: mouse_down || window.is_key_down(Key::Space),
                         mouse_clicked,
                         confirm: crate::input::pressed(Key::Enter),
                         exit: crate::input::pressed(Key::Backspace),
@@ -7485,6 +7491,23 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             - window.is_key_down(Key::Left) as i8,
                         arrow_y: window.is_key_down(Key::Down) as i8
                             - window.is_key_down(Key::Up) as i8,
+                        move_x: window.is_key_down(Key::D) as i8
+                            - window.is_key_down(Key::A) as i8,
+                        move_y: window.is_key_down(Key::W) as i8
+                            - window.is_key_down(Key::S) as i8,
+                        interact: crate::input::pressed(Key::E),
+                        look_x: mouse_look.0,
+                        look_y: mouse_look.1,
+                        aiming: window.get_mouse_down(minifb::MouseButton::Right),
+                        weapon: if crate::input::pressed(Key::Key1) {
+                            1
+                        } else if crate::input::pressed(Key::Key2) {
+                            2
+                        } else if crate::input::pressed(Key::Key3) {
+                            3
+                        } else {
+                            0
+                        },
                     },
                     scene_framebuffer.width,
                     scene_framebuffer.height,
@@ -7500,6 +7523,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         window.set_cursor_visibility(false);
                     }
                     tower_guard::TowerAction::Exit => {
+                        tower_audio.stop_music();
                         game_mode = GameMode::FreeWorld;
                         window.set_cursor_visibility(true);
                         window.set_title("Casa Torre | En orbita | Backspace: salir");

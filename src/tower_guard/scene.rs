@@ -50,6 +50,7 @@ pub fn cover_blocks(x: f32, y: f32, target_depth: f32) -> bool {
     })
 }
 
+#[allow(dead_code)]
 pub fn draw_arena(frame: &mut Framebuffer, time: f32) {
     for y in 0..frame.height {
         let t = y as f32 / frame.height.max(1) as f32;
@@ -85,6 +86,7 @@ pub fn draw_arena(frame: &mut Framebuffer, time: f32) {
     draw_floor(frame);
 }
 
+#[allow(dead_code)]
 fn draw_wall_panels(frame: &mut Framebuffer) {
     // Dark timber posts and cracked plaster make the camera feel sheltered.
     for (x, width) in [
@@ -136,6 +138,7 @@ fn draw_wall_panels(frame: &mut Framebuffer) {
     line(frame, 0.876, 0.252, 0.849, 0.280, 0x30241b, 2.0);
 }
 
+#[allow(dead_code)]
 fn draw_doorway(frame: &mut Framebuffer, time: f32) {
     // Recess and broken door leaves create a clear entrance lane.
     polygon(
@@ -179,6 +182,7 @@ fn draw_doorway(frame: &mut Framebuffer, time: f32) {
     }
 }
 
+#[allow(dead_code)]
 fn draw_wall_lamps(frame: &mut Framebuffer, time: f32) {
     for x in [0.27, 0.73] {
         line(frame, x, 0.23, x, 0.27, 0x1c1b18, 2.0);
@@ -196,6 +200,7 @@ fn draw_wall_lamps(frame: &mut Framebuffer, time: f32) {
     }
 }
 
+#[allow(dead_code)]
 fn draw_floor(frame: &mut Framebuffer) {
     polygon(
         frame,
@@ -281,6 +286,7 @@ fn rect(frame: &mut Framebuffer, x: f32, y: f32, width: f32, height: f32, color:
     }
 }
 
+#[allow(dead_code)]
 fn polygon(frame: &mut Framebuffer, points: &[(f32, f32)], color: u32) {
     if points.len() < 3 {
         return;

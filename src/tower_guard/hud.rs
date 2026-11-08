@@ -1,4 +1,4 @@
-use crate::{HEIGHT, WIDTH, draw_selection_label, framebuffer::Framebuffer};
+use crate::{draw_selection_label, framebuffer::Framebuffer, HEIGHT, WIDTH};
 
 use super::{BossKind, Phase, TowerGame};
 
@@ -262,7 +262,11 @@ fn draw_button(frame: &mut Framebuffer, x: i32, y: i32, label: &str, color: u32)
 fn draw_reticle(frame: &mut Framebuffer, x: f32, y: f32, hit: bool, headshot: bool, fired: bool) {
     let (x, y) = (x as i32, y as i32);
     let color = if hit {
-        if headshot { 0xffd36e } else { 0xf1eee0 }
+        if headshot {
+            0xffd36e
+        } else {
+            0xf1eee0
+        }
     } else {
         0xf0e6ce
     };
