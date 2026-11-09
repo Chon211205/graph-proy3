@@ -3131,6 +3131,10 @@ fn make_one_star_dragon_ball() -> Model {
     make_dragon_ball(&[(0.0, 0.0)])
 }
 
+fn make_two_star_dragon_ball() -> Model {
+    make_dragon_ball(&[(-0.52, -0.38), (0.52, 0.38)])
+}
+
 fn make_three_star_dragon_ball() -> Model {
     make_dragon_ball(&[(-0.62, -0.48), (0.62, -0.48), (0.0, 0.62)])
 }
@@ -4900,6 +4904,7 @@ fn render_scene(
     turbo_power: f32,
     fast_flight: bool,
     fire_charge: f32,
+    tower_reward: Option<(&Model, f32, Vec3)>,
 ) {
     framebuffer.clear(0);
     draw_skybox(framebuffer, travel, galaxy);
@@ -5103,6 +5108,34 @@ fn render_scene(
         true,
         1.0,
     );
+    if let Some((dragon_ball, reward_elapsed, reward_position)) = tower_reward {
+        let descent = (reward_elapsed / 2.2).clamp(0.0, 1.0);
+        let descent = descent * descent * (3.0 - 2.0 * descent);
+        let hover = (reward_elapsed * 3.2).sin() * 0.22;
+        let position = reward_position.add(Vec3::new(0.0, 13.0 - descent * 8.0 + hover, 0.0));
+        let center = model_center(dragon_ball);
+        let rotation = reward_elapsed * 1.8;
+        let (sin, cos) = rotation.sin_cos();
+        let collect_scale = (1.0 - (reward_elapsed - 2.8).max(0.0) / 0.55).clamp(0.0, 1.0);
+        if collect_scale > 0.0 {
+            queue_model(
+                dragon_ball,
+                batch,
+                &camera,
+                |vertex| {
+                    let local = vertex.sub(center).mul(collect_scale);
+                    Vec3::new(
+                        local.x * cos - local.z * sin,
+                        local.y,
+                        local.x * sin + local.z * cos,
+                    )
+                    .add(position)
+                },
+                None,
+                None,
+            );
+        }
+    }
     batch.flush(framebuffer);
     draw_wormhole_energy(framebuffer, &camera, wormhole_center, world_time);
     if galaxy == Galaxy::Vesper {
@@ -6035,6 +6068,56 @@ fn draw_guardian_reward_overlay(framebuffer: &mut Framebuffer, remaining: u32) {
     );
 }
 
+fn draw_tower_reward_hud(framebuffer: &mut Framebuffer, remaining: f32) {
+    let elapsed = 5.5 - remaining;
+    if elapsed < 3.35 {
+        draw_selection_label(
+            framebuffer,
+            "RECOMPENSA DE LA MANSION",
+            600,
+            110,
+            2,
+            0xffd15c,
+        );
+        draw_selection_label(
+            framebuffer,
+            "RECIBIENDO ESFERA DEL DRAGON",
+            600,
+            142,
+            1,
+            0xffa62b,
+        );
+        return;
+    }
+    draw_selection_panel(framebuffer, 300, 250, 900, 555, true);
+    draw_selection_label(framebuffer, "GANASTE", 600, 294, 3, 0xffdf6b);
+    draw_selection_label(
+        framebuffer,
+        "OBJETIVO DE LA MANSION COMPLETADO",
+        600,
+        350,
+        2,
+        0x9fffd2,
+    );
+    draw_selection_label(
+        framebuffer,
+        "ESFERA DE 2 ESTRELLAS OBTENIDA",
+        600,
+        400,
+        2,
+        0xffa62b,
+    );
+    draw_selection_label(
+        framebuffer,
+        &format!("REGRESO AL MUNDO LIBRE EN {}", remaining.ceil() as u32),
+        600,
+        495,
+        1,
+        0x8feaff,
+    );
+}
+
+#[allow(dead_code)]
 fn draw_tower_reward_animation(framebuffer: &mut Framebuffer, remaining: f32) {
     let progress = (1.0 - remaining / 5.0).clamp(0.0, 1.0);
     let eased = 1.0 - (1.0 - progress).powi(3);
@@ -6101,6 +6184,7 @@ fn draw_tower_reward_animation(framebuffer: &mut Framebuffer, remaining: f32) {
     );
 }
 
+#[allow(dead_code)]
 fn reward_line(
     framebuffer: &mut Framebuffer,
     mut x0: i32,
@@ -6729,6 +6813,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let underwater_boost_ring = make_underwater_boost_ring();
     let four_star_dragon_ball = make_four_star_dragon_ball();
     let one_star_dragon_ball = make_one_star_dragon_ball();
+    let two_star_dragon_ball = make_two_star_dragon_ball();
     let three_star_dragon_ball = make_three_star_dragon_ball();
     let reward_pedestal = make_reward_pedestal();
     let reward_chamber = make_reward_chamber();
@@ -6781,6 +6866,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut tower_mouse_down = false;
     let mut tower_dragon_ball_collected = false;
     let mut tower_reward_timer = 0.0_f32;
+    let mut tower_reward_position = Vec3::default();
 
     while window.is_open() {
         let benchmark_frame_start = Instant::now();
@@ -7134,7 +7220,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 match resident_result {
                     Ok(status) if status.code() == Some(10) => {
                         tower_dragon_ball_collected = true;
-                        tower_reward_timer = 5.0;
+                        tower_reward_timer = 5.5;
                     }
                     Ok(_) => {}
                     Err(error) => {
@@ -7143,6 +7229,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 }
                 game_mode = GameMode::FreeWorld;
                 launch_ship_after_guardian_exit(&mut ship_controller, world_time);
+                if tower_dragon_ball_collected {
+                    tower_reward_position = ship_controller.ship.position;
+                }
                 entered_level = true;
                 window.set_title(if tower_dragon_ball_collected {
                     "Galaxia Vesper | Esfera de 2 estrellas obtenida | Vuelo libre"
@@ -7246,12 +7335,15 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 let portal_approach_active = galaxy_transition
                     .as_ref()
                     .is_some_and(|transit| !transit.switched);
-                if !portal_approach_active {
+                let tower_reward_active = tower_reward_timer > 0.0;
+                if !portal_approach_active && !tower_reward_active {
                     ship_controller.update(&input, delta_time);
                 }
                 let light_speed =
                     window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
-                let active_speed = if light_speed {
+                let active_speed = if tower_reward_active {
+                    0.0
+                } else if light_speed {
                     LIGHT_SPEED
                 } else {
                     ship_controller.ship.speed
@@ -7495,6 +7587,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     turbo_power,
                     light_speed,
                     ship_controller.charge_ratio(),
+                    (tower_reward_timer > 0.0).then_some((
+                        &two_star_dragon_ball,
+                        5.5 - tower_reward_timer,
+                        tower_reward_position,
+                    )),
                 );
                 if let Some(transit) = &galaxy_transition {
                     draw_hyperspace_transition(&mut scene_framebuffer, transit.elapsed);
@@ -8046,7 +8143,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             tower_game.draw_hud(&mut framebuffer);
         }
         if tower_reward_timer > 0.0 {
-            draw_tower_reward_animation(&mut framebuffer, tower_reward_timer);
+            draw_tower_reward_hud(&mut framebuffer, tower_reward_timer);
         }
         if performance_hud {
             let stats = triangle_batch.stats();
@@ -9947,9 +10044,35 @@ mod tests {
     }
 
     #[test]
+    fn tower_reward_is_a_two_star_dragon_ball() {
+        let reward = make_two_star_dragon_ball();
+        assert_eq!(
+            reward
+                .faces
+                .iter()
+                .filter(|face| face.group.starts_with("dragon_star_"))
+                .count(),
+            20
+        );
+        assert!(reward
+            .faces
+            .iter()
+            .any(|face| face.group == "dragon_star_0"));
+        assert!(reward
+            .faces
+            .iter()
+            .any(|face| face.group == "dragon_star_1"));
+        assert!(!reward
+            .faces
+            .iter()
+            .any(|face| face.group == "dragon_star_2"));
+    }
+
+    #[test]
     fn every_dragon_ball_uses_refractive_glass_without_texturing_the_stars() {
         for ball in [
             make_one_star_dragon_ball(),
+            make_two_star_dragon_ball(),
             make_three_star_dragon_ball(),
             make_four_star_dragon_ball(),
         ] {

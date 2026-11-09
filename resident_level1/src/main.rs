@@ -4255,10 +4255,6 @@ fn main() {
             ventana
                 .enable_cursor();
 
-            if nivel_seleccionado == NivelSeleccionado::Mansion {
-                std::process::exit(10);
-            }
-
             continue;
         }
 
