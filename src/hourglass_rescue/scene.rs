@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
+use crate::obj_loader::{load_obj, Face, MaterialColor, Model, SurfaceShader, Vec3};
 
 pub(super) const CAPSULE_COUNT: usize = 5;
 pub(super) const CAPSULE_POSITIONS: [Vec3; CAPSULE_COUNT] = [
@@ -355,25 +355,31 @@ impl Builder {
         start..self.faces.len()
     }
 
-    fn clock(&mut self, center: Vec3) -> Range<usize> {
+    fn clock_model(&mut self, source: &Model, center: Vec3) -> Range<usize> {
         let start = self.faces.len();
-        // A bright, chunky low-poly clock that remains readable while flying.
-        self.box_at(center, Vec3::new(3.4, 3.4, 0.65), [235, 177, 55]);
-        self.box_at(
-            center.add(Vec3::new(0.0, 0.0, -0.72)),
-            Vec3::new(2.65, 2.65, 0.18),
-            [247, 235, 181],
+        let vertex_start = self.vertices.len();
+        let (source_center, _) = source.bounds();
+        // Blender's OBJ export maps its Z-up coordinates to the engine's
+        // Y-up coordinates, so the modeled face already points down -Z here.
+        // Center every instance on the original pickup position and keep the
+        // authored size (about seven world units tall).
+        self.vertices.extend(
+            source
+                .vertices
+                .iter()
+                .map(|vertex| center.add(vertex.sub(source_center))),
         );
-        self.box_at(
-            center.add(Vec3::new(0.0, 0.75, -1.02)),
-            Vec3::new(0.20, 1.25, 0.12),
-            [62, 50, 75],
-        );
-        self.box_at(
-            center.add(Vec3::new(0.75, 0.0, -1.02)),
-            Vec3::new(0.95, 0.20, 0.12),
-            [62, 50, 75],
-        );
+        for source_face in &source.faces {
+            let mut face = Face::new(
+                source_face.indices.map(|index| vertex_start + index),
+                source_face.material.clone(),
+                source_face.group.clone(),
+            );
+            face.shader = source_face.shader;
+            face.color = source_face.color;
+            face.smooth = source_face.smooth;
+            self.faces.push(face);
+        }
         start..self.faces.len()
     }
 
@@ -494,6 +500,8 @@ impl Scene {
     pub fn new() -> Self {
         let mut builder = Builder::new();
         let mut obstacles = Vec::new();
+        let clock_model = load_obj("assets/levels/time_planet/reloj_tiempo.obj")
+            .expect("No se pudo cargar el reloj de Time Planet");
         let sand_vertices = builder.sand_dunes();
         builder.mountain_ridge(
             -205.0,
@@ -656,8 +664,9 @@ impl Scene {
         }
 
         let capsule_faces = std::array::from_fn(|index| builder.capsule(CAPSULE_POSITIONS[index]));
-        let clock_faces =
-            std::array::from_fn(|index| builder.clock(super::CLOCK_POSITIONS[index]));
+        let clock_faces = std::array::from_fn(|index| {
+            builder.clock_model(&clock_model, super::CLOCK_POSITIONS[index])
+        });
         let portal_faces = builder.portal_ring(Vec3::new(0.0, 155.0, -505.0), 12.0);
         builder.dragon_sphere(Vec3::new(0.0, 155.0, -510.0));
         let model = builder.finish();

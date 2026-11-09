@@ -388,6 +388,22 @@ fn classify_color(name: &str) -> MaterialColor {
         [24, 112, 119]
     } else if name == "cristal" {
         [153, 207, 226]
+    } else if matches!(
+        name,
+        "oro_brillante"
+            | "oro_oscuro"
+            | "cristal_celeste"
+            | "energia_cian"
+            | "luz_temporal"
+    ) {
+        match name {
+            "oro_brillante" => [242, 133, 15],
+            "oro_oscuro" => [140, 51, 6],
+            "cristal_celeste" => [199, 240, 255],
+            "energia_cian" => [10, 166, 242],
+            "luz_temporal" => [255, 245, 184],
+            _ => unreachable!(),
+        }
     } else if name == "piedra" {
         [132, 108, 105]
     } else if name.starts_with("kirbycar_") {
@@ -807,6 +823,24 @@ mod tests {
         let turbo = Face::new([0, 1, 2], "turbo_glow", "effect");
         assert_eq!(laser.color, MaterialColor::LaserCore);
         assert_eq!(turbo.color, MaterialColor::Turbo);
+    }
+
+    #[test]
+    fn time_planet_clock_keeps_its_blender_palette() {
+        for (material, color) in [
+            ("Oro_Brillante", [242, 133, 15]),
+            ("Oro_Oscuro", [140, 51, 6]),
+            ("Cristal_Celeste", [199, 240, 255]),
+            ("Energia_Cian", [10, 166, 242]),
+            ("Luz_Temporal", [255, 245, 184]),
+            ("Azul_Profundo", [14, 38, 105]),
+        ] {
+            assert_eq!(
+                Face::new([0, 1, 2], material, "clock").color,
+                MaterialColor::Fixed(color),
+                "clock material {material} should preserve its authored color"
+            );
+        }
     }
 
     #[test]

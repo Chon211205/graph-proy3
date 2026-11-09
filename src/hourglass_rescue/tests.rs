@@ -24,6 +24,41 @@ fn pause_freezes_mission_and_rescue_progress() {
 }
 
 #[test]
+fn mission_starts_with_twenty_seconds() {
+    let game = HourglassRescue::new();
+    assert_eq!(game.remaining(), 20.0);
+}
+
+#[test]
+fn clocks_form_a_reachable_route_through_the_valley() {
+    let start = Vec3::new(0.0, 12.0, 42.0);
+    let first_offset = CLOCK_POSITIONS[0].sub(start);
+    assert!(
+        first_offset.dot(first_offset).sqrt() < 90.0,
+        "the first clock must be reachable well before the initial timer expires"
+    );
+
+    for (index, pair) in CLOCK_POSITIONS.windows(2).enumerate() {
+        let step = pair[1].sub(pair[0]);
+        let distance = step.dot(step).sqrt();
+        assert!(
+            (100.0..=320.0).contains(&distance),
+            "clock gap {} should be challenging but reachable, got {distance}",
+            index + 1
+        );
+        assert!(pair[1].z < pair[0].z, "clocks should advance toward the exit");
+        assert!(
+            pair[1].y >= pair[0].y,
+            "clock height should follow the rising route"
+        );
+        assert!(
+            pair[0].x.signum() != pair[1].x.signum(),
+            "clocks should alternate across the exploration valley"
+        );
+    }
+}
+
+#[test]
 fn every_energy_fragment_is_available_from_the_start() {
     let mut game = HourglassRescue::new();
     let mut ship = Ship::new(&ARWING_SPEC);

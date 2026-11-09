@@ -18,16 +18,19 @@ use scene::{Scene, CAPSULE_COUNT, CAPSULE_POSITIONS};
 
 // The level starts deliberately tight: exploring for time pickups is part of
 // the route rather than an optional score bonus.
-const MISSION_SECONDS: f32 = 90.0;
+const MISSION_SECONDS: f32 = 20.0;
 const CLOCK_BONUS_SECONDS: f32 = 20.0;
 const CLOCK_COUNT: usize = 6;
 const CLOCK_POSITIONS: [Vec3; CLOCK_COUNT] = [
-    Vec3::new(55.0, 15.0, -70.0),
-    Vec3::new(-115.0, 34.0, -190.0),
-    Vec3::new(165.0, 48.0, -285.0),
-    Vec3::new(-225.0, 75.0, -370.0),
-    Vec3::new(250.0, 126.0, -475.0),
-    Vec3::new(-80.0, 166.0, -535.0),
+    // The first pickup is visible shortly after launch. The remaining clocks
+    // alternate across the valley and climb with the route, giving the player
+    // a reachable 20-second extension in every major section of the map.
+    Vec3::new(25.0, 18.0, -35.0),
+    Vec3::new(-80.0, 20.0, -120.0),
+    Vec3::new(95.0, 42.0, -215.0),
+    Vec3::new(-145.0, 70.0, -320.0),
+    Vec3::new(150.0, 118.0, -420.0),
+    Vec3::new(-75.0, 158.0, -505.0),
 ];
 const RESCUE_SECONDS: f32 = 1.0;
 const RESCUE_DISTANCE: f32 = 10.0;

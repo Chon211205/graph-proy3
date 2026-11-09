@@ -47,10 +47,10 @@ def _create_primitive(params):
     operator(
         location=params.get("location", (0, 0, 0)),
         rotation=rotation,
-        scale=params.get("scale", (1, 1, 1)),
     )
     obj = bpy.context.object
     obj.name = params["name"]
+    obj.scale = params.get("scale", (1, 1, 1))
     material = _material(params.get("material_name", "Material"), params.get("color", (0.8, 0.8, 0.8, 1)))
     if obj.data and hasattr(obj.data, "materials"):
         obj.data.materials.append(material)
