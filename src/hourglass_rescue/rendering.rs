@@ -7,11 +7,7 @@ use super::{HourglassRescue, CAPSULE_COUNT, CAPSULE_POSITIONS, EXIT_POSITION};
 
 impl HourglassRescue {
     pub fn render(&self, frame: &mut Framebuffer, ship_model: &Model, ship: &Ship) {
-        let sky = if self.inversion_complete {
-            [20, 15, 43]
-        } else {
-            [17, 19, 48]
-        };
+        let sky = [17, 19, 48];
         for y in 0..frame.height {
             let t = y as f32 / frame.height.max(1) as f32;
             let glow = (1.0 - ((t - 0.40) / 0.72).abs()).clamp(0.0, 1.0);
@@ -63,7 +59,7 @@ impl HourglassRescue {
     fn draw_sand_stream(&self, frame: &mut Framebuffer, camera: &Camera) {
         // Layered 3D particle ribbons taper into the hourglass waist. Their
         // curve moves with time and reverses when gravity flips.
-        let direction = if self.inversion_complete { -1.0 } else { 1.0 };
+        let direction = 1.0;
         for strand in 0..9 {
             let mut previous = None;
             let phase = strand as f32 * std::f32::consts::TAU / 9.0;
@@ -97,19 +93,19 @@ impl HourglassRescue {
     }
 
     pub(super) fn camera(&self, ship: &Ship) -> Camera {
-        // This level steers in the XZ plane, so keep its chase camera aligned
-        // with the same heading instead of using the space-flight yaw basis.
-        let forward = Vec3::new(-ship.yaw.sin(), 0.0, -ship.yaw.cos());
+        // Fixed-angle follow camera. It translates with the ship, but steering,
+        // pitching and rolling never rotate the player's view.
+        let view_forward = Vec3::new(0.0, -0.12, -1.0).normalize();
+        let world_up = Vec3::new(0.0, 1.0, 0.0);
         let position = ship
             .position
-            .sub(forward.mul(20.0))
-            .add(Vec3::new(0.0, 6.0, 0.0));
+            .sub(view_forward.mul(ship.spec.chase_distance * 1.45))
+            .add(world_up.mul(ship.spec.chase_height));
         let target = ship
             .position
-            .add(forward.mul(12.0))
-            .add(Vec3::new(0.0, 9.0, 0.0));
+            .add(view_forward.mul(ship.spec.chase_look_ahead * 0.55));
         let camera_forward = target.sub(position).normalize();
-        let mut right = camera_forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
+        let mut right = camera_forward.cross(world_up).normalize();
         if right.dot(right) < 0.001 {
             right = Vec3::new(1.0, 0.0, 0.0);
         }

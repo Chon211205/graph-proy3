@@ -19,7 +19,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, scale: i32) 
     );
     draw_selection_label(
         frame,
-        "REPORTE DE MISION  //  RELOJ DE ARENA",
+        "REPORTE DE MISION  //  PLANETA DEL RELOJ",
         w / 2,
         (h as f32 * 0.13) as i32,
         scale,
@@ -28,7 +28,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, scale: i32) 
     draw_selection_label(
         frame,
         if won {
-            "RESCATE COMPLETADO"
+            "ESFERA DEL DRAGON CONSEGUIDA"
         } else {
             "MISION FALLIDA"
         },
@@ -39,7 +39,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, scale: i32) 
     );
     draw_selection_label(
         frame,
-        &format!("CAPSULAS RESCATADAS  {}/5", game.rescued),
+        &format!("FRAGMENTOS DE ENERGIA  {}/5", game.rescued),
         w / 2,
         (h as f32 * 0.43) as i32,
         scale * 2,
@@ -49,8 +49,8 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, scale: i32) 
         frame,
         &format!(
             "TIEMPO EMPLEADO  {:02}:{:02}",
-            game.elapsed as u32 / 60,
-            game.elapsed as u32 % 60
+            game.elapsed.max(0.0) as u32 / 60,
+            game.elapsed.max(0.0) as u32 % 60
         ),
         w / 2,
         (h as f32 * 0.52) as i32,
@@ -59,7 +59,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, scale: i32) 
     );
     draw_selection_label(
         frame,
-        &format!("DANOS RECIBIDOS  {}", 3_u8.saturating_sub(game.shields)),
+        &format!("RELOJES RECOGIDOS  {}/{}", game.clocks_collected, super::CLOCK_COUNT),
         w / 2,
         (h as f32 * 0.58) as i32,
         scale,

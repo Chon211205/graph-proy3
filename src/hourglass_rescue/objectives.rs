@@ -1,17 +1,32 @@
 use crate::ship::Ship;
 
-use super::scene::dune_height;
 use super::{
     CapsuleState, Cue, HourglassRescue, Input, CAPSULE_COUNT, CAPSULE_POSITIONS, RESCUE_DISTANCE,
     RESCUE_MAX_SPEED, RESCUE_SECONDS,
 };
 
 impl HourglassRescue {
+    pub(super) fn update_clocks(&mut self, ship: &Ship) {
+        for index in 0..super::CLOCK_COUNT {
+            if self.clocks[index] {
+                continue;
+            }
+            let offset = ship.position.sub(super::CLOCK_POSITIONS[index]);
+            if offset.dot(offset) <= 8.0 * 8.0 {
+                self.clocks[index] = true;
+                self.clocks_collected += 1;
+                self.elapsed -= super::CLOCK_BONUS_SECONDS;
+                self.scene.hide_clock(index);
+                self.audio.play(Cue::Capsule);
+                self.feedback = "RELOJ RECOGIDO  +20 SEGUNDOS";
+                self.feedback_timer = 2.0;
+            }
+        }
+    }
+
     pub(super) fn update_rescue(&mut self, ship: &Ship, input: Input, dt: f32) {
         let target = (0..CAPSULE_COUNT)
             .filter(|&index| self.capsules[index] == CapsuleState::Pending)
-            .filter(|&index| index < 3 || self.inversion_complete)
-            .filter(|&index| !self.capsule_is_buried(index))
             .min_by(|&a, &b| {
                 let da = ship.position.sub(CAPSULE_POSITIONS[a]);
                 let db = ship.position.sub(CAPSULE_POSITIONS[b]);
@@ -33,11 +48,11 @@ impl HourglassRescue {
                 self.audio.play(Cue::Capsule);
                 self.rescue_progress = 0.0;
                 self.rescue_target = None;
-                self.feedback = "CAPSULA RESCATADA";
+                self.feedback = "FRAGMENTO DE ENERGIA RECOGIDO";
                 self.feedback_timer = 1.5;
                 if self.rescued as usize == CAPSULE_COUNT {
                     self.scene.set_portal_open(true);
-                    self.feedback = "LAS CINCO CAPSULAS ESTAN A SALVO - BUSCA EL PORTAL";
+                    self.feedback = "PUERTA DESBLOQUEADA - BUSCA LA ESFERA DEL DRAGON";
                     self.feedback_timer = 3.0;
                 }
             }
@@ -46,15 +61,9 @@ impl HourglassRescue {
         }
     }
 
-    pub(super) fn capsule_is_buried(&self, index: usize) -> bool {
-        let pos = CAPSULE_POSITIONS[index];
-        pos.y < -8.0 + dune_height(pos.x, pos.z) + self.sand_offset + 2.0
-    }
-
     pub(super) fn update_capsule_visibility(&mut self) {
         for index in 0..CAPSULE_COUNT {
-            let visible =
-                self.capsules[index] == CapsuleState::Pending && !self.capsule_is_buried(index);
+            let visible = self.capsules[index] == CapsuleState::Pending;
             self.scene.set_capsule_visible(index, visible);
         }
     }

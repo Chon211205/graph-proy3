@@ -16,7 +16,10 @@ pub(super) struct Scene {
     pub sand_vertices: Range<usize>,
     pub capsule_faces: [Range<usize>; CAPSULE_COUNT],
     capsule_indices: [Vec<[usize; 3]>; CAPSULE_COUNT],
+    clock_faces: [Range<usize>; super::CLOCK_COUNT],
+    clock_indices: [Vec<[usize; 3]>; super::CLOCK_COUNT],
     portal_faces: Range<usize>,
+    portal_open: bool,
     obstacles: Vec<(Vec3, Vec3)>,
 }
 
@@ -352,6 +355,57 @@ impl Builder {
         start..self.faces.len()
     }
 
+    fn clock(&mut self, center: Vec3) -> Range<usize> {
+        let start = self.faces.len();
+        // A bright, chunky low-poly clock that remains readable while flying.
+        self.box_at(center, Vec3::new(3.4, 3.4, 0.65), [235, 177, 55]);
+        self.box_at(
+            center.add(Vec3::new(0.0, 0.0, -0.72)),
+            Vec3::new(2.65, 2.65, 0.18),
+            [247, 235, 181],
+        );
+        self.box_at(
+            center.add(Vec3::new(0.0, 0.75, -1.02)),
+            Vec3::new(0.20, 1.25, 0.12),
+            [62, 50, 75],
+        );
+        self.box_at(
+            center.add(Vec3::new(0.75, 0.0, -1.02)),
+            Vec3::new(0.95, 0.20, 0.12),
+            [62, 50, 75],
+        );
+        start..self.faces.len()
+    }
+
+    fn dragon_sphere(&mut self, center: Vec3) {
+        let rings = 8;
+        let sides = 14;
+        let radius = 4.2;
+        for ring in 0..rings {
+            let v0 = -std::f32::consts::FRAC_PI_2
+                + std::f32::consts::PI * ring as f32 / rings as f32;
+            let v1 = -std::f32::consts::FRAC_PI_2
+                + std::f32::consts::PI * (ring + 1) as f32 / rings as f32;
+            for side in 0..sides {
+                let a0 = std::f32::consts::TAU * side as f32 / sides as f32;
+                let a1 = std::f32::consts::TAU * (side + 1) as f32 / sides as f32;
+                let p = |v: f32, a: f32| {
+                    center.add(Vec3::new(
+                        radius * v.cos() * a.cos(),
+                        radius * v.sin(),
+                        radius * v.cos() * a.sin(),
+                    ))
+                };
+                let color = if (ring + side) % 3 == 0 {
+                    [255, 207, 61]
+                } else {
+                    [238, 112, 25]
+                };
+                self.quad(p(v0, a0), p(v0, a1), p(v1, a1), p(v1, a0), color);
+            }
+        }
+    }
+
     fn portal_ring(&mut self, center: Vec3, radius: f32) -> Range<usize> {
         let start = self.faces.len();
         let segments = 24;
@@ -583,11 +637,38 @@ impl Scene {
             );
         }
 
+        // Clockwork sentinels patrol the visual route. Their collision volumes
+        // use the same time-damage rule as the ruins and other hazards.
+        for (x, y, z) in [
+            (-35.0, 30.0, -155.0),
+            (105.0, 72.0, -325.0),
+            (-95.0, 132.0, -445.0),
+        ] {
+            builder.box_at(Vec3::new(x, y, z), Vec3::new(4.0, 2.0, 5.0), [137, 42, 78]);
+            builder.crystal(
+                Vec3::new(x, y + 2.0, z),
+                5.0,
+                3.0,
+                3.0,
+                [[231, 70, 73], [177, 39, 81], [255, 122, 64], [112, 30, 72]],
+            );
+            obstacles.push((Vec3::new(x, y, z), Vec3::new(5.0, 5.0, 6.0)));
+        }
+
         let capsule_faces = std::array::from_fn(|index| builder.capsule(CAPSULE_POSITIONS[index]));
+        let clock_faces =
+            std::array::from_fn(|index| builder.clock(super::CLOCK_POSITIONS[index]));
         let portal_faces = builder.portal_ring(Vec3::new(0.0, 155.0, -505.0), 12.0);
+        builder.dragon_sphere(Vec3::new(0.0, 155.0, -510.0));
         let model = builder.finish();
         let capsule_indices = std::array::from_fn(|index| {
             capsule_faces[index]
+                .clone()
+                .map(|face_index| model.faces[face_index].indices)
+                .collect()
+        });
+        let clock_indices = std::array::from_fn(|index| {
+            clock_faces[index]
                 .clone()
                 .map(|face_index| model.faces[face_index].indices)
                 .collect()
@@ -597,7 +678,10 @@ impl Scene {
             sand_vertices,
             capsule_faces,
             capsule_indices,
+            clock_faces,
+            clock_indices,
             portal_faces,
+            portal_open: false,
             obstacles,
         }
     }
@@ -611,6 +695,18 @@ impl Scene {
     }
 
     pub fn resolve_obstacle(&self, position: Vec3, clearance: f32) -> Option<Vec3> {
+        if !self.portal_open {
+            let center = Vec3::new(0.0, 155.0, -505.0);
+            let delta = position.sub(center);
+            if delta.x.abs() < 11.0 + clearance
+                && delta.y.abs() < 11.0 + clearance
+                && delta.z.abs() < 2.0 + clearance
+            {
+                let mut corrected = position;
+                corrected.z = center.z + if delta.z >= 0.0 { 2.0 + clearance } else { -2.0 - clearance };
+                return Some(corrected);
+            }
+        }
         for &(center, half) in &self.obstacles {
             let delta = position.sub(center);
             let expanded = Vec3::new(half.x + clearance, half.y + clearance, half.z + clearance);
@@ -670,9 +766,21 @@ impl Scene {
     }
 
     pub fn set_portal_open(&mut self, open: bool) {
+        self.portal_open = open;
         let color = if open { [84, 229, 241] } else { [61, 77, 100] };
         for face in &mut self.model.faces[self.portal_faces.clone()] {
             face.color = MaterialColor::Fixed(color);
+        }
+    }
+
+    pub fn hide_clock(&mut self, index: usize) {
+        let (Some(range), Some(original)) =
+            (self.clock_faces.get(index), self.clock_indices.get(index))
+        else {
+            return;
+        };
+        for (face, _) in self.model.faces[range.clone()].iter_mut().zip(original) {
+            face.indices = [0, 0, 0];
         }
     }
 }

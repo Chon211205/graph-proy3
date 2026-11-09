@@ -24,16 +24,12 @@ fn pause_freezes_mission_and_rescue_progress() {
 }
 
 #[test]
-fn rescue_target_is_restricted_to_accessible_capsules_before_inversion() {
+fn every_energy_fragment_is_available_from_the_start() {
     let mut game = HourglassRescue::new();
     let mut ship = Ship::new(&ARWING_SPEC);
     ship.position = CAPSULE_POSITIONS[4];
     game.update_rescue(&ship, Input::default(), 0.05);
-    assert!(game.rescue_target.is_some_and(|index| index < 3));
-
-    game.inversion_complete = true;
-    game.update_rescue(&ship, Input::default(), 0.05);
-    assert!(game.rescue_target.is_some_and(|index| index >= 3));
+    assert_eq!(game.rescue_target, Some(4));
 }
 
 #[test]
@@ -70,7 +66,8 @@ fn forward_input_moves_toward_the_first_capsule() {
     let distance_after = offset_after.dot(offset_after);
     assert!(
         ship.position.z < 42.0,
-        "forward should move along the chamber toward -Z"
+        "forward should move along the chamber toward -Z, got {:?}",
+        ship.position
     );
     assert!(
         distance_after < distance_before,
@@ -103,17 +100,10 @@ fn dune_terrain_is_a_wide_non_degenerate_grid() {
 }
 
 #[test]
-fn rising_sand_hides_and_then_reveals_the_low_capsule() {
+fn static_sand_keeps_pending_fragments_visible() {
     let mut game = HourglassRescue::new();
-    game.sand_offset = SAND_RISE;
-    assert!(game.capsule_is_buried(0));
     game.update_capsule_visibility();
     let first_face = game.scene.capsule_faces[0].start;
-    assert_eq!(game.scene.model.faces[first_face].indices, [0, 0, 0]);
-
-    game.sand_offset = -1.8;
-    assert!(!game.capsule_is_buried(0));
-    game.update_capsule_visibility();
     assert_ne!(game.scene.model.faces[first_face].indices, [0, 0, 0]);
 }
 
@@ -144,20 +134,29 @@ fn holding_rescue_collects_a_capsule_once() {
 }
 
 #[test]
-fn gravity_inversion_opens_the_upper_route_without_adding_mission_time() {
+fn clock_pickup_adds_time_and_can_only_be_collected_once() {
     let mut game = HourglassRescue::new();
     let mut ship = Ship::new(&ARWING_SPEC);
-    game.phase = Phase::Warning;
-    game.elapsed = INVERSION_AT - INVERSION_WARNING;
-    for _ in 0..240 {
-        game.update(&mut ship, Input::default(), 0.05);
-        if game.inversion_complete {
-            break;
-        }
-    }
-    assert!(game.inversion_complete);
-    assert_eq!(game.phase, Phase::Playing);
-    assert!(game.elapsed <= INVERSION_AT + 0.05);
+    game.phase = Phase::Playing;
+    game.elapsed = 30.0;
+    ship.position = CLOCK_POSITIONS[0];
+
+    game.update_clocks(&ship);
+    game.update_clocks(&ship);
+
+    assert_eq!(game.elapsed, 10.0);
+    assert_eq!(game.clocks_collected, 1);
+    assert!(game.clocks[0]);
+}
+
+#[test]
+fn portal_stays_solid_until_every_energy_fragment_is_collected() {
+    let mut game = HourglassRescue::new();
+    let approach = Vec3::new(0.0, 155.0, -501.0);
+    assert!(game.scene.resolve_obstacle(approach, 3.2).is_some());
+
+    game.scene.set_portal_open(true);
+    assert!(game.scene.resolve_obstacle(approach, 3.2).is_none());
 }
 
 #[test]
@@ -216,14 +215,18 @@ fn climb_and_descend_inputs_move_in_the_expected_vertical_direction() {
     assert!(ship.position.y > start_y);
 
     let raised_y = ship.position.y;
-    game.move_ship(
-        &mut ship,
-        Input {
-            descend: true,
-            ..Input::default()
-        },
-        0.2,
-    );
+    // Free flight preserves pitch momentum, so reversing direction takes a
+    // few frames instead of snapping the ship downward immediately.
+    for _ in 0..8 {
+        game.move_ship(
+            &mut ship,
+            Input {
+                descend: true,
+                ..Input::default()
+            },
+            0.2,
+        );
+    }
     assert!(ship.position.y < raised_y);
 }
 
@@ -237,6 +240,26 @@ fn sand_stream_projection_discards_points_too_close_to_the_camera() {
         .add(camera.forward.mul(0.21))
         .add(camera.right.mul(1_000.0));
     assert!(super::rendering::project(&camera, near_camera, 1200, 800).is_none());
+}
+
+#[test]
+fn follow_camera_translates_with_ship_without_rotating_from_steering() {
+    let game = HourglassRescue::new();
+    let mut ship = Ship::new(&ARWING_SPEC);
+    ship.position = Vec3::new(10.0, 20.0, 30.0);
+    let first = game.camera(&ship);
+
+    ship.position = ship.position.add(Vec3::new(7.0, -2.0, 11.0));
+    ship.yaw = 4.2;
+    ship.pitch = 0.9;
+    ship.roll = 1.7;
+    let second = game.camera(&ship);
+
+    let camera_shift = second.position.sub(first.position);
+    assert!((camera_shift.x - 7.0).abs() < 0.001);
+    assert!((camera_shift.y + 2.0).abs() < 0.001);
+    assert!((camera_shift.z - 11.0).abs() < 0.001);
+    assert!(second.forward.sub(first.forward).dot(second.forward.sub(first.forward)) < 0.000_001);
 }
 
 #[test]
@@ -325,7 +348,6 @@ fn write_victory_preview_when_capture_path_is_set() {
     game.phase = Phase::Won;
     game.elapsed = 112.0;
     game.rescued = CAPSULE_COUNT as u8;
-    game.inversion_complete = true;
     game.capsules.fill(CapsuleState::Rescued);
     for index in 0..CAPSULE_COUNT {
         game.scene.hide_capsule(index);

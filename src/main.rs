@@ -7194,7 +7194,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 game_mode = GameMode::HourglassRescue;
                 entered_level = true;
                 window.set_title(
-                    "Rescate a Contratiempo | A/D girar | W/S altura | Flechas avanzar | E rescatar",
+                    "Planeta del Reloj | controles de vuelo libre | Enter recoge energia",
                 );
             } else if active_galaxy == Galaxy::Vesper && vesper_orbit_index == Some(2) {
                 window.set_cursor_visibility(true);
@@ -7803,19 +7803,18 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::HourglassRescue => {
                 let restart_pressed = crate::input::pressed(Key::R);
                 let rescue_input = hourglass_rescue::Input {
-                    // WASD is a consistent four-way flight layout: A/D steer,
-                    // W/S climb and descend. Arrow up/down handle thrust.
-                    forward: window.is_key_down(Key::Up),
-                    brake: window.is_key_down(Key::Down),
+                    forward: window.is_key_down(Key::Space),
+                    brake: window.is_key_down(Key::LeftCtrl)
+                        || window.is_key_down(Key::RightCtrl),
                     left: window.is_key_down(Key::A) || window.is_key_down(Key::Left),
                     right: window.is_key_down(Key::D) || window.is_key_down(Key::Right),
-                    rise: window.is_key_down(Key::W) || window.is_key_down(Key::Space),
-                    descend: window.is_key_down(Key::S)
-                        || window.is_key_down(Key::LeftCtrl)
-                        || window.is_key_down(Key::RightCtrl),
+                    rise: window.is_key_down(Key::W) || window.is_key_down(Key::Up),
+                    descend: window.is_key_down(Key::S) || window.is_key_down(Key::Down),
+                    roll_left: window.is_key_down(Key::Q),
+                    roll_right: window.is_key_down(Key::E),
                     boost: window.is_key_down(Key::LeftShift)
                         || window.is_key_down(Key::RightShift),
-                    rescue: window.is_key_down(Key::E),
+                    rescue: window.is_key_down(Key::Enter),
                     pause: crate::input::pressed(Key::P) || crate::input::pressed(Key::Escape),
                     exit: crate::input::pressed(Key::Backspace),
                     restart: restart_pressed,
@@ -8053,7 +8052,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::CoreGuardian if guardian_fight.is_exposed() => "ATACA EL NUCLEO EXPUESTO",
             GameMode::CoreGuardian => "SOBREVIVE Y ABRE EL NUCLEO",
             GameMode::TowerGuard => "DEFIENDE LA TORRE",
-            GameMode::HourglassRescue => "RESCATA LAS CINCO CAPSULAS",
+            GameMode::HourglassRescue => "REUNE FRAGMENTOS Y CONSIGUE LA ESFERA",
         };
         let shield_ratio = match game_mode {
             GameMode::WaterLevel => {
