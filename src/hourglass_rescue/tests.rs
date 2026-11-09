@@ -243,23 +243,22 @@ fn sand_stream_projection_discards_points_too_close_to_the_camera() {
 }
 
 #[test]
-fn follow_camera_translates_with_ship_without_rotating_from_steering() {
+fn follow_camera_stays_behind_the_ship_when_it_turns() {
     let game = HourglassRescue::new();
     let mut ship = Ship::new(&ARWING_SPEC);
     ship.position = Vec3::new(10.0, 20.0, 30.0);
+    ship.yaw = std::f32::consts::FRAC_PI_2;
     let first = game.camera(&ship);
+    let first_forward = ship.movement_basis().0;
+    assert!(first.position.sub(ship.position).dot(first_forward) < 0.0);
 
-    ship.position = ship.position.add(Vec3::new(7.0, -2.0, 11.0));
-    ship.yaw = 4.2;
-    ship.pitch = 0.9;
+    ship.yaw = std::f32::consts::PI;
+    ship.pitch = 0.35;
     ship.roll = 1.7;
     let second = game.camera(&ship);
-
-    let camera_shift = second.position.sub(first.position);
-    assert!((camera_shift.x - 7.0).abs() < 0.001);
-    assert!((camera_shift.y + 2.0).abs() < 0.001);
-    assert!((camera_shift.z - 11.0).abs() < 0.001);
-    assert!(second.forward.sub(first.forward).dot(second.forward.sub(first.forward)) < 0.000_001);
+    let second_forward = ship.movement_basis().0;
+    assert!(second.position.sub(ship.position).dot(second_forward) < 0.0);
+    assert!(second.forward.sub(first.forward).dot(second.forward.sub(first.forward)) > 0.1);
 }
 
 #[test]

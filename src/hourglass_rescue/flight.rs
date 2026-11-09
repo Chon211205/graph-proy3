@@ -29,10 +29,13 @@ impl HourglassRescue {
         } else {
             0.0
         };
-        self.speed = ship.speed;
+        // The time planet uses the free-flight controls with a slightly faster
+        // traversal pace so its distant objectives do not feel sluggish.
+        let travel_speed = ship.speed * 1.35 + boost;
+        self.speed = travel_speed;
         let forward = ship.movement_basis().0;
-        ship.position = ship.position.add(forward.mul((ship.speed + boost) * dt));
-        self.vertical_speed = forward.y * (ship.speed + boost);
+        ship.position = ship.position.add(forward.mul(travel_speed * dt));
+        self.vertical_speed = forward.y * travel_speed;
     }
 
     pub(super) fn resolve_collisions(&mut self, ship: &mut Ship, _dt: f32) {

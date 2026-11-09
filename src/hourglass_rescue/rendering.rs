@@ -96,9 +96,9 @@ impl HourglassRescue {
     }
 
     pub(super) fn camera(&self, ship: &Ship) -> Camera {
-        // Fixed-angle follow camera. It translates with the ship, but steering,
-        // pitching and rolling never rotate the player's view.
-        let view_forward = Vec3::new(0.0, -0.12, -1.0).normalize();
+        // Chase camera: stay behind the real travel direction while keeping
+        // the horizon stable instead of inheriting the ship's barrel roll.
+        let view_forward = ship.movement_basis().0;
         let world_up = Vec3::new(0.0, 1.0, 0.0);
         let position = ship
             .position
