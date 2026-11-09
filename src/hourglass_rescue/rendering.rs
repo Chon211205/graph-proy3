@@ -26,13 +26,16 @@ impl HourglassRescue {
         self.draw_sand_stream(frame, &camera);
         render_model(&self.scene.model, frame, &camera, |v| v, None, None);
         let ship_center = model_center(ship_model);
-        let (forward, right, up) = flight_basis(ship);
+        // Render with the exact same basis used by movement. The previous
+        // level-specific formula used a different yaw convention and drew the
+        // ship roughly 90 degrees away from its real travel direction.
+        let (forward, right, up) = ship.basis();
         render_model(
             ship_model,
             frame,
             &camera,
             |vertex| {
-                let local = vertex.sub(ship_center).mul(ship.spec.model_scale * 3.0);
+                let local = vertex.sub(ship_center).mul(ship.spec.model_scale * 2.5);
                 ship.position
                     .add(ship.spec.model_to_world(local, forward, right, up))
             },
@@ -196,18 +199,6 @@ fn draw_line(frame: &mut Framebuffer, start: (i32, i32), end: (i32, i32), color:
             set_pixel(frame, x, y + offset, color);
         }
     }
-}
-
-fn flight_basis(ship: &Ship) -> (Vec3, Vec3, Vec3) {
-    let (sin_yaw, cos_yaw) = ship.yaw.sin_cos();
-    let (sin_pitch, cos_pitch) = ship.pitch.sin_cos();
-    let forward = Vec3::new(-sin_yaw * cos_pitch, sin_pitch, -cos_yaw * cos_pitch).normalize();
-    let flat_right = forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
-    let flat_up = flat_right.cross(forward).normalize();
-    let (sin_roll, cos_roll) = (ship.roll + ship.steering_bank).sin_cos();
-    let right = flat_right.mul(cos_roll).add(flat_up.mul(sin_roll));
-    let up = flat_up.mul(cos_roll).sub(flat_right.mul(sin_roll));
-    (forward, right, up)
 }
 
 pub(super) fn project(
