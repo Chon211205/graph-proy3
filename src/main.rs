@@ -179,6 +179,9 @@ const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
 // Use structure-centered horizontal orbits instead of the complete OBJ bounds.
 const VESPER_ORBIT_HEIGHTS: [f32; 3] = [0.0, 3.0, 12.0];
 const VESPER_ORBIT_RADII: [f32; 3] = [30.0, 26.0, 20.0];
+// The castle asset's 58-unit bounding sphere includes its tall flag and portal;
+// its rocky equator is much narrower and is the surface used for free-flight orbit.
+const NOVA_CASTLE_ORBIT_RADIUS: f32 = 34.0;
 const ORBIT_CAMERA_DISTANCE: f32 = 100.0;
 const ORBIT_CAMERA_HEIGHT: f32 = 28.0;
 const HOME_ORBIT_TARGET_HEIGHT: f32 = 3.0;
@@ -5091,7 +5094,7 @@ fn render_scene(
 ) {
     framebuffer.clear(0);
     draw_skybox(framebuffer, travel, galaxy);
-    let camera = chase_camera(ship, galaxy == Galaxy::Vesper);
+    let camera = chase_camera(ship, matches!(galaxy, Galaxy::Vesper | Galaxy::Nova));
     debug_assert!(batch.commands.is_empty());
     let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let planet_position = water_planet_position(world_time);
@@ -7462,6 +7465,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             } else if active_galaxy == Galaxy::Vesper {
                 // Vesper's other bodies have no minigame; keep the player in
                 // orbit instead of accidentally launching the water level.
+            } else if active_galaxy == Galaxy::Nova {
+                // The castle currently acts as a free-flight destination. Keep
+                // Enter from accidentally launching the aquatic level here.
             } else if ship_controller.ship.spiky_planet_locked {
                 guardian_fight = CoreGuardian::new();
                 game_mode = GameMode::CoreGuardian;
@@ -7677,16 +7683,23 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             true,
                         );
                         vesper_orbit_index = ship.planet_locked.then_some(nearest);
-                    } else {
-                        // Nova is open deep space: no body should capture the
-                        // ship into an orbit while it approaches its portal.
-                        ship.planet_locked = false;
+                    } else if active_galaxy == Galaxy::Nova {
                         ship.spiky_planet_locked = false;
                         ship.race_planet_locked = false;
-                        ship.orbit_center = None;
-                        ship.orbit_plane_normal = None;
-                        ship.position = ship.position.add(ship.movement_basis().0.mul(movement));
+                        move_around_planet(
+                            ship,
+                            movement,
+                            castle_planet.center,
+                            NOVA_CASTLE_ORBIT_RADIUS,
+                            castle_planet.rotation_y + world_time * 0.018,
+                            &[],
+                            yaw_input,
+                            pitch_input,
+                            true,
+                        );
                         vesper_orbit_index = None;
+                    } else {
+                        unreachable!("all galaxies are handled above");
                     }
                 }
                 let camera_target = if ship.orbit_plane_normal.is_some() {
@@ -7760,6 +7773,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                                 "{planet_name} | En orbita | Backspace: salir"
                             ));
                         }
+                    } else if active_galaxy == Galaxy::Nova {
+                        window.set_title(
+                            "Planeta Castillo | En orbita | Backspace: salir de orbita",
+                        );
                     } else {
                         window.set_title(
                             "Planeta acuatico | Enter: iniciar nivel | Backspace: salir",
@@ -8597,6 +8614,38 @@ mod tests {
         assert!((ship.position.y - center.y).abs() < 0.001);
         assert!(ship.pitch.abs() < 0.001);
         let plane = ship.orbit_plane_normal.expect("Vesper orbit plane");
+        assert!(plane.x.abs() < 0.001);
+        assert!((plane.y - 1.0).abs() < 0.001);
+        assert!(plane.z.abs() < 0.001);
+    }
+
+    #[test]
+    fn nova_castle_captures_the_ship_in_a_horizontal_orbit() {
+        let center = Vec3::new(0.0, 55.0, -80.0);
+        let mut ship = Ship::new(&ASTRA_SPEC);
+        ship.position = center.add(Vec3::new(49.0, 0.0, 0.0));
+
+        move_around_planet(
+            &mut ship,
+            4.0,
+            center,
+            NOVA_CASTLE_ORBIT_RADIUS,
+            0.0,
+            &[],
+            0,
+            0,
+            true,
+        );
+
+        assert!(ship.planet_locked);
+        assert!((ship.position.y - center.y).abs() < 0.001);
+        let distance = ship.position.sub(center).dot(ship.position.sub(center)).sqrt();
+        let minimum = NOVA_CASTLE_ORBIT_RADIUS
+            + ship.spec.collision_radius
+            + COLLISION_MARGIN
+            + ORBIT_FLIGHT_ALTITUDE;
+        assert!(distance >= minimum - 0.001);
+        let plane = ship.orbit_plane_normal.expect("Nova orbit plane");
         assert!(plane.x.abs() < 0.001);
         assert!((plane.y - 1.0).abs() < 0.001);
         assert!(plane.z.abs() < 0.001);
