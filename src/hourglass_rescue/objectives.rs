@@ -1,9 +1,6 @@
 use crate::ship::Ship;
 
-use super::{
-    CapsuleState, Cue, HourglassRescue, Input, CAPSULE_COUNT, CAPSULE_POSITIONS, RESCUE_DISTANCE,
-    RESCUE_MAX_SPEED, RESCUE_SECONDS,
-};
+use super::{CapsuleState, Cue, HourglassRescue, CAPSULE_COUNT, CAPSULE_POSITIONS, RESCUE_DISTANCE};
 
 impl HourglassRescue {
     pub(super) fn update_clocks(&mut self, ship: &Ship) {
@@ -24,7 +21,7 @@ impl HourglassRescue {
         }
     }
 
-    pub(super) fn update_rescue(&mut self, ship: &Ship, input: Input, dt: f32) {
+    pub(super) fn update_rescue(&mut self, ship: &Ship) {
         let target = (0..CAPSULE_COUNT)
             .filter(|&index| self.capsules[index] == CapsuleState::Pending)
             .min_by(|&a, &b| {
@@ -34,30 +31,23 @@ impl HourglassRescue {
             });
         self.rescue_target = target;
         let Some(index) = target else {
-            self.rescue_progress = 0.0;
             return;
         };
         let offset = ship.position.sub(CAPSULE_POSITIONS[index]);
         let close_enough = offset.dot(offset) <= RESCUE_DISTANCE * RESCUE_DISTANCE;
-        if close_enough && self.speed <= RESCUE_MAX_SPEED && input.rescue {
-            self.rescue_progress += dt;
-            if self.rescue_progress >= RESCUE_SECONDS {
-                self.capsules[index] = CapsuleState::Rescued;
-                self.scene.hide_capsule(index);
-                self.rescued += 1;
-                self.audio.play(Cue::Capsule);
-                self.rescue_progress = 0.0;
-                self.rescue_target = None;
-                self.feedback = "FRAGMENTO DE ENERGIA RECOGIDO";
-                self.feedback_timer = 1.5;
-                if self.rescued as usize == CAPSULE_COUNT {
-                    self.scene.set_portal_open(true);
-                    self.feedback = "PUERTA DESBLOQUEADA - BUSCA LA ESFERA DEL DRAGON";
-                    self.feedback_timer = 3.0;
-                }
+        if close_enough {
+            self.capsules[index] = CapsuleState::Rescued;
+            self.scene.hide_capsule(index);
+            self.rescued += 1;
+            self.audio.play(Cue::Capsule);
+            self.rescue_target = None;
+            self.feedback = "FRAGMENTO DE ENERGIA RECOGIDO";
+            self.feedback_timer = 1.5;
+            if self.rescued as usize == CAPSULE_COUNT {
+                self.scene.set_portal_open(true);
+                self.feedback = "PUERTA DESBLOQUEADA - BUSCA LA ESFERA DEL DRAGON";
+                self.feedback_timer = 3.0;
             }
-        } else {
-            self.rescue_progress = 0.0;
         }
     }
 

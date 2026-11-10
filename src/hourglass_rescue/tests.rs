@@ -3,12 +3,11 @@ use super::*;
 use crate::ship::ARWING_SPEC;
 
 #[test]
-fn pause_freezes_mission_and_rescue_progress() {
+fn pause_freezes_mission_time() {
     let mut game = HourglassRescue::new();
     let mut ship = Ship::new(&ARWING_SPEC);
     game.phase = Phase::Playing;
     game.elapsed = 24.0;
-    game.rescue_progress = 0.4;
     game.update(
         &mut ship,
         Input {
@@ -20,7 +19,6 @@ fn pause_freezes_mission_and_rescue_progress() {
     let elapsed = game.elapsed;
     game.update(&mut ship, Input::default(), 1.0);
     assert_eq!(game.elapsed, elapsed);
-    assert_eq!(game.rescue_progress, 0.4);
 }
 
 #[test]
@@ -63,8 +61,9 @@ fn every_energy_fragment_is_available_from_the_start() {
     let mut game = HourglassRescue::new();
     let mut ship = Ship::new(&ARWING_SPEC);
     ship.position = CAPSULE_POSITIONS[4];
-    game.update_rescue(&ship, Input::default(), 0.05);
-    assert_eq!(game.rescue_target, Some(4));
+    game.update_rescue(&ship);
+    assert_eq!(game.rescued, 1);
+    assert_eq!(game.capsules[4], CapsuleState::Rescued);
 }
 
 #[test]
@@ -139,6 +138,22 @@ fn dune_terrain_is_a_wide_non_degenerate_grid() {
 }
 
 #[test]
+fn rocky_surfaces_use_the_png_stone_shader() {
+    let game = HourglassRescue::new();
+    let textured_faces = game
+        .scene
+        .model
+        .faces
+        .iter()
+        .filter(|face| face.shader == crate::obj_loader::SurfaceShader::TimePlanetRockTexture)
+        .count();
+    assert!(
+        textured_faces > 250,
+        "mountains, ruins and floating rocks should use the PNG stone texture"
+    );
+}
+
+#[test]
 fn static_sand_keeps_pending_fragments_visible() {
     let mut game = HourglassRescue::new();
     game.update_capsule_visibility();
@@ -147,27 +162,27 @@ fn static_sand_keeps_pending_fragments_visible() {
 }
 
 #[test]
-fn holding_rescue_collects_a_capsule_once() {
+fn energy_pickups_use_the_imported_blender_fragment() {
+    let game = HourglassRescue::new();
+    for range in &game.scene.capsule_faces {
+        let faces = &game.scene.model.faces[range.clone()];
+        assert!(
+            faces
+                .iter()
+                .any(|face| face.group == "Cristal_Central_Superior")
+        );
+        assert!(faces.iter().any(|face| face.group == "Aro_Temporal_Exterior"));
+    }
+}
+
+#[test]
+fn colliding_with_fragment_collects_it_once() {
     let mut game = HourglassRescue::new();
     let mut ship = Ship::new(&ARWING_SPEC);
     game.phase = Phase::Playing;
     ship.position = CAPSULE_POSITIONS[0];
-    game.update_rescue(
-        &ship,
-        Input {
-            rescue: true,
-            ..Input::default()
-        },
-        RESCUE_SECONDS,
-    );
-    game.update_rescue(
-        &ship,
-        Input {
-            rescue: true,
-            ..Input::default()
-        },
-        RESCUE_SECONDS,
-    );
+    game.update_rescue(&ship);
+    game.update_rescue(&ship);
     assert_eq!(game.rescued, 1);
     assert_eq!(game.capsules[0], CapsuleState::Rescued);
 }
@@ -196,6 +211,31 @@ fn portal_stays_solid_until_every_energy_fragment_is_collected() {
 
     game.scene.set_portal_open(true);
     assert!(game.scene.resolve_obstacle(approach, 3.2).is_none());
+}
+
+#[test]
+fn portal_uses_layered_iris_and_imported_four_star_ball() {
+    let mut game = HourglassRescue::new();
+    assert!(!game.scene.portal_faces.is_empty());
+    assert!(!game.scene.portal_energy_faces.is_empty());
+    assert!(game
+        .scene
+        .model
+        .faces
+        .iter()
+        .any(|face| face.group == "dragon_star_3"));
+    assert!(game
+        .scene
+        .model
+        .faces
+        .iter()
+        .filter(|face| face.group == "dragon_ball")
+        .all(|face| face.shader == crate::obj_loader::SurfaceShader::DragonBallGlass));
+
+    game.scene.set_portal_open(true);
+    assert!(game.scene.model.faces[game.scene.portal_energy_faces.clone()]
+        .iter()
+        .all(|face| face.color == crate::obj_loader::MaterialColor::Fixed([56, 238, 255])));
 }
 
 #[test]

@@ -32,9 +32,7 @@ const CLOCK_POSITIONS: [Vec3; CLOCK_COUNT] = [
     Vec3::new(150.0, 118.0, -420.0),
     Vec3::new(-75.0, 158.0, -505.0),
 ];
-const RESCUE_SECONDS: f32 = 1.0;
 const RESCUE_DISTANCE: f32 = 10.0;
-const RESCUE_MAX_SPEED: f32 = 4.5;
 const EXIT_POSITION: Vec3 = Vec3::new(0.0, 155.0, -505.0);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -57,7 +55,6 @@ pub struct Input {
     pub roll_left: bool,
     pub roll_right: bool,
     pub boost: bool,
-    pub rescue: bool,
     pub pause: bool,
     pub exit: bool,
     pub restart: bool,
@@ -86,7 +83,6 @@ pub struct HourglassRescue {
     hit_cooldown: f32,
     boost_reserve: f32,
     sand_offset: f32,
-    rescue_progress: f32,
     rescue_target: Option<usize>,
     capsules: [CapsuleState; CAPSULE_COUNT],
     rescued: u8,
@@ -113,7 +109,6 @@ impl HourglassRescue {
             hit_cooldown: 0.0,
             boost_reserve: 2.2,
             sand_offset: 0.0,
-            rescue_progress: 0.0,
             rescue_target: None,
             capsules: [CapsuleState::Pending; CAPSULE_COUNT],
             rescued: 0,
@@ -213,7 +208,6 @@ impl HourglassRescue {
             ship.position = self.safe_position;
             self.speed = 0.0;
             self.vertical_speed = 0.0;
-            self.rescue_progress = 0.0;
             self.rescue_target = None;
             self.feedback = "NAVE RECUPERADA EN POSICION SEGURA";
             self.feedback_timer = 2.0;
@@ -221,7 +215,7 @@ impl HourglassRescue {
         self.move_ship(ship, input, dt);
         self.resolve_collisions(ship, dt);
         self.update_clocks(ship);
-        self.update_rescue(ship, input, dt);
+        self.update_rescue(ship);
         if self.shields == 0 {
             self.phase = Phase::Lost;
             self.feedback = "ESCUDOS AGOTADOS";
@@ -258,7 +252,4 @@ impl HourglassRescue {
         self.target_distance(ship)
     }
 
-    fn rescue_progress_ratio(&self) -> f32 {
-        (self.rescue_progress / RESCUE_SECONDS).clamp(0.0, 1.0)
-    }
 }

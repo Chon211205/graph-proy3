@@ -2256,7 +2256,9 @@ fn procedural_surface_color(
     }
     if matches!(
         shader,
-        SurfaceShader::WaterPlanetPillarTexture | SurfaceShader::WaterLevelRockTexture
+        SurfaceShader::WaterPlanetPillarTexture
+            | SurfaceShader::WaterLevelRockTexture
+            | SurfaceShader::TimePlanetRockTexture
     ) {
         if let Some(textures) = asphalt_textures() {
             let scale = 0.12;
@@ -2269,10 +2271,11 @@ fn procedural_surface_color(
                 * (0.69 + ao * 0.31)
                 * (0.93 + relief * 0.18)
                 * (1.0 + fresnel * (1.0 - roughness) * 0.07);
-            let tint = if shader == SurfaceShader::WaterLevelRockTexture {
-                [0.76, 0.92, 1.08]
-            } else {
-                [0.88, 0.94, 1.02]
+            let tint = match shader {
+                SurfaceShader::WaterLevelRockTexture => [0.76, 0.92, 1.08],
+                SurfaceShader::TimePlanetRockTexture => [1.04, 0.66, 1.08],
+                SurfaceShader::WaterPlanetPillarTexture => [0.88, 0.94, 1.02],
+                _ => unreachable!(),
             };
             let rgb = std::array::from_fn(|channel| {
                 (color[channel] * tint[channel]).clamp(0.0, 255.0) as u8
@@ -2662,6 +2665,12 @@ fn procedural_surface_color(
             66.0 + noise * 15.0,
             83.0 + noise * 15.0,
             96.0 + noise * 15.0,
+            1.0,
+        ),
+        SurfaceShader::TimePlanetRockTexture => (
+            132.0 + noise * 18.0,
+            82.0 + noise * 13.0,
+            142.0 + noise * 19.0,
             1.0,
         ),
         SurfaceShader::WaterLevelSandTexture => (
@@ -7823,7 +7832,6 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     roll_right: window.is_key_down(Key::E),
                     boost: window.is_key_down(Key::LeftShift)
                         || window.is_key_down(Key::RightShift),
-                    rescue: window.is_key_down(Key::Enter),
                     pause: crate::input::pressed(Key::P) || crate::input::pressed(Key::Escape),
                     exit: crate::input::pressed(Key::Backspace),
                     restart: restart_pressed,

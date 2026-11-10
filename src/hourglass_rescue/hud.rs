@@ -50,7 +50,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
         );
         draw_selection_label(
             frame,
-            "W/S SUBIR-BAJAR  A/D GIRAR  Q/E ALABEO  ENTER RECOGER",
+            "W/S SUBIR-BAJAR  A/D GIRAR  Q/E ALABEO  TOCA EL FRAGMENTO",
             w / 2,
             (h as f32 * 0.68) as i32,
             (scale / 2).max(1),
@@ -201,26 +201,6 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
             }
         }
     }
-    if game.rescue_progress > 0.0 {
-        draw_selection_label(
-            frame,
-            "MANTENE ENTER PARA RECOGER EL FRAGMENTO",
-            (w as f32 * 0.83) as i32,
-            (h as f32 * 0.875) as i32,
-            scale,
-            0x8ce7ef,
-        );
-        bar(
-            frame,
-            (w as f32 * 0.72) as i32,
-            (h as f32 * 0.915) as i32,
-            (w as f32 * 0.22) as i32,
-            (scale * 5).max(5),
-            game.rescue_progress_ratio(),
-            0x74e0e9,
-        );
-    }
-
     if game.feedback_timer > 0.0
         && !game.feedback.is_empty()
         && game.feedback != "REUNE LOS FRAGMENTOS, ADMINISTRA EL TIEMPO Y BUSCA LA ESFERA"
