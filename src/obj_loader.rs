@@ -87,11 +87,14 @@ pub enum SurfaceShader {
     WaterPlanetEarthTexture,
     WaterLevelRockTexture,
     TimePlanetRockTexture,
+    CastleRockTexture,
+    CastleLavaTexture,
     WaterLevelSandTexture,
     WaterMonsterCoreTexture,
     WaterMonsterTissueTexture,
     CoreGuardianEnvironmentTexture,
     DragonBallGlass,
+    CastlePortalGlass,
     RaceAsphaltClean,
     RaceAsphalt04,
     CowboyYellowPaint,
@@ -221,8 +224,17 @@ impl Model {
 }
 
 fn classify_surface(name: &str) -> SurfaceShader {
-    if matches!(name, "tower_stone" | "tower_stone_dark") {
+    if matches!(name, "castle_lava" | "castle_lava_hot") {
+        SurfaceShader::CastleLavaTexture
+    } else if matches!(name, "castle_portal_inner" | "castle_portal_core") {
+        SurfaceShader::CastlePortalGlass
+    } else if matches!(
+        name,
+        "tower_stone" | "tower_stone_dark" | "castle_bricks" | "castle_bricks_dark"
+    ) {
         SurfaceShader::RaceBricksTexture
+    } else if name == "castle_rock" {
+        SurfaceShader::CastleRockTexture
     } else if matches!(name, "underwater_rock" | "blue_stone" | "deep_cave_rock") {
         SurfaceShader::WaterLevelRockTexture
     } else if name == "underwater_sand" {
@@ -372,7 +384,23 @@ fn classify_color(name: &str) -> MaterialColor {
             return MaterialColor::Fixed([r, g, b]);
         }
     }
-    let fixed = if name == "roca_violeta" {
+    let fixed = if name.starts_with("castle_") {
+        match name {
+            "castle_rock" => [97, 79, 74],
+            "castle_lava" => [255, 46, 4],
+            "castle_lava_hot" => [255, 168, 10],
+            "castle_bricks" => [117, 110, 117],
+            "castle_bricks_dark" => [61, 51, 66],
+            "castle_portal_outer" => [31, 0, 46],
+            "castle_portal_middle" => [128, 5, 209],
+            "castle_portal_inner" => [209, 20, 255],
+            "castle_portal_core" => [255, 46, 255],
+            "castle_pole" => [31, 31, 31],
+            "castle_flag" => [235, 8, 8],
+            "castle_flag_dark" => [184, 3, 5],
+            _ => [117, 110, 117],
+        }
+    } else if name == "roca_violeta" {
         [113, 65, 159]
     } else if name == "sol" {
         [255, 180, 60]

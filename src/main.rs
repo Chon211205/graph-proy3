@@ -2121,6 +2121,42 @@ fn bricks_textures() -> Option<&'static BricksTextures> {
         .as_ref()
 }
 
+struct LavaTextures {
+    color: SurfaceTexture,
+    normal: SurfaceTexture,
+    roughness: SurfaceTexture,
+    emission: SurfaceTexture,
+    displacement: SurfaceTexture,
+}
+
+fn lava_textures() -> Option<&'static LavaTextures> {
+    static TEXTURES: OnceLock<Option<LavaTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let root = "assets/textures/Lava005_1K-PNG";
+            Some(LavaTextures {
+                color: SurfaceTexture::load_png(&format!("{root}/Lava005_1K-PNG_Color.png"), 512)?,
+                normal: SurfaceTexture::load_png(
+                    &format!("{root}/Lava005_1K-PNG_NormalGL.png"),
+                    512,
+                )?,
+                roughness: SurfaceTexture::load_png(
+                    &format!("{root}/Lava005_1K-PNG_Roughness.png"),
+                    512,
+                )?,
+                emission: SurfaceTexture::load_png(
+                    &format!("{root}/Lava005_1K-PNG_Emission.png"),
+                    512,
+                )?,
+                displacement: SurfaceTexture::load_png(
+                    &format!("{root}/Lava005_1K-PNG_Displacement.png"),
+                    512,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
 fn procedural_surface_color(
     shader: SurfaceShader,
     point: Vec3,
@@ -2171,6 +2207,22 @@ fn procedural_surface_color(
                 (14.0 + caustic * 18.0 + rim * 22.0) as u8,
             ],
             light,
+        );
+    }
+    if shader == SurfaceShader::CastlePortalGlass {
+        let energy = (point.x * 4.1 + point.y * 5.7 - point.z * 3.3 + time * 2.4).sin();
+        let caustic = (point.x * 9.2 - point.y * 6.4 + time * 3.1)
+            .sin()
+            .max(0.0)
+            .powf(4.0);
+        let rim = fresnel.clamp(0.0, 1.0).powf(0.55);
+        return pack(
+            [
+                (118.0 + energy * 18.0 + caustic * 54.0 + rim * 65.0) as u8,
+                (18.0 + energy * 7.0 + caustic * 18.0 + rim * 20.0) as u8,
+                (196.0 + energy * 20.0 + caustic * 42.0 + rim * 52.0) as u8,
+            ],
+            brightness * (0.86 + rim * 0.42),
         );
     }
     if shader == SurfaceShader::CoreGuardianEnvironmentTexture {
@@ -2259,6 +2311,7 @@ fn procedural_surface_color(
         SurfaceShader::WaterPlanetPillarTexture
             | SurfaceShader::WaterLevelRockTexture
             | SurfaceShader::TimePlanetRockTexture
+            | SurfaceShader::CastleRockTexture
     ) {
         if let Some(textures) = asphalt_textures() {
             let scale = 0.12;
@@ -2274,6 +2327,7 @@ fn procedural_surface_color(
             let tint = match shader {
                 SurfaceShader::WaterLevelRockTexture => [0.76, 0.92, 1.08],
                 SurfaceShader::TimePlanetRockTexture => [1.04, 0.66, 1.08],
+                SurfaceShader::CastleRockTexture => [0.90, 0.78, 0.70],
                 SurfaceShader::WaterPlanetPillarTexture => [0.88, 0.94, 1.02],
                 _ => unreachable!(),
             };
@@ -2329,6 +2383,37 @@ fn procedural_surface_color(
                 (color[channel] * tint[channel]).clamp(0.0, 255.0) as u8
             });
             return pack(rgb, surface_light);
+        }
+    }
+    if shader == SurfaceShader::CastleLavaTexture {
+        if let Some(textures) = lava_textures() {
+            let scale = 0.16;
+            let drift = Vec3::new(time * 0.18, 0.0, -time * 0.11);
+            let animated_point = point.add(drift);
+            let color = textures.color.sample_triplanar(animated_point, scale);
+            let normal = textures.normal.sample_triplanar(animated_point, scale);
+            let roughness = textures
+                .roughness
+                .sample_triplanar(animated_point, scale)[0]
+                / 255.0;
+            let emission = textures.emission.sample_triplanar(animated_point, scale);
+            let height = textures
+                .displacement
+                .sample_triplanar(animated_point, scale)[0]
+                / 255.0;
+            let relief = ((normal[0] - 128.0).abs() + (normal[1] - 128.0).abs()) / 255.0;
+            let pulse = 0.84 + (time * 2.8 + point.x * 0.8 + point.z * 0.6).sin() * 0.16;
+            let surface_light = brightness
+                * (0.88 + relief * 0.18)
+                * (0.96 + height * 0.12)
+                * (1.0 + fresnel * (1.0 - roughness) * 0.10);
+            let rgb: [u32; 3] = std::array::from_fn(|channel| {
+                let glow = [1.12, 0.72, 0.34][channel];
+                (color[channel] * surface_light
+                    + emission[channel] * pulse * glow * 0.72)
+                    .clamp(0.0, 255.0) as u32
+            });
+            return (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
         }
     }
     if shader == SurfaceShader::RaceBarkTexture {
@@ -2673,6 +2758,18 @@ fn procedural_surface_color(
             142.0 + noise * 19.0,
             1.0,
         ),
+        SurfaceShader::CastleRockTexture => (
+            105.0 + noise * 17.0,
+            88.0 + noise * 14.0,
+            78.0 + noise * 12.0,
+            1.0,
+        ),
+        SurfaceShader::CastleLavaTexture => (
+            242.0 + noise * 13.0,
+            66.0 + noise * 18.0,
+            8.0 + noise * 5.0,
+            1.18,
+        ),
         SurfaceShader::WaterLevelSandTexture => (
             170.0 + noise * 16.0,
             169.0 + noise * 14.0,
@@ -2698,6 +2795,7 @@ fn procedural_surface_color(
             1.0,
         ),
         SurfaceShader::DragonBallGlass => (244.0, 132.0, 22.0, 1.0),
+        SurfaceShader::CastlePortalGlass => (154.0, 32.0, 238.0, 1.0),
         SurfaceShader::RaceAsphaltClean => (
             48.0 + noise * 8.0,
             49.0 + noise * 8.0,
@@ -2913,6 +3011,56 @@ fn refract_dragon_ball_color(
         (transmitted[channel] * transmission * amber_filter
             + shell[channel] * (1.0 - transmission)
             + rim_glow * [1.0, 0.58, 0.18][channel])
+            .clamp(0.0, 255.0) as u32
+    });
+    (rgb[0] << 16) | (rgb[1] << 8) | rgb[2]
+}
+
+fn refract_castle_portal_color(
+    surface: u32,
+    background: &[u32],
+    width: usize,
+    height: usize,
+    x: i32,
+    y: i32,
+    point: Vec3,
+    time: f32,
+    fresnel: f32,
+) -> u32 {
+    let lens = (1.0 - fresnel).clamp(0.08, 1.0);
+    let vortex = (point.y * 6.8 + point.x * 4.7 + time * 2.5).sin();
+    let offset_x = (vortex * 5.5 + (point.z * 7.1 - time * 1.8).cos() * 2.4) * lens;
+    let offset_y = ((point.x * 5.9 + time * 2.1).sin() * 4.2 - point.z * 1.6) * lens;
+    let sample = |dx: f32, dy: f32| {
+        let sx = (x as f32 + offset_x + dx)
+            .round()
+            .clamp(0.0, width.saturating_sub(1) as f32) as usize;
+        let sy = (y as f32 + offset_y + dy)
+            .round()
+            .clamp(0.0, height.saturating_sub(1) as f32) as usize;
+        background[sy * width + sx]
+    };
+    let red_sample = sample(2.4 * lens, -0.8 * lens);
+    let green_sample = sample(0.0, 0.0);
+    let blue_sample = sample(-2.4 * lens, 0.8 * lens);
+    let transmitted = [
+        ((red_sample >> 16) & 0xff) as f32,
+        ((green_sample >> 8) & 0xff) as f32,
+        (blue_sample & 0xff) as f32,
+    ];
+    let portal = [
+        ((surface >> 16) & 0xff) as f32,
+        ((surface >> 8) & 0xff) as f32,
+        (surface & 0xff) as f32,
+    ];
+    let transmission = 0.48 + lens * 0.28;
+    let rim_glow = fresnel.powf(0.48) * 78.0;
+    let pulse = 0.86 + (time * 3.4 + point.y * 2.8).sin() * 0.14;
+    let rgb: [u32; 3] = std::array::from_fn(|channel| {
+        let violet_filter = [0.86, 0.48, 1.18][channel];
+        (transmitted[channel] * transmission * violet_filter
+            + portal[channel] * (1.0 - transmission) * pulse
+            + rim_glow * [0.82, 0.24, 1.0][channel])
             .clamp(0.0, 255.0) as u32
     });
     (rgb[0] << 16) | (rgb[1] << 8) | rgb[2]
@@ -3355,6 +3503,7 @@ enum PlanetVisual {
     VesperClock,
     VesperLantern,
     VesperShell,
+    Castle,
 }
 
 struct PlanetLodModels {
@@ -3459,6 +3608,9 @@ fn make_planet_lod(radius: f32, stacks: usize, slices: usize, visual: PlanetVisu
             PlanetVisual::VesperShell if band < 2 => "race_rgb_239_226_194",
             PlanetVisual::VesperShell if index % 3 == 0 => "race_rgb_24_112_119",
             PlanetVisual::VesperShell => "race_rgb_192_204_184",
+            PlanetVisual::Castle if band == stacks / 2 => "Castle_Lava",
+            PlanetVisual::Castle if index % 4 == 0 => "Castle_Bricks_Dark",
+            PlanetVisual::Castle => "Castle_Rock",
         };
         *face = Face::new(face.indices, material, "planet_lod");
         if matches!(visual, PlanetVisual::Spiky) {
@@ -4501,7 +4653,9 @@ impl TriangleBatch {
                 matches!(
                     &command.style,
                     TriangleStyle::Procedural {
-                        shader: SurfaceShader::Ocean | SurfaceShader::DragonBallGlass,
+                        shader: SurfaceShader::Ocean
+                            | SurfaceShader::DragonBallGlass
+                            | SurfaceShader::CastlePortalGlass,
                         ..
                     }
                 )
@@ -4614,6 +4768,15 @@ impl TriangleBatch {
                                     } else if *shader == SurfaceShader::DragonBallGlass {
                                         if let Some(background) = refractive_background {
                                             refract_dragon_ball_color(
+                                                surface, background, width, height, x, y, point,
+                                                *time, *fresnel,
+                                            )
+                                        } else {
+                                            surface
+                                        }
+                                    } else if *shader == SurfaceShader::CastlePortalGlass {
+                                        if let Some(background) = refractive_background {
+                                            refract_castle_portal_color(
                                                 surface, background, width, height, x, y, point,
                                                 *time, *fresnel,
                                             )
@@ -4910,10 +5073,12 @@ fn render_scene(
     wormhole_center: Vec3,
     galaxy: Galaxy,
     vesper_planets: &[VesperPlanet; 3],
+    castle_planet: &VesperPlanet,
     race_planet: &Model,
     planet_lods: [&PlanetLodModels; 3],
     planet_lod_states: &mut [PlanetLodState; 3],
     vesper_lod_states: &mut [PlanetLodState; 3],
+    castle_lod_state: &mut PlanetLodState,
     framebuffer: &mut Framebuffer,
     batch: &mut TriangleBatch,
     ship: &Ship,
@@ -5090,6 +5255,36 @@ fn render_scene(
                 None,
             );
         }
+    } else if galaxy == Galaxy::Nova {
+        let body = castle_planet;
+        let (sin, cos) = (body.rotation_y + world_time * 0.018).sin_cos();
+        let lod = castle_lod_state.update(projected_planet_radius(
+            &camera,
+            body.center,
+            body.radius,
+            batch.projection.focal,
+        ));
+        let use_low = lod != 0;
+        queue_model(
+            if use_low { &body.low } else { &body.model },
+            batch,
+            &camera,
+            |vertex| {
+                let local = if use_low {
+                    vertex
+                } else {
+                    vertex.sub(body.source_center).mul(body.scale)
+                };
+                Vec3::new(
+                    local.x * cos - local.z * sin,
+                    local.y,
+                    local.x * sin + local.z * cos,
+                )
+                .add(body.center)
+            },
+            None,
+            None,
+        );
     }
 
     queue_model(
@@ -6749,6 +6944,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     ];
     let mut planet_lod_states = [PlanetLodState::default(); 3];
     let mut vesper_lod_states = [PlanetLodState::default(); 3];
+    let mut castle_lod_state = PlanetLodState::default();
     let water_level_path = "assets/levels/waterlevel_extendido.obj";
     let mut water_level = load_obj(water_level_path)
         .map_err(|error| format!("Error al cargar {water_level_path}: {error}"))?;
@@ -6813,6 +7009,13 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             PlanetVisual::VesperShell,
         )?,
     ];
+    let castle_planet = VesperPlanet::load(
+        "assets/planets/planeta_castillo_lava.obj",
+        Vec3::new(0.0, 55.0, -80.0),
+        58.0,
+        0.0,
+        PlanetVisual::Castle,
+    )?;
     let race_sky = race_track::RaceSky {
         water_planet: &planet,
         water_center: planet_center,
@@ -7566,7 +7769,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     window.set_title(match active_galaxy {
                         Galaxy::Home => "Sistema solar | Vuelo libre 3D | F11: fullscreen",
                         Galaxy::Vesper => "Galaxia Vesper | Portales: Sistema solar y Nova",
-                        Galaxy::Nova => "Galaxia Nova | Portal: Vesper",
+                        Galaxy::Nova => "Galaxia Nova | Planeta Castillo | Portal: Vesper",
                     });
                 }
                 render_scene(
@@ -7587,10 +7790,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     wormhole_position(active_galaxy),
                     active_galaxy,
                     &vesper_planets,
+                    &castle_planet,
                     &race_track.planet,
                     [&planet_lods[0], &planet_lods[1], &planet_lods[2]],
                     &mut planet_lod_states,
                     &mut vesper_lod_states,
+                    &mut castle_lod_state,
                     &mut scene_framebuffer,
                     &mut triangle_batch,
                     &ship_controller.ship,
@@ -10949,5 +11154,79 @@ mod tests {
             assert!(!enemy.vertices.is_empty(), "{group} sin vertices");
             assert!(!enemy.faces.is_empty(), "{group} sin caras");
         }
+    }
+
+    #[test]
+    fn nova_castle_planet_asset_loads_with_authored_materials() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let model = load_obj(root.join("assets/planets/planeta_castillo_lava.obj")).unwrap();
+        assert!(model.vertices.len() > 7_000);
+        assert!(model.faces.len() > 7_000);
+
+        for material in [
+            "Castle_Rock",
+            "Castle_Lava",
+            "Castle_Bricks",
+            "Castle_Portal_Core",
+            "Castle_Flag",
+        ] {
+            assert!(
+                model.faces.iter().any(|face| face.material == material),
+                "falta el material {material}"
+            );
+        }
+        assert!(model.faces.iter().any(|face| {
+            face.material == "Castle_Bricks"
+                && face.shader == SurfaceShader::RaceBricksTexture
+                && face.color == MaterialColor::Fixed([117, 110, 117])
+        }));
+        assert!(model.faces.iter().any(|face| {
+            face.material == "Castle_Rock"
+                && face.shader == SurfaceShader::CastleRockTexture
+        }));
+        assert!(model.faces.iter().any(|face| {
+            face.material == "Castle_Lava"
+                && face.shader == SurfaceShader::CastleLavaTexture
+        }));
+        assert!(model.faces.iter().any(|face| {
+            face.material == "Castle_Portal_Core"
+                && face.color == MaterialColor::Fixed([255, 46, 255])
+                && face.shader == SurfaceShader::CastlePortalGlass
+        }));
+    }
+
+    #[test]
+    fn castle_lava_loads_and_animates_the_complete_png_texture_set() {
+        let textures = lava_textures().expect("Lava005 PNG textures must load");
+        for texture in [
+            &textures.color,
+            &textures.normal,
+            &textures.roughness,
+            &textures.emission,
+            &textures.displacement,
+        ] {
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
+        }
+        let point = Vec3::new(3.2, -1.1, 4.7);
+        let first = procedural_surface_color(
+            SurfaceShader::CastleLavaTexture,
+            point,
+            0,
+            0,
+            0.0,
+            1.0,
+            0.15,
+        );
+        let animated = procedural_surface_color(
+            SurfaceShader::CastleLavaTexture,
+            point,
+            0,
+            0,
+            1.0,
+            1.0,
+            0.15,
+        );
+        assert_ne!(first, animated);
     }
 }
