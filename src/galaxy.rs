@@ -37,8 +37,8 @@ pub(crate) fn wormhole_position(galaxy: Galaxy) -> Vec3 {
 }
 
 pub(crate) fn nova_portal_position() -> Vec3 {
-    // Independent Vesper gateway to Nova, well separated from the return portal.
-    Vec3::new(-420.0, 115.0, 520.0)
+    // Suspended vertically above Vesper's central black hole at (0, 48, 0).
+    Vec3::new(0.0, 185.0, 0.0)
 }
 
 #[cfg(test)]
@@ -56,6 +56,10 @@ mod tests {
         assert!(vesper_to_nova.dot(vesper_to_nova) > 1.0);
         let separate = nova_portal_position().sub(wormhole_position(Galaxy::Vesper));
         assert!(separate.dot(separate) > 300.0 * 300.0);
+        let nova_gateway = nova_portal_position();
+        assert!(nova_gateway.x.abs() < 0.001);
+        assert!(nova_gateway.z.abs() < 0.001);
+        assert!(nova_gateway.y > 48.0 + 100.0);
     }
 }
 

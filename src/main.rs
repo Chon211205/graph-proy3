@@ -154,15 +154,16 @@ const NEAR_PLANE: f32 = 0.2;
 const FAR_PLANE: f32 = 750.0;
 const VERTICAL_FOV: f32 = 60.0_f32.to_radians();
 const LIGHT_SPEED: f32 = 600.0;
-const PLANET_ORBIT_SPEED: f32 = 0.02;
+const PLANET_ORBIT_SPEED: f32 = 0.075;
 const SUN_POSITION_X: f32 = -520.0;
 const SUN_VISUAL_SCALE: f32 = 1.35;
+const SOLAR_SHIP_EXPLOSION_DURATION: f32 = 1.35;
 const PLANET_ORBIT_RADIUS: f32 = 220.0;
-const SPIKY_PLANET_ORBIT_SPEED: f32 = 0.012;
+const SPIKY_PLANET_ORBIT_SPEED: f32 = -0.075;
 const SPIKY_PLANET_ORBIT_RADIUS: f32 = 330.0;
 const SPIKY_PLANET_ORBIT_PHASE: f32 = PI * 0.5;
 const SPIKY_PLANET_ORBIT_INCLINATION: f32 = 0.30;
-const RACE_PLANET_ORBIT_SPEED: f32 = 0.008;
+const RACE_PLANET_ORBIT_SPEED: f32 = 0.075;
 const RACE_PLANET_ORBIT_RADIUS: f32 = 440.0;
 const RACE_PLANET_ORBIT_PHASE: f32 = PI * 1.18;
 const RACE_PLANET_ORBIT_INCLINATION: f32 = -0.16;
@@ -181,8 +182,11 @@ const VESPER_ORBIT_HEIGHTS: [f32; 2] = [0.0, 12.0];
 const VESPER_ORBIT_RADII: [f32; 2] = [30.0, 20.0];
 const VESPER_SYSTEM_CENTER: Vec3 = Vec3::new(0.0, 48.0, 0.0);
 const VESPER_SYSTEM_ORBIT_RADII: [f32; 2] = [225.0, 345.0];
-const VESPER_SYSTEM_ORBIT_SPEEDS: [f32; 2] = [0.075, -0.048];
+const VESPER_SYSTEM_ORBIT_SPEEDS: [f32; 2] = [0.075, -0.075];
 const VESPER_SYSTEM_ORBIT_PHASES: [f32; 2] = [0.45, 3.35];
+const VESPER_BLACK_HOLE_GRAVITY_RADIUS: f32 = 175.0;
+const VESPER_BLACK_HOLE_EVENT_HORIZON: f32 = 25.0;
+const VESPER_BLACK_HOLE_ABSORPTION_DURATION: f32 = 1.55;
 // The castle asset's 58-unit bounding sphere includes its tall flag and portal;
 // its rocky equator is much narrower and is the surface used for free-flight orbit.
 const NOVA_CASTLE_ORBIT_RADIUS: f32 = 34.0;
@@ -3733,6 +3737,96 @@ fn make_vesper_black_hole() -> Model {
     Model::new(vertices, faces)
 }
 
+fn make_home_orbit_rings() -> Model {
+    let mut vertices = Vec::new();
+    let mut faces = Vec::new();
+    let segments = 160;
+    let ring_width = 1.15;
+    let rings = [
+        (PLANET_ORBIT_RADIUS, 0.0_f32, [58, 174, 255]),
+        (
+            SPIKY_PLANET_ORBIT_RADIUS,
+            SPIKY_PLANET_ORBIT_INCLINATION,
+            [226, 75, 255],
+        ),
+        (
+            RACE_PLANET_ORBIT_RADIUS,
+            RACE_PLANET_ORBIT_INCLINATION,
+            [255, 205, 68],
+        ),
+    ];
+    for (ring_index, (radius, inclination, color)) in rings.into_iter().enumerate() {
+        let base = vertices.len();
+        let (sin_inclination, cos_inclination) = inclination.sin_cos();
+        for segment in 0..segments {
+            let angle = TAU * segment as f32 / segments as f32;
+            let (sin, cos) = angle.sin_cos();
+            for radial in [radius - ring_width, radius + ring_width] {
+                vertices.push(Vec3::new(
+                    cos * radial,
+                    sin * radial * sin_inclination - 20.0,
+                    sin * radial * cos_inclination,
+                ));
+            }
+        }
+        for segment in 0..segments {
+            let next = (segment + 1) % segments;
+            let a = base + segment * 2;
+            let b = base + next * 2;
+            let c = a + 1;
+            let d = b + 1;
+            for indices in [[a, b, c], [c, b, d]] {
+                let mut face = Face::new(indices, "home_orbit_ring", format!("orbit_{ring_index}"));
+                face.shader = SurfaceShader::Flat;
+                face.color = MaterialColor::Fixed(color);
+                faces.push(face);
+            }
+        }
+    }
+    Model::new(vertices, faces)
+}
+
+fn make_vesper_orbit_rings() -> Model {
+    let mut vertices = Vec::new();
+    let mut faces = Vec::new();
+    let segments = 160;
+    let ring_width = 1.25;
+    let colors = [[255, 184, 72], [78, 225, 255]];
+    for index in 0..2 {
+        let base = vertices.len();
+        let radius = VESPER_SYSTEM_ORBIT_RADII[index];
+        for segment in 0..segments {
+            let angle = TAU * segment as f32 / segments as f32;
+            let (sin, cos) = angle.sin_cos();
+            for radial in [radius - ring_width, radius + ring_width] {
+                vertices.push(Vec3::new(
+                    cos * radial,
+                    VESPER_ORBIT_HEIGHTS[index],
+                    sin * radial,
+                ));
+            }
+        }
+        for segment in 0..segments {
+            let next = (segment + 1) % segments;
+            let a = base + segment * 2;
+            let b = base + next * 2;
+            let c = a + 1;
+            let d = b + 1;
+            for indices in [[a, b, c], [c, b, d]] {
+                let mut face = Face::new(
+                    indices,
+                    "vesper_orbit_ring",
+                    format!("vesper_orbit_{index}"),
+                );
+                face.shader = SurfaceShader::Flat;
+                face.color = MaterialColor::Fixed(colors[index]);
+                faces.push(face);
+            }
+        }
+    }
+    Model::new(vertices, faces)
+}
+
 fn vesper_planet_position(index: usize, world_time: f32) -> Vec3 {
     let angle = VESPER_SYSTEM_ORBIT_PHASES[index] + VESPER_SYSTEM_ORBIT_SPEEDS[index] * world_time;
     let (sin, cos) = angle.sin_cos();
@@ -3741,6 +3835,34 @@ fn vesper_planet_position(index: usize, world_time: f32) -> Vec3 {
         VESPER_ORBIT_HEIGHTS[index],
         sin * VESPER_SYSTEM_ORBIT_RADII[index],
     ))
+}
+
+fn apply_vesper_black_hole_gravity(position: Vec3, delta_time: f32) -> Vec3 {
+    let offset = position.sub(VESPER_SYSTEM_CENTER);
+    let distance = offset.dot(offset).sqrt();
+    if distance <= VESPER_BLACK_HOLE_EVENT_HORIZON
+        || distance >= VESPER_BLACK_HOLE_GRAVITY_RADIUS
+    {
+        return position;
+    }
+    let influence = 1.0
+        - (distance - VESPER_BLACK_HOLE_EVENT_HORIZON)
+            / (VESPER_BLACK_HOLE_GRAVITY_RADIUS - VESPER_BLACK_HOLE_EVENT_HORIZON);
+    let pull_speed = 8.0 + influence * influence * 58.0;
+    position.sub(offset.mul(pull_speed * delta_time / distance.max(0.001)))
+}
+
+fn vesper_absorption_position(start: Vec3, progress: f32) -> Vec3 {
+    let offset = start.sub(VESPER_SYSTEM_CENTER);
+    let radius_scale = (1.0 - progress).max(0.0).powf(1.65);
+    let angle = progress * TAU * 2.4;
+    let (sin, cos) = angle.sin_cos();
+    let rotated = Vec3::new(
+        offset.x * cos - offset.z * sin,
+        offset.y * (1.0 - progress),
+        offset.x * sin + offset.z * cos,
+    );
+    VESPER_SYSTEM_CENTER.add(rotated.mul(radius_scale))
 }
 
 fn make_underwater_boost_ring() -> Model {
@@ -4103,6 +4225,20 @@ fn race_planet_position(world_time: f32) -> Vec3 {
         sin * RACE_PLANET_ORBIT_RADIUS * sin_inclination - 20.0,
         sin * RACE_PLANET_ORBIT_RADIUS * cos_inclination,
     ))
+}
+
+fn ship_touches_sun(
+    previous: Vec3,
+    current: Vec3,
+    ship_radius: f32,
+    sun_radius: f32,
+) -> bool {
+    crossed_wormhole(
+        previous,
+        current,
+        Vec3::new(SUN_POSITION_X, 20.0, 0.0),
+        sun_radius + ship_radius,
+    )
 }
 
 fn spiky_planet_is_closer(ship_position: Vec3, water_center: Vec3, spiky_center: Vec3) -> bool {
@@ -5130,11 +5266,13 @@ fn render_scene(
     spiky_planet_scale: f32,
     sun: &Model,
     sun_center: Vec3,
+    home_orbit_rings: &Model,
     wormhole: &Model,
     wormhole_center: Vec3,
     galaxy: Galaxy,
     vesper_planets: &[VesperPlanet; 2],
     vesper_black_hole: &Model,
+    vesper_orbit_rings: &Model,
     castle_planet: &VesperPlanet,
     race_planet: &Model,
     planet_lods: [&PlanetLodModels; 3],
@@ -5149,6 +5287,7 @@ fn render_scene(
     turbo_power: f32,
     fast_flight: bool,
     fire_charge: f32,
+    show_ship: bool,
     tower_reward: Option<(&Model, f32, Vec3)>,
 ) {
     framebuffer.clear(0);
@@ -5166,6 +5305,15 @@ fn render_scene(
             planet_position,
             WATER_PLANET_RADIUS,
             world_time,
+        );
+
+        queue_model(
+            home_orbit_rings,
+            batch,
+            &camera,
+            |vertex| vertex.add(sun_position),
+            None,
+            None,
         );
 
         queue_model(
@@ -5287,6 +5435,14 @@ fn render_scene(
             None,
         );
     } else if galaxy == Galaxy::Vesper {
+        queue_model(
+            vesper_orbit_rings,
+            batch,
+            &camera,
+            |vertex| vertex.add(VESPER_SYSTEM_CENTER),
+            None,
+            None,
+        );
         let (disk_sin, disk_cos) = (world_time * 0.22).sin_cos();
         queue_model(
             vesper_black_hole,
@@ -5385,21 +5541,23 @@ fn render_scene(
         );
     }
 
-    render_ship_components(
-        ship_model,
-        ship_center,
-        turbo_plume,
-        laser_bolt,
-        projectiles,
-        batch,
-        &camera,
-        ship,
-        world_time,
-        turbo_power,
-        fire_charge,
-        true,
-        1.0,
-    );
+    if show_ship {
+        render_ship_components(
+            ship_model,
+            ship_center,
+            turbo_plume,
+            laser_bolt,
+            projectiles,
+            batch,
+            &camera,
+            ship,
+            world_time,
+            turbo_power,
+            fire_charge,
+            true,
+            1.0,
+        );
+    }
     if let Some((dragon_ball, reward_elapsed, reward_position)) = tower_reward {
         let descent = (reward_elapsed / 2.2).clamp(0.0, 1.0);
         let descent = descent * descent * (3.0 - 2.0 * descent);
@@ -5891,6 +6049,64 @@ fn draw_boss_explosion_glow(
             let red = (((old >> 16) & 255) as f32 + 255.0 * strength).min(255.0) as u32;
             let green = (((old >> 8) & 255) as f32 + 128.0 * strength).min(255.0) as u32;
             let blue = ((old & 255) as f32 + 45.0 * strength).min(255.0) as u32;
+            framebuffer.pixels[index] = (red << 16) | (green << 8) | blue;
+        }
+    }
+}
+
+fn draw_solar_ship_explosion(
+    framebuffer: &mut Framebuffer,
+    camera: &Camera,
+    position: Vec3,
+    timer: f32,
+) {
+    if timer <= 0.0 {
+        return;
+    }
+    let progress = 1.0 - timer / SOLAR_SHIP_EXPLOSION_DURATION;
+    let relative = position.sub(camera.position);
+    let depth = relative.dot(camera.forward);
+    if depth <= NEAR_PLANE {
+        return;
+    }
+    let focal = framebuffer.height as f32 / (VERTICAL_FOV * 0.5).tan() * 0.5;
+    let center_x = framebuffer.width as f32 * 0.5 + relative.dot(camera.right) * focal / depth;
+    let center_y = framebuffer.height as f32 * 0.5 - relative.dot(camera.up) * focal / depth;
+    let envelope = (progress * PI).sin().max(0.0);
+    let radius = 20.0 + progress * 125.0;
+    if !circle_intersects_frame(framebuffer, center_x, center_y, radius) {
+        return;
+    }
+    let min_x = (center_x - radius).floor().max(0.0) as usize;
+    let max_x = (center_x + radius)
+        .ceil()
+        .min(framebuffer.width.saturating_sub(1) as f32) as usize;
+    let min_y = (center_y - radius).floor().max(0.0) as usize;
+    let max_y = (center_y + radius)
+        .ceil()
+        .min(framebuffer.height.saturating_sub(1) as f32) as usize;
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            let dx = x as f32 + 0.5 - center_x;
+            let dy = y as f32 + 0.5 - center_y;
+            let distance = (dx * dx + dy * dy).sqrt();
+            if distance > radius {
+                continue;
+            }
+            let core = (1.0 - distance / radius).powf(2.0) * envelope;
+            let shock_radius = radius * (0.42 + progress * 0.46);
+            let shock = (1.0 - ((distance - shock_radius).abs() / (radius * 0.09)).min(1.0))
+                .powf(2.0)
+                * (1.0 - progress);
+            let sparks = ((dx * 0.23 + dy * 0.17 + progress * 18.0).sin().max(0.0)).powf(9.0)
+                * envelope
+                * 0.7;
+            let strength = (core + shock + sparks).clamp(0.0, 1.3);
+            let index = y * framebuffer.width + x;
+            let old = framebuffer.pixels[index];
+            let red = (((old >> 16) & 255) as f32 + 255.0 * strength).min(255.0) as u32;
+            let green = (((old >> 8) & 255) as f32 + 150.0 * strength).min(255.0) as u32;
+            let blue = ((old & 255) as f32 + 42.0 * strength).min(255.0) as u32;
             framebuffer.pixels[index] = (red << 16) | (green << 8) | blue;
         }
     }
@@ -7065,6 +7281,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let sun_path = "assets/planets/sol_detallado.obj";
     let sun = load_obj(sun_path).map_err(|error| format!("Error al cargar {sun_path}: {error}"))?;
     let sun_center = model_center(&sun);
+    let sun_collision_radius = model_radius(&sun, sun_center) * SUN_VISUAL_SCALE;
+    let home_orbit_rings = make_home_orbit_rings();
     let vesper_planets = [
         VesperPlanet::load(
             "assets/planets/reloj_arena.obj",
@@ -7082,6 +7300,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         )?,
     ];
     let vesper_black_hole = make_vesper_black_hole();
+    let vesper_orbit_rings = make_vesper_orbit_rings();
     let castle_planet = VesperPlanet::load(
         "assets/planets/planeta_castillo_lava.obj",
         Vec3::new(0.0, 55.0, -80.0),
@@ -7161,6 +7380,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut tower_dragon_ball_collected = false;
     let mut tower_reward_timer = 0.0_f32;
     let mut tower_reward_position = Vec3::default();
+    let mut solar_explosion_timer = 0.0_f32;
+    let mut solar_explosion_position = Vec3::default();
+    let mut black_hole_absorption_timer = 0.0_f32;
+    let mut black_hole_absorption_start = Vec3::default();
 
     while window.is_open() {
         let benchmark_frame_start = Instant::now();
@@ -7334,6 +7557,27 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             frame_time.min(0.05)
         };
         tower_reward_timer = (tower_reward_timer - delta_time).max(0.0);
+        let solar_explosion_was_active = solar_explosion_timer > 0.0;
+        solar_explosion_timer = (solar_explosion_timer - delta_time).max(0.0);
+        if solar_explosion_was_active && solar_explosion_timer <= 0.0 {
+            launch_ship_from_planet(
+                &mut ship_controller,
+                Vec3::new(SUN_POSITION_X, 20.0, 0.0),
+                sun_collision_radius,
+            );
+            window.set_title("Sistema solar | Nave restaurada | Evita el Sol");
+        }
+        let black_hole_was_absorbing = black_hole_absorption_timer > 0.0;
+        black_hole_absorption_timer = (black_hole_absorption_timer - delta_time).max(0.0);
+        if black_hole_was_absorbing && black_hole_absorption_timer <= 0.0 {
+            ship_controller.reset();
+            let ship = &mut ship_controller.ship;
+            ship.position = wormhole_position(Galaxy::Vesper).add(Vec3::new(-90.0, 22.0, -125.0));
+            (ship.yaw, ship.pitch) =
+                direction_to_angles(VESPER_SYSTEM_CENTER.sub(ship.position));
+            ship.speed = ship.spec.cruise_speed;
+            window.set_title("Galaxia Vesper | La nave escapo del agujero negro");
+        }
         previous = now;
         world_time += delta_time;
 
@@ -7373,6 +7617,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 ship_controller.ship.orbit_center = None;
                 ship_controller.ship.orbit_camera_blend = 0.0;
                 ship_controller.ship.orbit_release_active = false;
+                black_hole_absorption_timer = 0.0;
                 transit.switched = true;
             }
         }
@@ -7633,12 +7878,21 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     .as_ref()
                     .is_some_and(|transit| !transit.switched);
                 let tower_reward_active = tower_reward_timer > 0.0;
-                if !portal_approach_active && !tower_reward_active {
+                let solar_explosion_active = solar_explosion_timer > 0.0;
+                let black_hole_absorption_active = black_hole_absorption_timer > 0.0;
+                if !portal_approach_active
+                    && !tower_reward_active
+                    && !solar_explosion_active
+                    && !black_hole_absorption_active
+                {
                     ship_controller.update(&input, delta_time);
                 }
                 let light_speed =
                     window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
-                let active_speed = if tower_reward_active {
+                let active_speed = if tower_reward_active
+                    || solar_explosion_active
+                    || black_hole_absorption_active
+                {
                     0.0
                 } else if light_speed {
                     LIGHT_SPEED
@@ -7667,7 +7921,18 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     println!("Orbita liberada");
                 }
 
-                if !portal_approach_active {
+                if black_hole_absorption_active {
+                    let progress = 1.0
+                        - black_hole_absorption_timer / VESPER_BLACK_HOLE_ABSORPTION_DURATION;
+                    ship.position = vesper_absorption_position(black_hole_absorption_start, progress);
+                    (ship.yaw, ship.pitch) =
+                        direction_to_angles(VESPER_SYSTEM_CENTER.sub(ship.position));
+                    ship.speed = 0.0;
+                    ship.planet_locked = false;
+                    ship.orbit_center = None;
+                    ship.orbit_plane_normal = None;
+                    vesper_orbit_index = None;
+                } else if !portal_approach_active {
                     if active_galaxy == Galaxy::Home {
                         let empty_colliders: [ObjectCollider; 0] = [];
                         let water_center = water_planet_position(world_time);
@@ -7755,6 +8020,20 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             true,
                         );
                         vesper_orbit_index = ship.planet_locked.then_some(nearest);
+                        if !ship.planet_locked {
+                            ship.position =
+                                apply_vesper_black_hole_gravity(ship.position, delta_time);
+                            let black_hole_offset = ship.position.sub(VESPER_SYSTEM_CENTER);
+                            if black_hole_offset.dot(black_hole_offset).sqrt()
+                                <= VESPER_BLACK_HOLE_EVENT_HORIZON
+                            {
+                                black_hole_absorption_timer =
+                                    VESPER_BLACK_HOLE_ABSORPTION_DURATION;
+                                black_hole_absorption_start = ship.position;
+                                ship.speed = 0.0;
+                                window.set_title("Agujero negro | La nave esta siendo absorbida");
+                            }
+                        }
                     } else if active_galaxy == Galaxy::Nova {
                         ship.spiky_planet_locked = false;
                         ship.race_planet_locked = false;
@@ -7773,6 +8052,26 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     } else {
                         unreachable!("all galaxies are handled above");
                     }
+                }
+                if active_galaxy == Galaxy::Home
+                    && solar_explosion_timer <= 0.0
+                    && ship_touches_sun(
+                        previous_ship_position,
+                        ship.position,
+                        ship.spec.collision_radius,
+                        sun_collision_radius,
+                    )
+                {
+                    solar_explosion_timer = SOLAR_SHIP_EXPLOSION_DURATION;
+                    solar_explosion_position = ship.position;
+                    ship.speed = 0.0;
+                    ship.planet_locked = false;
+                    ship.spiky_planet_locked = false;
+                    ship.race_planet_locked = false;
+                    ship.orbit_center = None;
+                    ship.orbit_plane_normal = None;
+                    ship.orbit_camera_blend = 0.0;
+                    window.set_title("La nave fue destruida por el Sol");
                 }
                 let camera_target = if ship.orbit_plane_normal.is_some() {
                     1.0
@@ -7801,6 +8100,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 if galaxy_transition.is_none()
                     && (near_wormhole || near_nova_portal)
                     && !ship.planet_locked
+                    && black_hole_absorption_timer <= 0.0
                 {
                     let (portal_position, destination) = if near_nova_portal {
                         (nova_portal_position(), Galaxy::Nova)
@@ -7817,7 +8117,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     window.set_title("Agujero de gusano | Entrando en hipervelocidad");
                 }
 
-                if galaxy_transition.is_some() {
+                if black_hole_absorption_timer > 0.0 {
+                    window.set_title("Agujero negro | La nave esta siendo absorbida");
+                } else if galaxy_transition.is_some() {
                     window.set_title("Atravesando el agujero | Hipervelocidad");
                 } else if near_wormhole || near_nova_portal {
                     window.set_title("Agujero de gusano | Atravesalo para viajar");
@@ -7833,7 +8135,6 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     } else if active_galaxy == Galaxy::Vesper {
                         let planet_name = match vesper_orbit_index.unwrap_or(0) {
                             0 => "Reloj Arena",
-                            1 => "Farol",
                             _ => "Casa Torre",
                         };
                         if vesper_orbit_index == Some(1) {
@@ -7875,11 +8176,13 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     spiky_planet_scale,
                     &sun,
                     sun_center,
+                    &home_orbit_rings,
                     &wormhole,
                     wormhole_position(active_galaxy),
                     active_galaxy,
                     &vesper_planets,
                     &vesper_black_hole,
+                    &vesper_orbit_rings,
                     &castle_planet,
                     &race_track.planet,
                     [&planet_lods[0], &planet_lods[1], &planet_lods[2]],
@@ -7900,12 +8203,25 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     turbo_power,
                     light_speed,
                     ship_controller.charge_ratio(),
+                    solar_explosion_timer <= 0.0
+                        && !(black_hole_absorption_timer > 0.0
+                            && black_hole_absorption_timer
+                                < VESPER_BLACK_HOLE_ABSORPTION_DURATION * 0.28),
                     (tower_reward_timer > 0.0).then_some((
                         &two_star_dragon_ball,
                         5.5 - tower_reward_timer,
                         tower_reward_position,
                     )),
                 );
+                if solar_explosion_timer > 0.0 {
+                    let camera = chase_camera(&ship_controller.ship, false);
+                    draw_solar_ship_explosion(
+                        &mut scene_framebuffer,
+                        &camera,
+                        solar_explosion_position,
+                        solar_explosion_timer,
+                    );
+                }
                 if let Some(transit) = &galaxy_transition {
                     draw_hyperspace_transition(&mut scene_framebuffer, transit.elapsed);
                 }
@@ -8637,7 +8953,39 @@ mod tests {
     }
 
     #[test]
+    fn home_planets_use_vesper_orbital_speeds_and_have_three_visible_rings() {
+        assert_eq!(PLANET_ORBIT_SPEED, VESPER_SYSTEM_ORBIT_SPEEDS[0].abs());
+        assert_eq!(SPIKY_PLANET_ORBIT_SPEED.abs(), VESPER_SYSTEM_ORBIT_SPEEDS[1].abs());
+        assert_eq!(RACE_PLANET_ORBIT_SPEED, VESPER_SYSTEM_ORBIT_SPEEDS[0].abs());
+
+        let rings = make_home_orbit_rings();
+        for index in 0..3 {
+            assert_eq!(
+                rings
+                    .faces
+                    .iter()
+                    .filter(|face| face.group == format!("orbit_{index}"))
+                    .count(),
+                160 * 2
+            );
+        }
+        assert!(rings.faces.iter().any(|face| {
+            face.group == "orbit_0" && face.color == MaterialColor::Fixed([58, 174, 255])
+        }));
+        assert!(rings.faces.iter().any(|face| {
+            face.group == "orbit_1" && face.color == MaterialColor::Fixed([226, 75, 255])
+        }));
+        assert!(rings.faces.iter().any(|face| {
+            face.group == "orbit_2" && face.color == MaterialColor::Fixed([255, 205, 68])
+        }));
+    }
+
+    #[test]
     fn vesper_planets_orbit_the_central_black_hole() {
+        assert_eq!(
+            VESPER_SYSTEM_ORBIT_SPEEDS[0],
+            -VESPER_SYSTEM_ORBIT_SPEEDS[1]
+        );
         for index in 0..2 {
             let start = vesper_planet_position(index, 0.0);
             let later = vesper_planet_position(index, 12.0);
@@ -8649,6 +8997,31 @@ mod tests {
             assert!((horizontal_radius - VESPER_SYSTEM_ORBIT_RADII[index]).abs() < 0.01);
             assert!((later_radius - horizontal_radius).abs() < 0.01);
             assert!(later.sub(start).dot(later.sub(start)) > 100.0);
+        }
+    }
+
+    #[test]
+    fn vesper_planets_have_visible_lines_matching_their_orbits() {
+        let rings = make_vesper_orbit_rings();
+        for index in 0..2 {
+            let group = format!("vesper_orbit_{index}");
+            let faces: Vec<_> = rings
+                .faces
+                .iter()
+                .filter(|face| face.group == group)
+                .collect();
+            assert_eq!(faces.len(), 160 * 2);
+            let mut radii = faces.iter().flat_map(|face| face.indices).map(|vertex| {
+                let point = rings.vertices[vertex];
+                (point.x * point.x + point.z * point.z).sqrt()
+            });
+            let first = radii.next().expect("orbit ring vertices");
+            assert!((first - VESPER_SYSTEM_ORBIT_RADII[index]).abs() < 2.0);
+            assert!(faces.iter().all(|face| {
+                face.indices.iter().all(|&vertex| {
+                    (rings.vertices[vertex].y - VESPER_ORBIT_HEIGHTS[index]).abs() < 0.001
+                })
+            }));
         }
     }
 
@@ -8674,6 +9047,36 @@ mod tests {
     }
 
     #[test]
+    fn vesper_black_hole_gravity_pulls_nearby_ships_inward() {
+        let start = VESPER_SYSTEM_CENTER.add(Vec3::new(120.0, 14.0, 0.0));
+        let pulled = apply_vesper_black_hole_gravity(start, 0.5);
+        let start_offset = start.sub(VESPER_SYSTEM_CENTER);
+        let pulled_offset = pulled.sub(VESPER_SYSTEM_CENTER);
+        assert!(pulled_offset.dot(pulled_offset) < start_offset.dot(start_offset));
+
+        let outside = VESPER_SYSTEM_CENTER.add(Vec3::new(
+            VESPER_BLACK_HOLE_GRAVITY_RADIUS + 10.0,
+            0.0,
+            0.0,
+        ));
+        let unchanged = apply_vesper_black_hole_gravity(outside, 1.0);
+        assert!(unchanged.sub(outside).dot(unchanged.sub(outside)) < 0.0001);
+    }
+
+    #[test]
+    fn black_hole_absorption_spirals_the_ship_into_the_core() {
+        let start = VESPER_SYSTEM_CENTER.add(Vec3::new(24.0, 5.0, 0.0));
+        let halfway = vesper_absorption_position(start, 0.5);
+        let end = vesper_absorption_position(start, 1.0);
+        let start_distance = start.sub(VESPER_SYSTEM_CENTER).dot(start.sub(VESPER_SYSTEM_CENTER));
+        let halfway_distance = halfway
+            .sub(VESPER_SYSTEM_CENTER)
+            .dot(halfway.sub(VESPER_SYSTEM_CENTER));
+        assert!(halfway_distance < start_distance);
+        assert!(end.sub(VESPER_SYSTEM_CENTER).dot(end.sub(VESPER_SYSTEM_CENTER)) < 0.0001);
+    }
+
+    #[test]
     fn home_portal_is_positioned_directly_above_the_sun() {
         let sun = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
         let portal = wormhole_position(Galaxy::Home);
@@ -8689,6 +9092,23 @@ mod tests {
             .map(|vertex| (vertex.y - center.y).abs())
             .fold(0.0, f32::max);
         assert!(vertical_radius < 3.0, "portal is not lying flat");
+    }
+
+    #[test]
+    fn touching_or_crossing_the_sun_is_fatal_even_at_high_speed() {
+        let sun = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
+        assert!(ship_touches_sun(
+            sun.add(Vec3::new(-90.0, 0.0, 0.0)),
+            sun.add(Vec3::new(90.0, 0.0, 0.0)),
+            2.0,
+            38.0,
+        ));
+        assert!(!ship_touches_sun(
+            sun.add(Vec3::new(-90.0, 55.0, 0.0)),
+            sun.add(Vec3::new(90.0, 55.0, 0.0)),
+            2.0,
+            38.0,
+        ));
     }
 
     #[test]
