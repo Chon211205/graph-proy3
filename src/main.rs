@@ -8530,7 +8530,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         continue;
                     }
                 }
-                lava_castle.render(&mut scene_framebuffer, active_model, &ship_controller);
+                lava_castle.render(
+                    &mut scene_framebuffer,
+                    active_model,
+                    &laser_bolt,
+                    &ship_controller,
+                );
             }
         }
 

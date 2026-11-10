@@ -1,6 +1,6 @@
 use crate::framebuffer::Framebuffer;
 use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
-use crate::ship::{Projectile, ShipController};
+use crate::ship::{Projectile, ShipController, ShipInput};
 use crate::{Camera, draw_selection_label, render_model};
 
 const BOSS_MAX_HEALTH: i32 = 160;
@@ -11,6 +11,8 @@ const ARENA_MAX_Y: f32 = 105.0;
 const ARENA_MIN_Z: f32 = -210.0;
 const ARENA_MAX_Z: f32 = 52.0;
 const PLAYER_PLANE_Z: f32 = 32.0;
+const PLANE_SPEED_MULTIPLIER: f32 = 1.65;
+const VERTICAL_SPEED_MULTIPLIER: f32 = 2.0;
 const BOSS_POSITION: Vec3 = Vec3::new(0.0, 58.0, -128.0);
 const DOOR_POSITION: Vec3 = Vec3::new(0.0, 34.0, -191.0);
 
@@ -208,25 +210,36 @@ impl LavaCastle {
     fn update_player_plane(&mut self, controller: &mut ShipController, input: Input, dt: f32) {
         let horizontal = input.yaw as f32;
         let vertical = input.pitch as f32;
-        let acceleration = if input.boost { 150.0 } else { 92.0 };
-        let max_speed = if input.boost { 72.0 } else { 44.0 };
-        self.player_velocity.x += horizontal * acceleration * dt;
-        self.player_velocity.y += vertical * acceleration * dt;
-        let damping = (-5.2 * dt).exp();
-        self.player_velocity.x *= damping;
-        self.player_velocity.y *= damping;
-        self.player_velocity.x = self.player_velocity.x.clamp(-max_speed, max_speed);
-        self.player_velocity.y = self.player_velocity.y.clamp(-max_speed, max_speed);
-        if input.brake {
-            self.player_velocity = self.player_velocity.mul((-10.0 * dt).exp());
-        }
+        // Use the selected ship's exact free-world speed curve. The resulting
+        // speed is projected onto this fixed combat plane instead of world Z.
+        controller.ship.update_flight(
+            &ShipInput {
+                pitch: 0,
+                yaw: 0,
+                roll: input.roll,
+                accelerating: input.accelerate || input.boost,
+                braking: input.brake,
+                firing: input.fire,
+            },
+            dt,
+        );
+        let input_length = horizontal.hypot(vertical).max(1.0);
+        let target_x = horizontal / input_length * controller.ship.speed * PLANE_SPEED_MULTIPLIER;
+        let target_y = vertical / input_length
+            * controller.ship.speed
+            * PLANE_SPEED_MULTIPLIER
+            * VERTICAL_SPEED_MULTIPLIER;
+        let response = 1.0 - (-controller.ship.spec.turn_response * dt).exp();
+        self.player_velocity.x += (target_x - self.player_velocity.x) * response;
+        self.player_velocity.y += (target_y - self.player_velocity.y) * response;
         controller.ship.position.x += self.player_velocity.x * dt;
         controller.ship.position.y += self.player_velocity.y * dt;
         controller.ship.position.z = PLAYER_PLANE_Z;
         controller.ship.yaw = std::f32::consts::FRAC_PI_2;
-        controller.ship.pitch = (-self.player_velocity.y / max_speed * 0.18).clamp(-0.18, 0.18);
+        let visual_speed = controller.ship.spec.max_speed.max(0.001);
+        controller.ship.pitch = (-self.player_velocity.y / visual_speed * 0.18).clamp(-0.18, 0.18);
         let manual_roll = input.roll as f32 * 0.72;
-        let movement_bank = (-self.player_velocity.x / max_speed * 0.48).clamp(-0.48, 0.48);
+        let movement_bank = (-self.player_velocity.x / visual_speed * 0.48).clamp(-0.48, 0.48);
         controller.ship.roll_target = manual_roll + movement_bank;
         let roll_response = 1.0 - (-9.0 * dt).exp();
         controller.ship.roll +=
@@ -385,7 +398,13 @@ impl LavaCastle {
         }
     }
 
-    pub fn render(&self, frame: &mut Framebuffer, ship_model: &Model, controller: &ShipController) {
+    pub fn render(
+        &self,
+        frame: &mut Framebuffer,
+        ship_model: &Model,
+        laser_model: &Model,
+        controller: &ShipController,
+    ) {
         draw_sky(frame);
         draw_embers(frame, self.elapsed);
         frame.buffers_mut().1.fill(f32::NEG_INFINITY);
@@ -441,6 +460,7 @@ impl LavaCastle {
                 None,
             );
         }
+        self.render_player_weapon(frame, &camera, laser_model, controller);
         self.render_special_attack(frame, &camera);
         let ship_center = ship_model.bounds().0;
         let (forward, right, up) = controller.ship.basis();
@@ -463,6 +483,74 @@ impl LavaCastle {
             Some(controller.ship.spec),
         );
         self.draw_hud(frame);
+    }
+
+    fn render_player_weapon(
+        &self,
+        frame: &mut Framebuffer,
+        camera: &Camera,
+        laser_model: &Model,
+        controller: &ShipController,
+    ) {
+        for projectile in controller
+            .projectiles
+            .iter()
+            .filter(|projectile| projectile.lifetime > 0.0)
+        {
+            let mut right = projectile
+                .direction
+                .cross(Vec3::new(0.0, 1.0, 0.0))
+                .normalize();
+            if right.dot(right) < 0.001 {
+                right = Vec3::new(1.0, 0.0, 0.0);
+            }
+            let up = right.cross(projectile.direction).normalize();
+            render_model(
+                laser_model,
+                frame,
+                camera,
+                |vertex| {
+                    projectile
+                        .position
+                        .add(projectile.direction.mul(vertex.x * projectile.scale))
+                        .add(up.mul(vertex.y * projectile.scale))
+                        .add(right.mul(vertex.z * projectile.scale))
+                },
+                None,
+                Some(controller.ship.spec),
+            );
+        }
+        crate::draw_projectile_glow(
+            frame,
+            &controller.projectiles,
+            camera,
+            self.elapsed,
+            controller.ship.spec.laser_color,
+            1.65,
+        );
+
+        let charge = controller.charge_ratio();
+        if charge > 0.0 {
+            let (forward, right, up) = controller.ship.basis();
+            let center = controller
+                .ship
+                .position
+                .add(forward.mul(controller.ship.spec.muzzle_forward + 0.4));
+            let scale = 0.35 + charge * 1.15;
+            render_model(
+                laser_model,
+                frame,
+                camera,
+                |vertex| {
+                    center
+                        .add(forward.mul(vertex.x * scale))
+                        .add(up.mul(vertex.y * scale))
+                        .add(right.mul(vertex.z * scale))
+                },
+                None,
+                Some(controller.ship.spec),
+            );
+        }
     }
 
     fn render_special_attack(&self, frame: &mut Framebuffer, camera: &Camera) {
@@ -872,5 +960,82 @@ mod tests {
         assert!(controller.ship.position.x > start.x);
         assert!(controller.ship.position.y > start.y);
         assert!((controller.ship.position.z - PLAYER_PLANE_Z).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn arena_uses_free_world_speed_and_weapon_specs() {
+        let mut level = LavaCastle::new();
+        let mut arena = ShipController::new(&ARWING_SPEC);
+        let mut free = ShipController::new(&ARWING_SPEC);
+        level.enter(&mut arena);
+        for _ in 0..12 {
+            level.update(
+                &mut arena,
+                Input {
+                    yaw: 1,
+                    accelerate: true,
+                    ..Input::default()
+                },
+                0.05,
+            );
+            free.ship.update_flight(
+                &ShipInput {
+                    accelerating: true,
+                    ..ShipInput::default()
+                },
+                0.05,
+            );
+        }
+        assert!((arena.ship.speed - free.ship.speed).abs() < 0.001);
+
+        level.update(
+            &mut arena,
+            Input {
+                fire: true,
+                ..Input::default()
+            },
+            0.08,
+        );
+        level.update(&mut arena, Input::default(), 0.02);
+        assert!(!arena.projectiles.is_empty());
+        assert_eq!(
+            arena.projectiles[0].lifetime,
+            ARWING_SPEC.laser_lifetime - 0.02
+        );
+    }
+
+    #[test]
+    fn vertical_dodging_is_faster_than_horizontal_movement() {
+        let mut vertical_level = LavaCastle::new();
+        let mut vertical = ShipController::new(&ARWING_SPEC);
+        vertical_level.enter(&mut vertical);
+        let vertical_start = vertical.ship.position;
+
+        let mut horizontal_level = LavaCastle::new();
+        let mut horizontal = ShipController::new(&ARWING_SPEC);
+        horizontal_level.enter(&mut horizontal);
+        let horizontal_start = horizontal.ship.position;
+        for _ in 0..10 {
+            vertical_level.update(
+                &mut vertical,
+                Input {
+                    pitch: 1,
+                    ..Input::default()
+                },
+                0.05,
+            );
+            horizontal_level.update(
+                &mut horizontal,
+                Input {
+                    yaw: 1,
+                    ..Input::default()
+                },
+                0.05,
+            );
+        }
+        assert!(
+            vertical.ship.position.y - vertical_start.y
+                > horizontal.ship.position.x - horizontal_start.x
+        );
     }
 }
