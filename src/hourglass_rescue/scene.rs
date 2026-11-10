@@ -482,7 +482,7 @@ impl Builder {
                 let color = dune_palette(dune_height(cx, cz) * 0.24 + dune_band);
                 for indices in [[i0, i1, i2], [i0, i2, i3]] {
                     let mut face = Face::new(indices, "violet_sand", "sand_surface");
-                    face.shader = SurfaceShader::Flat;
+                    face.shader = SurfaceShader::TimePlanetSandTexture;
                     face.color = MaterialColor::Fixed(color);
                     self.faces.push(face);
                 }

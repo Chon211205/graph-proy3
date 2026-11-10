@@ -2282,7 +2282,9 @@ fn procedural_surface_color(
     }
     if matches!(
         shader,
-        SurfaceShader::WaterPlanetSandTexture | SurfaceShader::WaterLevelSandTexture
+        SurfaceShader::WaterPlanetSandTexture
+            | SurfaceShader::WaterLevelSandTexture
+            | SurfaceShader::TimePlanetSandTexture
     ) {
         if let Some(textures) = water_sand_textures() {
             let scale = 0.075;
@@ -2295,10 +2297,11 @@ fn procedural_surface_color(
                 * (0.77 + ao * 0.23)
                 * (0.95 + relief * 0.12)
                 * (1.0 + fresnel * (1.0 - roughness) * 0.08);
-            let tint = if shader == SurfaceShader::WaterLevelSandTexture {
-                [0.84, 0.98, 1.04]
-            } else {
-                [1.06, 1.01, 0.90]
+            let tint = match shader {
+                SurfaceShader::WaterLevelSandTexture => [0.84, 0.98, 1.04],
+                SurfaceShader::TimePlanetSandTexture => [0.88, 0.58, 1.12],
+                SurfaceShader::WaterPlanetSandTexture => [1.06, 1.01, 0.90],
+                _ => unreachable!(),
             };
             let rgb = std::array::from_fn(|channel| {
                 (color[channel] * tint[channel]).clamp(0.0, 255.0) as u8
@@ -2629,6 +2632,12 @@ fn procedural_surface_color(
             205.0 + noise * 18.0,
             178.0 + noise * 14.0,
             112.0 + noise * 10.0,
+            1.0,
+        ),
+        SurfaceShader::TimePlanetSandTexture => (
+            166.0 + noise * 15.0,
+            105.0 + noise * 12.0,
+            184.0 + noise * 16.0,
             1.0,
         ),
         SurfaceShader::WaterPlanetGrassTexture => (

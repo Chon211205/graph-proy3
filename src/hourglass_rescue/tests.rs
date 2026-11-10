@@ -123,6 +123,10 @@ fn dune_terrain_is_a_wide_non_degenerate_grid() {
     let mut count = 0;
     for face in sand_faces {
         count += 1;
+        assert_eq!(
+            face.shader,
+            crate::obj_loader::SurfaceShader::TimePlanetSandTexture
+        );
         assert!(face.indices.iter().all(|&i| range.contains(&i)));
         assert_ne!(face.indices[1], face.indices[2]);
         assert_ne!(face.indices[0], face.indices[1]);

@@ -81,6 +81,7 @@ pub enum SurfaceShader {
     RaceBarkTexture,
     RaceBricksTexture,
     WaterPlanetSandTexture,
+    TimePlanetSandTexture,
     WaterPlanetGrassTexture,
     WaterPlanetPillarTexture,
     WaterPlanetEarthTexture,
