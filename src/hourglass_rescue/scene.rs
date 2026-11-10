@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
+use crate::obj_loader::{load_obj, Face, MaterialColor, Model, SurfaceShader, Vec3};
 
 pub(super) const CAPSULE_COUNT: usize = 5;
 pub(super) const CAPSULE_POSITIONS: [Vec3; CAPSULE_COUNT] = [
@@ -16,7 +16,11 @@ pub(super) struct Scene {
     pub sand_vertices: Range<usize>,
     pub capsule_faces: [Range<usize>; CAPSULE_COUNT],
     capsule_indices: [Vec<[usize; 3]>; CAPSULE_COUNT],
-    portal_faces: Range<usize>,
+    clock_faces: [Range<usize>; super::CLOCK_COUNT],
+    clock_indices: [Vec<[usize; 3]>; super::CLOCK_COUNT],
+    pub(super) portal_faces: Range<usize>,
+    pub(super) portal_energy_faces: Range<usize>,
+    portal_open: bool,
     obstacles: Vec<(Vec3, Vec3)>,
 }
 
@@ -51,6 +55,12 @@ impl Builder {
         self.triangle(a, c, d, color);
     }
 
+    fn apply_shader_since(&mut self, face_start: usize, shader: SurfaceShader) {
+        for face in &mut self.faces[face_start..] {
+            face.shader = shader;
+        }
+    }
+
     fn box_at(&mut self, center: Vec3, half: Vec3, color: [u8; 3]) {
         let (x, y, z) = (half.x, half.y, half.z);
         let (cx, cy, cz) = (center.x, center.y, center.z);
@@ -77,6 +87,7 @@ impl Builder {
     }
 
     fn mountain_ridge(&mut self, z: f32, base_y: f32, peaks: &[(f32, f32)], color: [u8; 3]) {
+        let face_start = self.faces.len();
         for (index, pair) in peaks.windows(2).enumerate() {
             let (x0, y0) = pair[0];
             let (x1, y1) = pair[1];
@@ -118,9 +129,11 @@ impl Builder {
                 );
             }
         }
+        self.apply_shader_since(face_start, SurfaceShader::TimePlanetRockTexture);
     }
 
     fn mountain_mass(&mut self, center: Vec3, width: f32, height: f32, depth: f32) {
+        let face_start = self.faces.len();
         // Layered cross sections make a broad, rounded low-poly escarpment
         // instead of a single pyramid silhouette.
         let slices = [
@@ -164,9 +177,11 @@ impl Builder {
                 );
             }
         }
+        self.apply_shader_since(face_start, SurfaceShader::TimePlanetRockTexture);
     }
 
     fn floating_island(&mut self, x: f32, y: f32, z: f32, width: f32, color: [u8; 3]) {
+        let face_start = self.faces.len();
         let half = width * 0.5;
         self.box_at(
             Vec3::new(x, y, z),
@@ -200,9 +215,11 @@ impl Builder {
                 [236, 177, 117],
             );
         }
+        self.apply_shader_since(face_start, SurfaceShader::TimePlanetRockTexture);
     }
 
     fn arch(&mut self, center: Vec3, radius: f32, depth: f32, color: [u8; 3]) {
+        let face_start = self.faces.len();
         let segments = 14;
         let thickness = radius * 0.18;
         for i in 0..segments {
@@ -261,6 +278,7 @@ impl Builder {
                 [226, 169, 111],
             );
         }
+        self.apply_shader_since(face_start, SurfaceShader::TimePlanetRockTexture);
     }
 
     fn crystal(
@@ -288,74 +306,38 @@ impl Builder {
         self.quad(base[0], base[3], base[2], base[1], palette[0]);
     }
 
-    fn capsule(&mut self, center: Vec3) -> Range<usize> {
+    fn imported_pickup(&mut self, source: &Model, center: Vec3) -> Range<usize> {
         let start = self.faces.len();
-        let sides = 10;
-        let rings = [(0.0, 1.65), (0.45, 2.0), (2.95, 2.0), (3.35, 1.65)];
-        for side in 0..sides {
-            let a0 = side as f32 * std::f32::consts::TAU / sides as f32;
-            let a1 = (side + 1) as f32 * std::f32::consts::TAU / sides as f32;
-            for band in 0..rings.len() - 1 {
-                let (y0, r0) = rings[band];
-                let (y1, r1) = rings[band + 1];
-                let p = |angle: f32, y: f32, radius: f32| {
-                    Vec3::new(
-                        center.x + angle.cos() * radius,
-                        center.y + y,
-                        center.z + angle.sin() * radius,
-                    )
-                };
-                let color = match band {
-                    0 => [204, 147, 70],
-                    2 => [239, 201, 124],
-                    _ => [232, 220, 188],
-                };
-                self.quad(
-                    p(a0, y0, r0),
-                    p(a1, y0, r0),
-                    p(a1, y1, r1),
-                    p(a0, y1, r1),
-                    color,
-                );
-            }
-            let top0 = Vec3::new(
-                center.x + a0.cos() * 1.65,
-                center.y + 3.36,
-                center.z + a0.sin() * 1.65,
+        let vertex_start = self.vertices.len();
+        let (source_center, _) = source.bounds();
+        // Blender's OBJ export maps its Z-up coordinates to the engine's
+        // Y-up coordinates, so the modeled face already points down -Z here.
+        // Center every instance on the original pickup position and keep the
+        // authored size (about seven world units tall).
+        self.vertices.extend(
+            source
+                .vertices
+                .iter()
+                .map(|vertex| center.add(vertex.sub(source_center))),
+        );
+        for source_face in &source.faces {
+            let mut face = Face::new(
+                source_face.indices.map(|index| vertex_start + index),
+                source_face.material.clone(),
+                source_face.group.clone(),
             );
-            let top1 = Vec3::new(
-                center.x + a1.cos() * 1.65,
-                center.y + 3.36,
-                center.z + a1.sin() * 1.65,
-            );
-            self.triangle(
-                top0,
-                top1,
-                Vec3::new(center.x, center.y + 3.6, center.z),
-                [240, 199, 112],
-            );
-            let window = |angle: f32| {
-                Vec3::new(
-                    center.x + angle.cos() * 2.02,
-                    center.y + 2.1,
-                    center.z + angle.sin() * 2.02,
-                )
-            };
-            self.quad(
-                window(a0),
-                window(a1),
-                window(a1).add(Vec3::new(0.0, 0.72, 0.0)),
-                window(a0).add(Vec3::new(0.0, 0.72, 0.0)),
-                [77, 225, 235],
-            );
+            face.shader = source_face.shader;
+            face.color = source_face.color;
+            face.smooth = source_face.smooth;
+            self.faces.push(face);
         }
         start..self.faces.len()
     }
 
-    fn portal_ring(&mut self, center: Vec3, radius: f32) -> Range<usize> {
-        let start = self.faces.len();
-        let segments = 24;
-        let tube = 1.4;
+    fn portal_ring(&mut self, center: Vec3, radius: f32) -> (Range<usize>, Range<usize>) {
+        let frame_start = self.faces.len();
+        let segments = 32;
+        let tube = 1.55;
         for index in 0..segments {
             let a0 = index as f32 * std::f32::consts::TAU / segments as f32;
             let a1 = (index + 1) as f32 * std::f32::consts::TAU / segments as f32;
@@ -366,10 +348,10 @@ impl Builder {
                     center.z + z,
                 )
             };
-            let color = if index % 3 == 0 {
-                [79, 106, 135]
+            let color = if index % 4 == 0 {
+                [139, 74, 164]
             } else {
-                [55, 76, 103]
+                [48, 38, 78]
             };
             self.quad(
                 p(a0, radius - tube, -0.8),
@@ -392,8 +374,39 @@ impl Builder {
                 p(a0, radius + tube, 0.8),
                 color,
             );
+            // Raised outer clockwork teeth make the silhouette readable from afar.
+            if index % 2 == 0 {
+                self.quad(
+                    p(a0, radius + tube, -1.05),
+                    p(a1, radius + tube, -1.05),
+                    p(a1, radius + tube + 1.0, -1.05),
+                    p(a0, radius + tube + 1.0, -1.05),
+                    [184, 103, 194],
+                );
+            }
         }
-        start..self.faces.len()
+        let frame_faces = frame_start..self.faces.len();
+        let energy_start = self.faces.len();
+        // A recessed iris suggests a sealed temporal membrane. It changes to
+        // bright cyan when all fragments are collected.
+        for index in 0..segments {
+            let a0 = index as f32 * std::f32::consts::TAU / segments as f32;
+            let a1 = (index + 1) as f32 * std::f32::consts::TAU / segments as f32;
+            let p = |angle: f32, r: f32, z: f32| {
+                Vec3::new(
+                    center.x + r * angle.cos(),
+                    center.y + r * angle.sin(),
+                    center.z + z,
+                )
+            };
+            self.triangle(
+                center.add(Vec3::new(0.0, 0.0, 0.95)),
+                p(a0, radius - tube - 0.35, 0.95),
+                p(a1, radius - tube - 0.35, 0.95),
+                if index % 2 == 0 { [53, 25, 83] } else { [79, 36, 105] },
+            );
+        }
+        (frame_faces, energy_start..self.faces.len())
     }
 
     fn sand_dunes(&mut self) -> Range<usize> {
@@ -422,7 +435,7 @@ impl Builder {
                 let color = dune_palette(dune_height(cx, cz) * 0.24 + dune_band);
                 for indices in [[i0, i1, i2], [i0, i2, i3]] {
                     let mut face = Face::new(indices, "violet_sand", "sand_surface");
-                    face.shader = SurfaceShader::Flat;
+                    face.shader = SurfaceShader::TimePlanetSandTexture;
                     face.color = MaterialColor::Fixed(color);
                     self.faces.push(face);
                 }
@@ -440,6 +453,18 @@ impl Scene {
     pub fn new() -> Self {
         let mut builder = Builder::new();
         let mut obstacles = Vec::new();
+        let clock_model = load_obj("assets/levels/time_planet/reloj_tiempo.obj")
+            .expect("No se pudo cargar el reloj de Time Planet");
+        let fragment_model = load_obj("assets/levels/time_planet/fragmento_energia.obj")
+            .expect("No se pudo cargar el fragmento de energia de Time Planet");
+        // Reuse the exact four-star reward from the Water Level. Rotate it so
+        // its stars face the approach direction through this level's portal.
+        let mut dragon_ball_model = crate::make_four_star_dragon_ball();
+        for vertex in &mut dragon_ball_model.vertices {
+            *vertex = Vec3::new(-vertex.z, vertex.y, vertex.x);
+        }
+        dragon_ball_model.recalculate_bounds();
+        dragon_ball_model.recalculate_normals();
         let sand_vertices = builder.sand_dunes();
         builder.mountain_ridge(
             -205.0,
@@ -569,6 +594,7 @@ impl Scene {
             (74.0, -129.0, 3.4),
         ] {
             let y = -8.0 + dune_height(x, z);
+            let rock_face_start = builder.faces.len();
             builder.crystal(
                 Vec3::new(x, y, z),
                 size,
@@ -581,13 +607,48 @@ impl Scene {
                     [205, 134, 157],
                 ],
             );
+            builder.apply_shader_since(
+                rock_face_start,
+                SurfaceShader::TimePlanetRockTexture,
+            );
         }
 
-        let capsule_faces = std::array::from_fn(|index| builder.capsule(CAPSULE_POSITIONS[index]));
-        let portal_faces = builder.portal_ring(Vec3::new(0.0, 155.0, -505.0), 12.0);
+        // Clockwork sentinels patrol the visual route. Their collision volumes
+        // use the same time-damage rule as the ruins and other hazards.
+        for (x, y, z) in [
+            (-35.0, 30.0, -155.0),
+            (105.0, 72.0, -325.0),
+            (-95.0, 132.0, -445.0),
+        ] {
+            builder.box_at(Vec3::new(x, y, z), Vec3::new(4.0, 2.0, 5.0), [137, 42, 78]);
+            builder.crystal(
+                Vec3::new(x, y + 2.0, z),
+                5.0,
+                3.0,
+                3.0,
+                [[231, 70, 73], [177, 39, 81], [255, 122, 64], [112, 30, 72]],
+            );
+            obstacles.push((Vec3::new(x, y, z), Vec3::new(5.0, 5.0, 6.0)));
+        }
+
+        let capsule_faces = std::array::from_fn(|index| {
+            builder.imported_pickup(&fragment_model, CAPSULE_POSITIONS[index])
+        });
+        let clock_faces = std::array::from_fn(|index| {
+            builder.imported_pickup(&clock_model, super::CLOCK_POSITIONS[index])
+        });
+        let (portal_faces, portal_energy_faces) =
+            builder.portal_ring(Vec3::new(0.0, 155.0, -505.0), 12.0);
+        builder.imported_pickup(&dragon_ball_model, Vec3::new(0.0, 155.0, -510.0));
         let model = builder.finish();
         let capsule_indices = std::array::from_fn(|index| {
             capsule_faces[index]
+                .clone()
+                .map(|face_index| model.faces[face_index].indices)
+                .collect()
+        });
+        let clock_indices = std::array::from_fn(|index| {
+            clock_faces[index]
                 .clone()
                 .map(|face_index| model.faces[face_index].indices)
                 .collect()
@@ -597,7 +658,11 @@ impl Scene {
             sand_vertices,
             capsule_faces,
             capsule_indices,
+            clock_faces,
+            clock_indices,
             portal_faces,
+            portal_energy_faces,
+            portal_open: false,
             obstacles,
         }
     }
@@ -611,6 +676,18 @@ impl Scene {
     }
 
     pub fn resolve_obstacle(&self, position: Vec3, clearance: f32) -> Option<Vec3> {
+        if !self.portal_open {
+            let center = Vec3::new(0.0, 155.0, -505.0);
+            let delta = position.sub(center);
+            if delta.x.abs() < 11.0 + clearance
+                && delta.y.abs() < 11.0 + clearance
+                && delta.z.abs() < 2.0 + clearance
+            {
+                let mut corrected = position;
+                corrected.z = center.z + if delta.z >= 0.0 { 2.0 + clearance } else { -2.0 - clearance };
+                return Some(corrected);
+            }
+        }
         for &(center, half) in &self.obstacles {
             let delta = position.sub(center);
             let expanded = Vec3::new(half.x + clearance, half.y + clearance, half.z + clearance);
@@ -670,9 +747,25 @@ impl Scene {
     }
 
     pub fn set_portal_open(&mut self, open: bool) {
-        let color = if open { [84, 229, 241] } else { [61, 77, 100] };
+        self.portal_open = open;
+        let color = if open { [171, 102, 205] } else { [62, 43, 91] };
         for face in &mut self.model.faces[self.portal_faces.clone()] {
             face.color = MaterialColor::Fixed(color);
+        }
+        let energy = if open { [56, 238, 255] } else { [66, 27, 91] };
+        for face in &mut self.model.faces[self.portal_energy_faces.clone()] {
+            face.color = MaterialColor::Fixed(energy);
+        }
+    }
+
+    pub fn hide_clock(&mut self, index: usize) {
+        let (Some(range), Some(original)) =
+            (self.clock_faces.get(index), self.clock_indices.get(index))
+        else {
+            return;
+        };
+        for (face, _) in self.model.faces[range.clone()].iter_mut().zip(original) {
+            face.indices = [0, 0, 0];
         }
     }
 }

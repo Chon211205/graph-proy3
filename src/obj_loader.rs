@@ -81,10 +81,12 @@ pub enum SurfaceShader {
     RaceBarkTexture,
     RaceBricksTexture,
     WaterPlanetSandTexture,
+    TimePlanetSandTexture,
     WaterPlanetGrassTexture,
     WaterPlanetPillarTexture,
     WaterPlanetEarthTexture,
     WaterLevelRockTexture,
+    TimePlanetRockTexture,
     WaterLevelSandTexture,
     WaterMonsterCoreTexture,
     WaterMonsterTissueTexture,
@@ -388,6 +390,56 @@ fn classify_color(name: &str) -> MaterialColor {
         [24, 112, 119]
     } else if name == "cristal" {
         [153, 207, 226]
+    } else if matches!(
+        name,
+        "oro_brillante"
+            | "oro_oscuro"
+            | "cristal_celeste"
+            | "energia_cian"
+            | "luz_temporal"
+    ) {
+        match name {
+            "oro_brillante" => [242, 133, 15],
+            "oro_oscuro" => [140, 51, 6],
+            "cristal_celeste" => [199, 240, 255],
+            "energia_cian" => [10, 166, 242],
+            "luz_temporal" => [255, 245, 184],
+            _ => unreachable!(),
+        }
+    } else if matches!(
+        name,
+        "aro_energia"
+            | "cristal_claro"
+            | "cristal_energia"
+            | "cristal_violeta"
+            | "energia_profunda"
+            | "luz_fragmento"
+    ) {
+        match name {
+            "aro_energia" | "cristal_energia" => [8, 209, 255],
+            "cristal_claro" => [158, 245, 255],
+            "cristal_violeta" => [120, 31, 209],
+            "energia_profunda" => [20, 8, 61],
+            "luz_fragmento" => [255, 245, 189],
+            _ => unreachable!(),
+        }
+    } else if matches!(
+        name,
+        "cristal_naranja"
+            | "nucleo_dorado"
+            | "halo_dragon"
+            | "reflejo_dorado"
+            | "estrella_roja"
+            | "estrella_sombra"
+    ) {
+        match name {
+            "cristal_naranja" => [255, 79, 6],
+            "nucleo_dorado" => [255, 153, 10],
+            "halo_dragon" | "reflejo_dorado" => [255, 209, 51],
+            "estrella_roja" => [199, 4, 5],
+            "estrella_sombra" => [92, 1, 3],
+            _ => unreachable!(),
+        }
     } else if name == "piedra" {
         [132, 108, 105]
     } else if name.starts_with("kirbycar_") {
@@ -807,6 +859,58 @@ mod tests {
         let turbo = Face::new([0, 1, 2], "turbo_glow", "effect");
         assert_eq!(laser.color, MaterialColor::LaserCore);
         assert_eq!(turbo.color, MaterialColor::Turbo);
+    }
+
+    #[test]
+    fn time_planet_clock_keeps_its_blender_palette() {
+        for (material, color) in [
+            ("Oro_Brillante", [242, 133, 15]),
+            ("Oro_Oscuro", [140, 51, 6]),
+            ("Cristal_Celeste", [199, 240, 255]),
+            ("Energia_Cian", [10, 166, 242]),
+            ("Luz_Temporal", [255, 245, 184]),
+            ("Azul_Profundo", [14, 38, 105]),
+        ] {
+            assert_eq!(
+                Face::new([0, 1, 2], material, "clock").color,
+                MaterialColor::Fixed(color),
+                "clock material {material} should preserve its authored color"
+            );
+        }
+    }
+
+    #[test]
+    fn time_planet_fragment_keeps_its_blender_palette() {
+        for (material, color) in [
+            ("Aro_Energia", [8, 209, 255]),
+            ("Cristal_Energia", [8, 209, 255]),
+            ("Cristal_Claro", [158, 245, 255]),
+            ("Cristal_Violeta", [120, 31, 209]),
+            ("Energia_Profunda", [20, 8, 61]),
+            ("Luz_Fragmento", [255, 245, 189]),
+        ] {
+            assert_eq!(
+                Face::new([0, 1, 2], material, "fragment").color,
+                MaterialColor::Fixed(color),
+                "fragment material {material} should preserve its authored color"
+            );
+        }
+    }
+
+    #[test]
+    fn time_planet_dragon_ball_keeps_its_blender_palette() {
+        for (material, color) in [
+            ("Cristal_Naranja", [255, 79, 6]),
+            ("Nucleo_Dorado", [255, 153, 10]),
+            ("Halo_Dragon", [255, 209, 51]),
+            ("Estrella_Roja", [199, 4, 5]),
+            ("Estrella_Sombra", [92, 1, 3]),
+        ] {
+            assert_eq!(
+                Face::new([0, 1, 2], material, "dragon_ball").color,
+                MaterialColor::Fixed(color)
+            );
+        }
     }
 
     #[test]

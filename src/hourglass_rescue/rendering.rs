@@ -7,11 +7,7 @@ use super::{HourglassRescue, CAPSULE_COUNT, CAPSULE_POSITIONS, EXIT_POSITION};
 
 impl HourglassRescue {
     pub fn render(&self, frame: &mut Framebuffer, ship_model: &Model, ship: &Ship) {
-        let sky = if self.inversion_complete {
-            [20, 15, 43]
-        } else {
-            [17, 19, 48]
-        };
+        let sky = [17, 19, 48];
         for y in 0..frame.height {
             let t = y as f32 / frame.height.max(1) as f32;
             let glow = (1.0 - ((t - 0.40) / 0.72).abs()).clamp(0.0, 1.0);
@@ -30,13 +26,16 @@ impl HourglassRescue {
         self.draw_sand_stream(frame, &camera);
         render_model(&self.scene.model, frame, &camera, |v| v, None, None);
         let ship_center = model_center(ship_model);
-        let (forward, right, up) = flight_basis(ship);
+        // Render with the exact same basis used by movement. The previous
+        // level-specific formula used a different yaw convention and drew the
+        // ship roughly 90 degrees away from its real travel direction.
+        let (forward, right, up) = ship.basis();
         render_model(
             ship_model,
             frame,
             &camera,
             |vertex| {
-                let local = vertex.sub(ship_center).mul(ship.spec.model_scale * 3.0);
+                let local = vertex.sub(ship_center).mul(ship.spec.model_scale * 2.5);
                 ship.position
                     .add(ship.spec.model_to_world(local, forward, right, up))
             },
@@ -63,7 +62,7 @@ impl HourglassRescue {
     fn draw_sand_stream(&self, frame: &mut Framebuffer, camera: &Camera) {
         // Layered 3D particle ribbons taper into the hourglass waist. Their
         // curve moves with time and reverses when gravity flips.
-        let direction = if self.inversion_complete { -1.0 } else { 1.0 };
+        let direction = 1.0;
         for strand in 0..9 {
             let mut previous = None;
             let phase = strand as f32 * std::f32::consts::TAU / 9.0;
@@ -97,19 +96,19 @@ impl HourglassRescue {
     }
 
     pub(super) fn camera(&self, ship: &Ship) -> Camera {
-        // This level steers in the XZ plane, so keep its chase camera aligned
-        // with the same heading instead of using the space-flight yaw basis.
-        let forward = Vec3::new(-ship.yaw.sin(), 0.0, -ship.yaw.cos());
+        // Chase camera: stay behind the real travel direction while keeping
+        // the horizon stable instead of inheriting the ship's barrel roll.
+        let view_forward = ship.movement_basis().0;
+        let world_up = Vec3::new(0.0, 1.0, 0.0);
         let position = ship
             .position
-            .sub(forward.mul(20.0))
-            .add(Vec3::new(0.0, 6.0, 0.0));
+            .sub(view_forward.mul(ship.spec.chase_distance * 1.45))
+            .add(world_up.mul(ship.spec.chase_height));
         let target = ship
             .position
-            .add(forward.mul(12.0))
-            .add(Vec3::new(0.0, 9.0, 0.0));
+            .add(view_forward.mul(ship.spec.chase_look_ahead * 0.55));
         let camera_forward = target.sub(position).normalize();
-        let mut right = camera_forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
+        let mut right = camera_forward.cross(world_up).normalize();
         if right.dot(right) < 0.001 {
             right = Vec3::new(1.0, 0.0, 0.0);
         }
@@ -200,18 +199,6 @@ fn draw_line(frame: &mut Framebuffer, start: (i32, i32), end: (i32, i32), color:
             set_pixel(frame, x, y + offset, color);
         }
     }
-}
-
-fn flight_basis(ship: &Ship) -> (Vec3, Vec3, Vec3) {
-    let (sin_yaw, cos_yaw) = ship.yaw.sin_cos();
-    let (sin_pitch, cos_pitch) = ship.pitch.sin_cos();
-    let forward = Vec3::new(-sin_yaw * cos_pitch, sin_pitch, -cos_yaw * cos_pitch).normalize();
-    let flat_right = forward.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
-    let flat_up = flat_right.cross(forward).normalize();
-    let (sin_roll, cos_roll) = (ship.roll + ship.steering_bank).sin_cos();
-    let right = flat_right.mul(cos_roll).add(flat_up.mul(sin_roll));
-    let up = flat_up.mul(cos_roll).sub(flat_right.mul(sin_roll));
-    (forward, right, up)
 }
 
 pub(super) fn project(

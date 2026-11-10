@@ -2256,7 +2256,9 @@ fn procedural_surface_color(
     }
     if matches!(
         shader,
-        SurfaceShader::WaterPlanetPillarTexture | SurfaceShader::WaterLevelRockTexture
+        SurfaceShader::WaterPlanetPillarTexture
+            | SurfaceShader::WaterLevelRockTexture
+            | SurfaceShader::TimePlanetRockTexture
     ) {
         if let Some(textures) = asphalt_textures() {
             let scale = 0.12;
@@ -2269,10 +2271,11 @@ fn procedural_surface_color(
                 * (0.69 + ao * 0.31)
                 * (0.93 + relief * 0.18)
                 * (1.0 + fresnel * (1.0 - roughness) * 0.07);
-            let tint = if shader == SurfaceShader::WaterLevelRockTexture {
-                [0.76, 0.92, 1.08]
-            } else {
-                [0.88, 0.94, 1.02]
+            let tint = match shader {
+                SurfaceShader::WaterLevelRockTexture => [0.76, 0.92, 1.08],
+                SurfaceShader::TimePlanetRockTexture => [1.04, 0.66, 1.08],
+                SurfaceShader::WaterPlanetPillarTexture => [0.88, 0.94, 1.02],
+                _ => unreachable!(),
             };
             let rgb = std::array::from_fn(|channel| {
                 (color[channel] * tint[channel]).clamp(0.0, 255.0) as u8
@@ -2282,7 +2285,9 @@ fn procedural_surface_color(
     }
     if matches!(
         shader,
-        SurfaceShader::WaterPlanetSandTexture | SurfaceShader::WaterLevelSandTexture
+        SurfaceShader::WaterPlanetSandTexture
+            | SurfaceShader::WaterLevelSandTexture
+            | SurfaceShader::TimePlanetSandTexture
     ) {
         if let Some(textures) = water_sand_textures() {
             let scale = 0.075;
@@ -2295,10 +2300,11 @@ fn procedural_surface_color(
                 * (0.77 + ao * 0.23)
                 * (0.95 + relief * 0.12)
                 * (1.0 + fresnel * (1.0 - roughness) * 0.08);
-            let tint = if shader == SurfaceShader::WaterLevelSandTexture {
-                [0.84, 0.98, 1.04]
-            } else {
-                [1.06, 1.01, 0.90]
+            let tint = match shader {
+                SurfaceShader::WaterLevelSandTexture => [0.84, 0.98, 1.04],
+                SurfaceShader::TimePlanetSandTexture => [0.88, 0.58, 1.12],
+                SurfaceShader::WaterPlanetSandTexture => [1.06, 1.01, 0.90],
+                _ => unreachable!(),
             };
             let rgb = std::array::from_fn(|channel| {
                 (color[channel] * tint[channel]).clamp(0.0, 255.0) as u8
@@ -2631,6 +2637,12 @@ fn procedural_surface_color(
             112.0 + noise * 10.0,
             1.0,
         ),
+        SurfaceShader::TimePlanetSandTexture => (
+            166.0 + noise * 15.0,
+            105.0 + noise * 12.0,
+            184.0 + noise * 16.0,
+            1.0,
+        ),
         SurfaceShader::WaterPlanetGrassTexture => (
             45.0 + noise * 9.0,
             128.0 + noise * 17.0,
@@ -2653,6 +2665,12 @@ fn procedural_surface_color(
             66.0 + noise * 15.0,
             83.0 + noise * 15.0,
             96.0 + noise * 15.0,
+            1.0,
+        ),
+        SurfaceShader::TimePlanetRockTexture => (
+            132.0 + noise * 18.0,
+            82.0 + noise * 13.0,
+            142.0 + noise * 19.0,
             1.0,
         ),
         SurfaceShader::WaterLevelSandTexture => (
@@ -7194,7 +7212,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 game_mode = GameMode::HourglassRescue;
                 entered_level = true;
                 window.set_title(
-                    "Rescate a Contratiempo | A/D girar | W/S altura | Flechas avanzar | E rescatar",
+                    "Planeta del Reloj | controles de vuelo libre | Enter recoge energia",
                 );
             } else if active_galaxy == Galaxy::Vesper && vesper_orbit_index == Some(2) {
                 window.set_cursor_visibility(true);
@@ -7803,19 +7821,17 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::HourglassRescue => {
                 let restart_pressed = crate::input::pressed(Key::R);
                 let rescue_input = hourglass_rescue::Input {
-                    // WASD is a consistent four-way flight layout: A/D steer,
-                    // W/S climb and descend. Arrow up/down handle thrust.
-                    forward: window.is_key_down(Key::Up),
-                    brake: window.is_key_down(Key::Down),
+                    forward: window.is_key_down(Key::Space),
+                    brake: window.is_key_down(Key::LeftCtrl)
+                        || window.is_key_down(Key::RightCtrl),
                     left: window.is_key_down(Key::A) || window.is_key_down(Key::Left),
                     right: window.is_key_down(Key::D) || window.is_key_down(Key::Right),
-                    rise: window.is_key_down(Key::W) || window.is_key_down(Key::Space),
-                    descend: window.is_key_down(Key::S)
-                        || window.is_key_down(Key::LeftCtrl)
-                        || window.is_key_down(Key::RightCtrl),
+                    rise: window.is_key_down(Key::W) || window.is_key_down(Key::Up),
+                    descend: window.is_key_down(Key::S) || window.is_key_down(Key::Down),
+                    roll_left: window.is_key_down(Key::Q),
+                    roll_right: window.is_key_down(Key::E),
                     boost: window.is_key_down(Key::LeftShift)
                         || window.is_key_down(Key::RightShift),
-                    rescue: window.is_key_down(Key::E),
                     pause: crate::input::pressed(Key::P) || crate::input::pressed(Key::Escape),
                     exit: crate::input::pressed(Key::Backspace),
                     restart: restart_pressed,
@@ -8053,7 +8069,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::CoreGuardian if guardian_fight.is_exposed() => "ATACA EL NUCLEO EXPUESTO",
             GameMode::CoreGuardian => "SOBREVIVE Y ABRE EL NUCLEO",
             GameMode::TowerGuard => "DEFIENDE LA TORRE",
-            GameMode::HourglassRescue => "RESCATA LAS CINCO CAPSULAS",
+            GameMode::HourglassRescue => "REUNE FRAGMENTOS Y CONSIGUE LA ESFERA",
         };
         let shield_ratio = match game_mode {
             GameMode::WaterLevel => {

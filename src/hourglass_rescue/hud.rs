@@ -50,7 +50,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
         );
         draw_selection_label(
             frame,
-            "FLECHAS AVANZAR  A/D GIRAR  W/S ALTURA  E RESCATAR",
+            "W/S SUBIR-BAJAR  A/D GIRAR  Q/E ALABEO  TOCA EL FRAGMENTO",
             w / 2,
             (h as f32 * 0.68) as i32,
             (scale / 2).max(1),
@@ -62,7 +62,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
     panel(frame, 0.018, 0.022, 0.23, 0.12, 0x15121e, 0xb98552);
     draw_selection_label(
         frame,
-        "RESCATADAS",
+        "FRAGMENTOS",
         (w as f32 * 0.12) as i32,
         (h as f32 * 0.037) as i32,
         scale,
@@ -87,14 +87,9 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
         scale * 2,
         0xf5efff,
     );
-    let gravity_label = if game.inversion_complete {
-        "GRAVEDAD: ARRIBA"
-    } else {
-        "GRAVEDAD: ABAJO"
-    };
     draw_selection_label(
         frame,
-        gravity_label,
+        &format!("RELOJES  {}/{}", game.clocks_collected, super::CLOCK_COUNT),
         (w as f32 * 0.876) as i32,
         (h as f32 * 0.091) as i32,
         scale,
@@ -103,36 +98,20 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
 
     draw_selection_label(
         frame,
-        "RESCATE A CONTRATIEMPO",
+        "PLANETA DEL RELOJ DEL TIEMPO",
         w / 2,
         (h as f32 * 0.025) as i32,
         scale,
         0xffd88b,
     );
-    if !game.inversion_complete {
-        let left = game.inversion_countdown().ceil() as u32;
-        draw_selection_label(
-            frame,
-            &format!("INVERSION EN {:02}:{:02}", left / 60, left % 60),
-            w / 2,
-            (h as f32 * 0.065) as i32,
-            scale,
-            if game.phase == Phase::Warning {
-                0xffad67
-            } else {
-                0xe0c7f5
-            },
-        );
-    } else {
-        draw_selection_label(
-            frame,
-            "CAMARA SUPERIOR ABIERTA",
-            w / 2,
-            (h as f32 * 0.065) as i32,
-            scale,
-            0x9deafa,
-        );
-    }
+    draw_selection_label(
+        frame,
+        "TODOS LOS FRAGMENTOS DISPONIBLES",
+        w / 2,
+        (h as f32 * 0.065) as i32,
+        scale,
+        0x9deafa,
+    );
 
     for index in 0..3 {
         let color = if index < game.shields {
@@ -175,7 +154,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
         Some((EXIT_POSITION, "PORTAL"))
     } else {
         game.rescue_target
-            .map(|index| (CAPSULE_POSITIONS[index], "SEÑAL DE RESCATE"))
+            .map(|index| (CAPSULE_POSITIONS[index], "FRAGMENTO DE ENERGIA"))
     };
     if let Some((position, label)) = target {
         let distance = game.target_distance_for_hud(ship).unwrap_or(f32::INFINITY);
@@ -187,7 +166,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
             85.0
         };
         let (signal_label, signal_color) = if distance <= signal_range {
-            ("RADAR: CONTACTO", 0x8ce7ef)
+            ("RADAR: OBJETIVO CERCA", 0x8ce7ef)
         } else if distance <= 180.0 {
             ("RADAR: SENAL INTERMITENTE", 0xffd17a)
         } else if distance <= 300.0 {
@@ -222,29 +201,9 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
             }
         }
     }
-    if game.rescue_progress > 0.0 {
-        draw_selection_label(
-            frame,
-            "MANTENE E PARA RESCATAR",
-            (w as f32 * 0.83) as i32,
-            (h as f32 * 0.875) as i32,
-            scale,
-            0x8ce7ef,
-        );
-        bar(
-            frame,
-            (w as f32 * 0.72) as i32,
-            (h as f32 * 0.915) as i32,
-            (w as f32 * 0.22) as i32,
-            (scale * 5).max(5),
-            game.rescue_progress_ratio(),
-            0x74e0e9,
-        );
-    }
-
     if game.feedback_timer > 0.0
         && !game.feedback.is_empty()
-        && game.feedback != "RESCATA LAS CINCO CAPSULAS Y ALCANZA LA SALIDA"
+        && game.feedback != "REUNE LOS FRAGMENTOS, ADMINISTRA EL TIEMPO Y BUSCA LA ESFERA"
     {
         draw_selection_label(
             frame,
@@ -261,7 +220,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
             panel(frame, 0.20, 0.34, 0.80, 0.66, 0x171320, 0xc08659);
             draw_selection_label(
                 frame,
-                "RESCATA LAS CINCO CAPSULAS",
+                "ENCUENTRA LOS 5 FRAGMENTOS DE ENERGIA",
                 w / 2,
                 (h as f32 * 0.405) as i32,
                 scale * 2,
@@ -269,7 +228,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
             );
             draw_selection_label(
                 frame,
-                "W/S AVANZAR  A/D GIRAR  E MANTENER PARA RESCATAR",
+                "LOS RELOJES DAN +20 SEGUNDOS  //  EVITA LOS IMPACTOS",
                 w / 2,
                 (h as f32 * 0.48) as i32,
                 (scale / 2).max(1),
@@ -277,7 +236,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
             );
             draw_selection_label(
                 frame,
-                "ESPACIO/CTRL ALTURA  SHIFT IMPULSO  P PAUSA",
+                "AVANCE AUTOMATICO  ESPACIO ACELERA  CTRL FRENA  SHIFT IMPULSO",
                 w / 2,
                 (h as f32 * 0.535) as i32,
                 (scale / 2).max(1),
@@ -285,30 +244,11 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
             );
             draw_selection_label(
                 frame,
-                "LA INVERSION ABRIRA EL SANTUARIO  //  BACKSPACE: ESPACIO",
+                "ABRE LA PUERTA Y CONSIGUE LA ESFERA  //  BACKSPACE: ESPACIO",
                 w / 2,
                 (h as f32 * 0.60) as i32,
                 (scale / 2).max(1),
                 0xd5c4e7,
-            );
-        }
-        Phase::Inverting => {
-            draw_overlay(frame, 0x3f1646, 0.22);
-            draw_selection_label(
-                frame,
-                "INVERSION DE GRAVEDAD",
-                w / 2,
-                (h as f32 * 0.45) as i32,
-                scale * 2,
-                0xf2c0ff,
-            );
-            draw_selection_label(
-                frame,
-                "SUJETA EL RUMBO",
-                w / 2,
-                (h as f32 * 0.52) as i32,
-                scale,
-                0xffffff,
             );
         }
         _ => {}
