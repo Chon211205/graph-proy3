@@ -177,8 +177,15 @@ const ORBIT_LIMIT_RADIUS: f32 = 60.0;
 const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
 // Each authored Vesper structure has a different visual center and footprint.
 // Use structure-centered horizontal orbits instead of the complete OBJ bounds.
-const VESPER_ORBIT_HEIGHTS: [f32; 3] = [0.0, 3.0, 12.0];
-const VESPER_ORBIT_RADII: [f32; 3] = [30.0, 26.0, 20.0];
+const VESPER_ORBIT_HEIGHTS: [f32; 2] = [0.0, 12.0];
+const VESPER_ORBIT_RADII: [f32; 2] = [30.0, 20.0];
+const VESPER_SYSTEM_CENTER: Vec3 = Vec3::new(0.0, 48.0, 0.0);
+const VESPER_SYSTEM_ORBIT_RADII: [f32; 2] = [225.0, 345.0];
+const VESPER_SYSTEM_ORBIT_SPEEDS: [f32; 2] = [0.075, -0.048];
+const VESPER_SYSTEM_ORBIT_PHASES: [f32; 2] = [0.45, 3.35];
+// The castle asset's 58-unit bounding sphere includes its tall flag and portal;
+// its rocky equator is much narrower and is the surface used for free-flight orbit.
+const NOVA_CASTLE_ORBIT_RADIUS: f32 = 34.0;
 const ORBIT_CAMERA_DISTANCE: f32 = 100.0;
 const ORBIT_CAMERA_HEIGHT: f32 = 28.0;
 const HOME_ORBIT_TARGET_HEIGHT: f32 = 3.0;
@@ -2121,6 +2128,42 @@ fn bricks_textures() -> Option<&'static BricksTextures> {
         .as_ref()
 }
 
+struct LavaTextures {
+    color: SurfaceTexture,
+    normal: SurfaceTexture,
+    roughness: SurfaceTexture,
+    emission: SurfaceTexture,
+    displacement: SurfaceTexture,
+}
+
+fn lava_textures() -> Option<&'static LavaTextures> {
+    static TEXTURES: OnceLock<Option<LavaTextures>> = OnceLock::new();
+    TEXTURES
+        .get_or_init(|| {
+            let root = "assets/textures/Lava005_1K-PNG";
+            Some(LavaTextures {
+                color: SurfaceTexture::load_png(&format!("{root}/Lava005_1K-PNG_Color.png"), 512)?,
+                normal: SurfaceTexture::load_png(
+                    &format!("{root}/Lava005_1K-PNG_NormalGL.png"),
+                    512,
+                )?,
+                roughness: SurfaceTexture::load_png(
+                    &format!("{root}/Lava005_1K-PNG_Roughness.png"),
+                    512,
+                )?,
+                emission: SurfaceTexture::load_png(
+                    &format!("{root}/Lava005_1K-PNG_Emission.png"),
+                    512,
+                )?,
+                displacement: SurfaceTexture::load_png(
+                    &format!("{root}/Lava005_1K-PNG_Displacement.png"),
+                    512,
+                )?,
+            })
+        })
+        .as_ref()
+}
+
 fn procedural_surface_color(
     shader: SurfaceShader,
     point: Vec3,
@@ -2171,6 +2214,22 @@ fn procedural_surface_color(
                 (14.0 + caustic * 18.0 + rim * 22.0) as u8,
             ],
             light,
+        );
+    }
+    if shader == SurfaceShader::CastlePortalGlass {
+        let energy = (point.x * 4.1 + point.y * 5.7 - point.z * 3.3 + time * 2.4).sin();
+        let caustic = (point.x * 9.2 - point.y * 6.4 + time * 3.1)
+            .sin()
+            .max(0.0)
+            .powf(4.0);
+        let rim = fresnel.clamp(0.0, 1.0).powf(0.55);
+        return pack(
+            [
+                (118.0 + energy * 18.0 + caustic * 54.0 + rim * 65.0) as u8,
+                (18.0 + energy * 7.0 + caustic * 18.0 + rim * 20.0) as u8,
+                (196.0 + energy * 20.0 + caustic * 42.0 + rim * 52.0) as u8,
+            ],
+            brightness * (0.86 + rim * 0.42),
         );
     }
     if shader == SurfaceShader::CoreGuardianEnvironmentTexture {
@@ -2259,6 +2318,7 @@ fn procedural_surface_color(
         SurfaceShader::WaterPlanetPillarTexture
             | SurfaceShader::WaterLevelRockTexture
             | SurfaceShader::TimePlanetRockTexture
+            | SurfaceShader::CastleRockTexture
     ) {
         if let Some(textures) = asphalt_textures() {
             let scale = 0.12;
@@ -2274,6 +2334,7 @@ fn procedural_surface_color(
             let tint = match shader {
                 SurfaceShader::WaterLevelRockTexture => [0.76, 0.92, 1.08],
                 SurfaceShader::TimePlanetRockTexture => [1.04, 0.66, 1.08],
+                SurfaceShader::CastleRockTexture => [0.90, 0.78, 0.70],
                 SurfaceShader::WaterPlanetPillarTexture => [0.88, 0.94, 1.02],
                 _ => unreachable!(),
             };
@@ -2329,6 +2390,37 @@ fn procedural_surface_color(
                 (color[channel] * tint[channel]).clamp(0.0, 255.0) as u8
             });
             return pack(rgb, surface_light);
+        }
+    }
+    if shader == SurfaceShader::CastleLavaTexture {
+        if let Some(textures) = lava_textures() {
+            let scale = 0.16;
+            let drift = Vec3::new(time * 0.18, 0.0, -time * 0.11);
+            let animated_point = point.add(drift);
+            let color = textures.color.sample_triplanar(animated_point, scale);
+            let normal = textures.normal.sample_triplanar(animated_point, scale);
+            let roughness = textures
+                .roughness
+                .sample_triplanar(animated_point, scale)[0]
+                / 255.0;
+            let emission = textures.emission.sample_triplanar(animated_point, scale);
+            let height = textures
+                .displacement
+                .sample_triplanar(animated_point, scale)[0]
+                / 255.0;
+            let relief = ((normal[0] - 128.0).abs() + (normal[1] - 128.0).abs()) / 255.0;
+            let pulse = 0.84 + (time * 2.8 + point.x * 0.8 + point.z * 0.6).sin() * 0.16;
+            let surface_light = brightness
+                * (0.88 + relief * 0.18)
+                * (0.96 + height * 0.12)
+                * (1.0 + fresnel * (1.0 - roughness) * 0.10);
+            let rgb: [u32; 3] = std::array::from_fn(|channel| {
+                let glow = [1.12, 0.72, 0.34][channel];
+                (color[channel] * surface_light
+                    + emission[channel] * pulse * glow * 0.72)
+                    .clamp(0.0, 255.0) as u32
+            });
+            return (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
         }
     }
     if shader == SurfaceShader::RaceBarkTexture {
@@ -2673,6 +2765,18 @@ fn procedural_surface_color(
             142.0 + noise * 19.0,
             1.0,
         ),
+        SurfaceShader::CastleRockTexture => (
+            105.0 + noise * 17.0,
+            88.0 + noise * 14.0,
+            78.0 + noise * 12.0,
+            1.0,
+        ),
+        SurfaceShader::CastleLavaTexture => (
+            242.0 + noise * 13.0,
+            66.0 + noise * 18.0,
+            8.0 + noise * 5.0,
+            1.18,
+        ),
         SurfaceShader::WaterLevelSandTexture => (
             170.0 + noise * 16.0,
             169.0 + noise * 14.0,
@@ -2698,6 +2802,7 @@ fn procedural_surface_color(
             1.0,
         ),
         SurfaceShader::DragonBallGlass => (244.0, 132.0, 22.0, 1.0),
+        SurfaceShader::CastlePortalGlass => (154.0, 32.0, 238.0, 1.0),
         SurfaceShader::RaceAsphaltClean => (
             48.0 + noise * 8.0,
             49.0 + noise * 8.0,
@@ -2913,6 +3018,56 @@ fn refract_dragon_ball_color(
         (transmitted[channel] * transmission * amber_filter
             + shell[channel] * (1.0 - transmission)
             + rim_glow * [1.0, 0.58, 0.18][channel])
+            .clamp(0.0, 255.0) as u32
+    });
+    (rgb[0] << 16) | (rgb[1] << 8) | rgb[2]
+}
+
+fn refract_castle_portal_color(
+    surface: u32,
+    background: &[u32],
+    width: usize,
+    height: usize,
+    x: i32,
+    y: i32,
+    point: Vec3,
+    time: f32,
+    fresnel: f32,
+) -> u32 {
+    let lens = (1.0 - fresnel).clamp(0.08, 1.0);
+    let vortex = (point.y * 6.8 + point.x * 4.7 + time * 2.5).sin();
+    let offset_x = (vortex * 5.5 + (point.z * 7.1 - time * 1.8).cos() * 2.4) * lens;
+    let offset_y = ((point.x * 5.9 + time * 2.1).sin() * 4.2 - point.z * 1.6) * lens;
+    let sample = |dx: f32, dy: f32| {
+        let sx = (x as f32 + offset_x + dx)
+            .round()
+            .clamp(0.0, width.saturating_sub(1) as f32) as usize;
+        let sy = (y as f32 + offset_y + dy)
+            .round()
+            .clamp(0.0, height.saturating_sub(1) as f32) as usize;
+        background[sy * width + sx]
+    };
+    let red_sample = sample(2.4 * lens, -0.8 * lens);
+    let green_sample = sample(0.0, 0.0);
+    let blue_sample = sample(-2.4 * lens, 0.8 * lens);
+    let transmitted = [
+        ((red_sample >> 16) & 0xff) as f32,
+        ((green_sample >> 8) & 0xff) as f32,
+        (blue_sample & 0xff) as f32,
+    ];
+    let portal = [
+        ((surface >> 16) & 0xff) as f32,
+        ((surface >> 8) & 0xff) as f32,
+        (surface & 0xff) as f32,
+    ];
+    let transmission = 0.48 + lens * 0.28;
+    let rim_glow = fresnel.powf(0.48) * 78.0;
+    let pulse = 0.86 + (time * 3.4 + point.y * 2.8).sin() * 0.14;
+    let rgb: [u32; 3] = std::array::from_fn(|channel| {
+        let violet_filter = [0.86, 0.48, 1.18][channel];
+        (transmitted[channel] * transmission * violet_filter
+            + portal[channel] * (1.0 - transmission) * pulse
+            + rim_glow * [0.82, 0.24, 1.0][channel])
             .clamp(0.0, 255.0) as u32
     });
     (rgb[0] << 16) | (rgb[1] << 8) | rgb[2]
@@ -3353,8 +3508,8 @@ enum PlanetVisual {
     Spiky,
     Racing,
     VesperClock,
-    VesperLantern,
     VesperShell,
+    Castle,
 }
 
 struct PlanetLodModels {
@@ -3453,12 +3608,12 @@ fn make_planet_lod(radius: f32, stacks: usize, slices: usize, visual: PlanetVisu
             PlanetVisual::VesperClock if band == stacks / 2 => "race_rgb_228_174_72",
             PlanetVisual::VesperClock if index % 3 == 0 => "race_rgb_159_110_58",
             PlanetVisual::VesperClock => "race_rgb_112_79_49",
-            PlanetVisual::VesperLantern if band == stacks / 2 => "race_rgb_248_172_58",
-            PlanetVisual::VesperLantern if index % 3 == 0 => "race_rgb_113_65_159",
-            PlanetVisual::VesperLantern => "race_rgb_78_44_118",
             PlanetVisual::VesperShell if band < 2 => "race_rgb_239_226_194",
             PlanetVisual::VesperShell if index % 3 == 0 => "race_rgb_24_112_119",
             PlanetVisual::VesperShell => "race_rgb_192_204_184",
+            PlanetVisual::Castle if band == stacks / 2 => "Castle_Lava",
+            PlanetVisual::Castle if index % 4 == 0 => "Castle_Bricks_Dark",
+            PlanetVisual::Castle => "Castle_Rock",
         };
         *face = Face::new(face.indices, material, "planet_lod");
         if matches!(visual, PlanetVisual::Spiky) {
@@ -3528,6 +3683,64 @@ fn make_wormhole_sphere(radius: f32, stacks: usize, slices: usize) -> Model {
         face.color = MaterialColor::Fixed([2, 1, 7]);
     }
     model
+}
+
+fn make_vesper_black_hole() -> Model {
+    let mut core = make_sphere(22.0, 18, 32, false);
+    for face in &mut core.faces {
+        face.shader = SurfaceShader::Flat;
+        face.color = MaterialColor::Fixed([1, 0, 5]);
+        face.material = "vesper_black_hole_core".to_string();
+        face.group = "vesper_black_hole_core".to_string();
+    }
+
+    let mut vertices = core.vertices;
+    let mut faces = core.faces;
+    let segments = 96;
+    let bands = [
+        (24.0, 34.0, [255, 211, 150], [238, 83, 255]),
+        (34.0, 48.0, [238, 83, 255], [129, 37, 255]),
+        (48.0, 67.0, [129, 37, 255], [52, 76, 238]),
+        (67.0, 92.0, [52, 76, 238], [38, 13, 112]),
+    ];
+    for (band, (inner, outer, inner_color, outer_color)) in bands.into_iter().enumerate() {
+        let base = vertices.len();
+        for segment in 0..segments {
+            let angle = TAU * segment as f32 / segments as f32;
+            let (sin, cos) = angle.sin_cos();
+            let ripple = (angle * 5.0 + band as f32 * 1.7).sin() * (0.35 + band as f32 * 0.12);
+            vertices.push(Vec3::new(cos * inner, ripple, sin * inner));
+            vertices.push(Vec3::new(cos * outer, ripple * 1.35, sin * outer));
+        }
+        for segment in 0..segments {
+            let next = (segment + 1) % segments;
+            let a = base + segment * 2;
+            let b = base + next * 2;
+            let c = a + 1;
+            let d = b + 1;
+            let flare = (segment + band * 11) % 13 < 3;
+            for (indices, color) in [
+                ([a, b, c], if flare { inner_color } else { outer_color }),
+                ([c, b, d], if flare { outer_color } else { inner_color }),
+            ] {
+                let mut face = Face::new(indices, "vesper_accretion_disk", "accretion_disk");
+                face.shader = SurfaceShader::Flat;
+                face.color = MaterialColor::Fixed(color);
+                faces.push(face);
+            }
+        }
+    }
+    Model::new(vertices, faces)
+}
+
+fn vesper_planet_position(index: usize, world_time: f32) -> Vec3 {
+    let angle = VESPER_SYSTEM_ORBIT_PHASES[index] + VESPER_SYSTEM_ORBIT_SPEEDS[index] * world_time;
+    let (sin, cos) = angle.sin_cos();
+    VESPER_SYSTEM_CENTER.add(Vec3::new(
+        cos * VESPER_SYSTEM_ORBIT_RADII[index],
+        VESPER_ORBIT_HEIGHTS[index],
+        sin * VESPER_SYSTEM_ORBIT_RADII[index],
+    ))
 }
 
 fn make_underwater_boost_ring() -> Model {
@@ -4501,7 +4714,9 @@ impl TriangleBatch {
                 matches!(
                     &command.style,
                     TriangleStyle::Procedural {
-                        shader: SurfaceShader::Ocean | SurfaceShader::DragonBallGlass,
+                        shader: SurfaceShader::Ocean
+                            | SurfaceShader::DragonBallGlass
+                            | SurfaceShader::CastlePortalGlass,
                         ..
                     }
                 )
@@ -4614,6 +4829,15 @@ impl TriangleBatch {
                                     } else if *shader == SurfaceShader::DragonBallGlass {
                                         if let Some(background) = refractive_background {
                                             refract_dragon_ball_color(
+                                                surface, background, width, height, x, y, point,
+                                                *time, *fresnel,
+                                            )
+                                        } else {
+                                            surface
+                                        }
+                                    } else if *shader == SurfaceShader::CastlePortalGlass {
+                                        if let Some(background) = refractive_background {
+                                            refract_castle_portal_color(
                                                 surface, background, width, height, x, y, point,
                                                 *time, *fresnel,
                                             )
@@ -4909,11 +5133,14 @@ fn render_scene(
     wormhole: &Model,
     wormhole_center: Vec3,
     galaxy: Galaxy,
-    vesper_planets: &[VesperPlanet; 3],
+    vesper_planets: &[VesperPlanet; 2],
+    vesper_black_hole: &Model,
+    castle_planet: &VesperPlanet,
     race_planet: &Model,
     planet_lods: [&PlanetLodModels; 3],
     planet_lod_states: &mut [PlanetLodState; 3],
-    vesper_lod_states: &mut [PlanetLodState; 3],
+    vesper_lod_states: &mut [PlanetLodState; 2],
+    castle_lod_state: &mut PlanetLodState,
     framebuffer: &mut Framebuffer,
     batch: &mut TriangleBatch,
     ship: &Ship,
@@ -4926,7 +5153,7 @@ fn render_scene(
 ) {
     framebuffer.clear(0);
     draw_skybox(framebuffer, travel, galaxy);
-    let camera = chase_camera(ship, galaxy == Galaxy::Vesper);
+    let camera = chase_camera(ship, matches!(galaxy, Galaxy::Vesper | Galaxy::Nova));
     debug_assert!(batch.commands.is_empty());
     let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let planet_position = water_planet_position(world_time);
@@ -5060,11 +5287,28 @@ fn render_scene(
             None,
         );
     } else if galaxy == Galaxy::Vesper {
+        let (disk_sin, disk_cos) = (world_time * 0.22).sin_cos();
+        queue_model(
+            vesper_black_hole,
+            batch,
+            &camera,
+            |vertex| {
+                Vec3::new(
+                    vertex.x * disk_cos - vertex.z * disk_sin,
+                    vertex.y,
+                    vertex.x * disk_sin + vertex.z * disk_cos,
+                )
+                .add(VESPER_SYSTEM_CENTER)
+            },
+            Some(world_time),
+            None,
+        );
         for (index, body) in vesper_planets.iter().enumerate() {
+            let body_position = vesper_planet_position(index, world_time);
             let (sin, cos) = (body.rotation_y + world_time * 0.035).sin_cos();
             let lod = vesper_lod_states[index].update(projected_planet_radius(
                 &camera,
-                body.center,
+                body_position,
                 body.radius,
                 batch.projection.focal,
             ));
@@ -5084,12 +5328,42 @@ fn render_scene(
                         local.y,
                         local.x * sin + local.z * cos,
                     )
-                    .add(body.center)
+                    .add(body_position)
                 },
                 None,
                 None,
             );
         }
+    } else if galaxy == Galaxy::Nova {
+        let body = castle_planet;
+        let (sin, cos) = (body.rotation_y + world_time * 0.018).sin_cos();
+        let lod = castle_lod_state.update(projected_planet_radius(
+            &camera,
+            body.center,
+            body.radius,
+            batch.projection.focal,
+        ));
+        let use_low = lod != 0;
+        queue_model(
+            if use_low { &body.low } else { &body.model },
+            batch,
+            &camera,
+            |vertex| {
+                let local = if use_low {
+                    vertex
+                } else {
+                    vertex.sub(body.source_center).mul(body.scale)
+                };
+                Vec3::new(
+                    local.x * cos - local.z * sin,
+                    local.y,
+                    local.x * sin + local.z * cos,
+                )
+                .add(body.center)
+            },
+            None,
+            None,
+        );
     }
 
     queue_model(
@@ -6748,7 +7022,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         make_planet_lods(race_track::PLANET_RADIUS, PlanetVisual::Racing),
     ];
     let mut planet_lod_states = [PlanetLodState::default(); 3];
-    let mut vesper_lod_states = [PlanetLodState::default(); 3];
+    let mut vesper_lod_states = [PlanetLodState::default(); 2];
+    let mut castle_lod_state = PlanetLodState::default();
     let water_level_path = "assets/levels/waterlevel_extendido.obj";
     let mut water_level = load_obj(water_level_path)
         .map_err(|error| format!("Error al cargar {water_level_path}: {error}"))?;
@@ -6793,26 +7068,27 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let vesper_planets = [
         VesperPlanet::load(
             "assets/planets/reloj_arena.obj",
-            Vec3::new(-70.0, 48.0, 250.0),
+            vesper_planet_position(0, 0.0),
             42.0,
             0.24,
             PlanetVisual::VesperClock,
         )?,
         VesperPlanet::load(
-            "assets/planets/farol.obj",
-            Vec3::new(-350.0, 48.0, 0.0),
-            36.0,
-            0.0,
-            PlanetVisual::VesperLantern,
-        )?,
-        VesperPlanet::load(
             "assets/planets/caracola.obj",
-            Vec3::new(210.0, 48.0, 0.0),
+            vesper_planet_position(1, 0.0),
             34.0,
             0.0,
             PlanetVisual::VesperShell,
         )?,
     ];
+    let vesper_black_hole = make_vesper_black_hole();
+    let castle_planet = VesperPlanet::load(
+        "assets/planets/planeta_castillo_lava.obj",
+        Vec3::new(0.0, 55.0, -80.0),
+        58.0,
+        0.0,
+        PlanetVisual::Castle,
+    )?;
     let race_sky = race_track::RaceSky {
         water_planet: &planet,
         water_center: planet_center,
@@ -7214,7 +7490,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 window.set_title(
                     "Planeta del Reloj | controles de vuelo libre | Enter recoge energia",
                 );
-            } else if active_galaxy == Galaxy::Vesper && vesper_orbit_index == Some(2) {
+            } else if active_galaxy == Galaxy::Vesper && vesper_orbit_index == Some(1) {
                 window.set_cursor_visibility(true);
                 let resident_directory = std::env::current_dir()?.join("resident_level1");
                 let resident_executable =
@@ -7259,6 +7535,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             } else if active_galaxy == Galaxy::Vesper {
                 // Vesper's other bodies have no minigame; keep the player in
                 // orbit instead of accidentally launching the water level.
+            } else if active_galaxy == Galaxy::Nova {
+                // The castle currently acts as a free-flight destination. Keep
+                // Enter from accidentally launching the aquatic level here.
             } else if ship_controller.ship.spiky_planet_locked {
                 guardian_fight = CoreGuardian::new();
                 game_mode = GameMode::CoreGuardian;
@@ -7449,18 +7728,20 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             vesper_planets
                                 .iter()
                                 .enumerate()
-                                .min_by(|(_, a), (_, b)| {
-                                    let a_offset = ship.position.sub(a.center);
-                                    let b_offset = ship.position.sub(b.center);
+                                .min_by(|(a_index, _), (b_index, _)| {
+                                    let a_offset = ship
+                                        .position
+                                        .sub(vesper_planet_position(*a_index, world_time));
+                                    let b_offset = ship
+                                        .position
+                                        .sub(vesper_planet_position(*b_index, world_time));
                                     a_offset.dot(a_offset).total_cmp(&b_offset.dot(b_offset))
                                 })
                                 .map(|(index, _)| index)
                                 .unwrap_or(0)
                         });
                         let body = &vesper_planets[nearest];
-                        let orbit_center =
-                            body.center
-                                .add(Vec3::new(0.0, VESPER_ORBIT_HEIGHTS[nearest], 0.0));
+                        let orbit_center = vesper_planet_position(nearest, world_time);
                         let orbit_radius = VESPER_ORBIT_RADII[nearest];
                         move_around_planet(
                             ship,
@@ -7474,16 +7755,23 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             true,
                         );
                         vesper_orbit_index = ship.planet_locked.then_some(nearest);
-                    } else {
-                        // Nova is open deep space: no body should capture the
-                        // ship into an orbit while it approaches its portal.
-                        ship.planet_locked = false;
+                    } else if active_galaxy == Galaxy::Nova {
                         ship.spiky_planet_locked = false;
                         ship.race_planet_locked = false;
-                        ship.orbit_center = None;
-                        ship.orbit_plane_normal = None;
-                        ship.position = ship.position.add(ship.movement_basis().0.mul(movement));
+                        move_around_planet(
+                            ship,
+                            movement,
+                            castle_planet.center,
+                            NOVA_CASTLE_ORBIT_RADIUS,
+                            castle_planet.rotation_y + world_time * 0.018,
+                            &[],
+                            yaw_input,
+                            pitch_input,
+                            true,
+                        );
                         vesper_orbit_index = None;
+                    } else {
+                        unreachable!("all galaxies are handled above");
                     }
                 }
                 let camera_target = if ship.orbit_plane_normal.is_some() {
@@ -7548,7 +7836,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             1 => "Farol",
                             _ => "Casa Torre",
                         };
-                        if vesper_orbit_index == Some(2) {
+                        if vesper_orbit_index == Some(1) {
                             window.set_title(
                                 "Casa Torre | Enter: jugar Resident Evil nivel 1 | Backspace: salir",
                             );
@@ -7557,6 +7845,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                                 "{planet_name} | En orbita | Backspace: salir"
                             ));
                         }
+                    } else if active_galaxy == Galaxy::Nova {
+                        window.set_title(
+                            "Planeta Castillo | En orbita | Backspace: salir de orbita",
+                        );
                     } else {
                         window.set_title(
                             "Planeta acuatico | Enter: iniciar nivel | Backspace: salir",
@@ -7566,7 +7858,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     window.set_title(match active_galaxy {
                         Galaxy::Home => "Sistema solar | Vuelo libre 3D | F11: fullscreen",
                         Galaxy::Vesper => "Galaxia Vesper | Portales: Sistema solar y Nova",
-                        Galaxy::Nova => "Galaxia Nova | Portal: Vesper",
+                        Galaxy::Nova => "Galaxia Nova | Planeta Castillo | Portal: Vesper",
                     });
                 }
                 render_scene(
@@ -7587,10 +7879,13 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     wormhole_position(active_galaxy),
                     active_galaxy,
                     &vesper_planets,
+                    &vesper_black_hole,
+                    &castle_planet,
                     &race_track.planet,
                     [&planet_lods[0], &planet_lods[1], &planet_lods[2]],
                     &mut planet_lod_states,
                     &mut vesper_lod_states,
+                    &mut castle_lod_state,
                     &mut scene_framebuffer,
                     &mut triangle_batch,
                     &ship_controller.ship,
@@ -7804,8 +8099,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         game_mode = GameMode::FreeWorld;
                         launch_ship_from_planet(
                             &mut ship_controller,
-                            vesper_planets[2].center,
-                            vesper_planets[2].radius,
+                            vesper_planet_position(1, world_time),
+                            vesper_planets[1].radius,
                         );
                         window.set_cursor_visibility(true);
                         window.set_title("Casa Torre | En orbita | Backspace: salir");
@@ -7843,7 +8138,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     game_mode = GameMode::FreeWorld;
                     launch_ship_from_planet(
                         &mut ship_controller,
-                        vesper_planets[0].center,
+                        vesper_planet_position(0, world_time),
                         vesper_planets[0].radius,
                     );
                     window.set_title("Galaxia Vesper | Vuelo libre | Reloj de Arena");
@@ -8164,9 +8459,17 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         if performance_hud {
             let stats = triangle_batch.stats();
             let displayed_lods = if active_galaxy == Galaxy::Vesper {
-                &vesper_lod_states
+                [
+                    vesper_lod_states[0].level,
+                    vesper_lod_states[1].level,
+                    0,
+                ]
             } else {
-                &planet_lod_states
+                [
+                    planet_lod_states[0].level,
+                    planet_lod_states[1].level,
+                    planet_lod_states[2].level,
+                ]
             };
             // Keep diagnostics away from the top-center objective and draw
             // them after gameplay HUDs so the opaque panel stays readable.
@@ -8223,9 +8526,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 &format!(
                     "DRS {} LOD {}/{}/{}",
                     dynamic_resolution.status,
-                    displayed_lods[0].level,
-                    displayed_lods[1].level,
-                    displayed_lods[2].level,
+                    displayed_lods[0], displayed_lods[1], displayed_lods[2],
                 ),
                 center,
                 PANEL_TOP as i32 + 96,
@@ -8336,6 +8637,43 @@ mod tests {
     }
 
     #[test]
+    fn vesper_planets_orbit_the_central_black_hole() {
+        for index in 0..2 {
+            let start = vesper_planet_position(index, 0.0);
+            let later = vesper_planet_position(index, 12.0);
+            let radial = start.sub(VESPER_SYSTEM_CENTER);
+            let later_radial = later.sub(VESPER_SYSTEM_CENTER);
+            let horizontal_radius = (radial.x * radial.x + radial.z * radial.z).sqrt();
+            let later_radius =
+                (later_radial.x * later_radial.x + later_radial.z * later_radial.z).sqrt();
+            assert!((horizontal_radius - VESPER_SYSTEM_ORBIT_RADII[index]).abs() < 0.01);
+            assert!((later_radius - horizontal_radius).abs() < 0.01);
+            assert!(later.sub(start).dot(later.sub(start)) > 100.0);
+        }
+    }
+
+    #[test]
+    fn vesper_black_hole_has_a_dark_core_and_layered_accretion_disk() {
+        let model = make_vesper_black_hole();
+        assert!(model
+            .faces
+            .iter()
+            .any(|face| face.group == "vesper_black_hole_core"));
+        let disk_faces = model
+            .faces
+            .iter()
+            .filter(|face| face.group == "accretion_disk")
+            .count();
+        assert_eq!(disk_faces, 4 * 96 * 2);
+        assert!(model.faces.iter().any(|face| {
+            face.group == "accretion_disk" && face.color == MaterialColor::Fixed([255, 211, 150])
+        }));
+        assert!(model.faces.iter().any(|face| {
+            face.group == "accretion_disk" && face.color == MaterialColor::Fixed([38, 13, 112])
+        }));
+    }
+
+    #[test]
     fn home_portal_is_positioned_directly_above_the_sun() {
         let sun = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
         let portal = wormhole_position(Galaxy::Home);
@@ -8392,6 +8730,38 @@ mod tests {
         assert!((ship.position.y - center.y).abs() < 0.001);
         assert!(ship.pitch.abs() < 0.001);
         let plane = ship.orbit_plane_normal.expect("Vesper orbit plane");
+        assert!(plane.x.abs() < 0.001);
+        assert!((plane.y - 1.0).abs() < 0.001);
+        assert!(plane.z.abs() < 0.001);
+    }
+
+    #[test]
+    fn nova_castle_captures_the_ship_in_a_horizontal_orbit() {
+        let center = Vec3::new(0.0, 55.0, -80.0);
+        let mut ship = Ship::new(&ASTRA_SPEC);
+        ship.position = center.add(Vec3::new(49.0, 0.0, 0.0));
+
+        move_around_planet(
+            &mut ship,
+            4.0,
+            center,
+            NOVA_CASTLE_ORBIT_RADIUS,
+            0.0,
+            &[],
+            0,
+            0,
+            true,
+        );
+
+        assert!(ship.planet_locked);
+        assert!((ship.position.y - center.y).abs() < 0.001);
+        let distance = ship.position.sub(center).dot(ship.position.sub(center)).sqrt();
+        let minimum = NOVA_CASTLE_ORBIT_RADIUS
+            + ship.spec.collision_radius
+            + COLLISION_MARGIN
+            + ORBIT_FLIGHT_ALTITUDE;
+        assert!(distance >= minimum - 0.001);
+        let plane = ship.orbit_plane_normal.expect("Nova orbit plane");
         assert!(plane.x.abs() < 0.001);
         assert!((plane.y - 1.0).abs() < 0.001);
         assert!(plane.z.abs() < 0.001);
@@ -10949,5 +11319,79 @@ mod tests {
             assert!(!enemy.vertices.is_empty(), "{group} sin vertices");
             assert!(!enemy.faces.is_empty(), "{group} sin caras");
         }
+    }
+
+    #[test]
+    fn nova_castle_planet_asset_loads_with_authored_materials() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let model = load_obj(root.join("assets/planets/planeta_castillo_lava.obj")).unwrap();
+        assert!(model.vertices.len() > 7_000);
+        assert!(model.faces.len() > 7_000);
+
+        for material in [
+            "Castle_Rock",
+            "Castle_Lava",
+            "Castle_Bricks",
+            "Castle_Portal_Core",
+            "Castle_Flag",
+        ] {
+            assert!(
+                model.faces.iter().any(|face| face.material == material),
+                "falta el material {material}"
+            );
+        }
+        assert!(model.faces.iter().any(|face| {
+            face.material == "Castle_Bricks"
+                && face.shader == SurfaceShader::RaceBricksTexture
+                && face.color == MaterialColor::Fixed([117, 110, 117])
+        }));
+        assert!(model.faces.iter().any(|face| {
+            face.material == "Castle_Rock"
+                && face.shader == SurfaceShader::CastleRockTexture
+        }));
+        assert!(model.faces.iter().any(|face| {
+            face.material == "Castle_Lava"
+                && face.shader == SurfaceShader::CastleLavaTexture
+        }));
+        assert!(model.faces.iter().any(|face| {
+            face.material == "Castle_Portal_Core"
+                && face.color == MaterialColor::Fixed([255, 46, 255])
+                && face.shader == SurfaceShader::CastlePortalGlass
+        }));
+    }
+
+    #[test]
+    fn castle_lava_loads_and_animates_the_complete_png_texture_set() {
+        let textures = lava_textures().expect("Lava005 PNG textures must load");
+        for texture in [
+            &textures.color,
+            &textures.normal,
+            &textures.roughness,
+            &textures.emission,
+            &textures.displacement,
+        ] {
+            assert_eq!((texture.width, texture.height), (512, 512));
+            assert_eq!(texture.pixels.len(), 512 * 512);
+        }
+        let point = Vec3::new(3.2, -1.1, 4.7);
+        let first = procedural_surface_color(
+            SurfaceShader::CastleLavaTexture,
+            point,
+            0,
+            0,
+            0.0,
+            1.0,
+            0.15,
+        );
+        let animated = procedural_surface_color(
+            SurfaceShader::CastleLavaTexture,
+            point,
+            0,
+            0,
+            1.0,
+            1.0,
+            0.15,
+        );
+        assert_ne!(first, animated);
     }
 }
