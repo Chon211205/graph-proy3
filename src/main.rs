@@ -7315,7 +7315,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let vesper_orbit_rings = make_vesper_orbit_rings();
     let castle_planet = VesperPlanet::load(
         "assets/planets/planeta_castillo_lava.obj",
-        Vec3::new(0.0, 55.0, -80.0),
+        Vec3::new(260.0, 90.0, 230.0),
         58.0,
         0.0,
         PlanetVisual::Castle,
@@ -9230,7 +9230,7 @@ mod tests {
 
     #[test]
     fn nova_castle_captures_the_ship_in_a_horizontal_orbit() {
-        let center = Vec3::new(0.0, 55.0, -80.0);
+        let center = Vec3::new(260.0, 90.0, 230.0);
         let mut ship = Ship::new(&ASTRA_SPEC);
         ship.position = center.add(Vec3::new(49.0, 0.0, 0.0));
 
@@ -9258,6 +9258,18 @@ mod tests {
         assert!(plane.x.abs() < 0.001);
         assert!((plane.y - 1.0).abs() < 0.001);
         assert!(plane.z.abs() < 0.001);
+    }
+
+    #[test]
+    fn nova_castle_is_directly_ahead_of_the_portal_exit() {
+        let exit = wormhole_position(Galaxy::Nova).add(Vec3::new(0.0, 20.0, -150.0));
+        let castle = Vec3::new(260.0, 90.0, 230.0);
+        let mut ship = Ship::new(&ASTRA_SPEC);
+        ship.position = exit;
+        ship.yaw = std::f32::consts::PI;
+        let forward = ship.movement_basis().0;
+        let direction = castle.sub(exit).normalize();
+        assert!(forward.dot(direction) > 0.999);
     }
 
     #[test]
