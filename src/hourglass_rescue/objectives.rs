@@ -44,9 +44,16 @@ impl HourglassRescue {
             self.feedback = "FRAGMENTO DE ENERGIA RECOGIDO";
             self.feedback_timer = 1.5;
             if self.rescued as usize == CAPSULE_COUNT {
-                self.scene.set_portal_open(true);
-                self.feedback = "PUERTA DESBLOQUEADA - BUSCA LA ESFERA DEL DRAGON";
-                self.feedback_timer = 3.0;
+                self.phase = super::Phase::Reward;
+                self.reward_elapsed = 0.0;
+                self.reward_position = ship.position;
+                self.scene.set_reward_transform(
+                    self.reward_position.add(crate::obj_loader::Vec3::new(0.0, 13.0, 0.0)),
+                    1.0,
+                    0.0,
+                );
+                self.feedback = "RECIBIENDO ESFERA DE 5 ESTRELLAS";
+                self.feedback_timer = 1.0;
             }
         }
     }
@@ -59,10 +66,6 @@ impl HourglassRescue {
     }
 
     pub(super) fn target_distance(&self, ship: &Ship) -> Option<f32> {
-        if self.rescued as usize == CAPSULE_COUNT {
-            let offset = ship.position.sub(super::EXIT_POSITION);
-            return Some(offset.dot(offset).sqrt());
-        }
         self.rescue_target.map(|index| {
             let offset = ship.position.sub(CAPSULE_POSITIONS[index]);
             offset.dot(offset).sqrt()

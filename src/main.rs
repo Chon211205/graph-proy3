@@ -3304,6 +3304,16 @@ fn make_four_star_dragon_ball() -> Model {
     make_dragon_ball(&[(-0.62, -0.62), (0.62, -0.62), (-0.62, 0.62), (0.62, 0.62)])
 }
 
+fn make_five_star_dragon_ball() -> Model {
+    make_dragon_ball(&[
+        (-0.62, -0.62),
+        (0.62, -0.62),
+        (0.0, 0.0),
+        (-0.62, 0.62),
+        (0.62, 0.62),
+    ])
+}
+
 fn make_one_star_dragon_ball() -> Model {
     make_dragon_ball(&[(0.0, 0.0)])
 }
@@ -7733,7 +7743,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 game_mode = GameMode::HourglassRescue;
                 entered_level = true;
                 window.set_title(
-                    "Planeta del Reloj | controles de vuelo libre | Enter recoge energia",
+                    "Planeta del Reloj | controles de vuelo libre | Enter dispara",
                 );
             } else if active_galaxy == Galaxy::Vesper && vesper_orbit_index == Some(1) {
                 window.set_cursor_visibility(true);
@@ -8443,6 +8453,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     roll_right: window.is_key_down(Key::E),
                     boost: window.is_key_down(Key::LeftShift)
                         || window.is_key_down(Key::RightShift),
+                    firing: window.is_key_down(Key::Enter),
                     pause: crate::input::pressed(Key::P) || crate::input::pressed(Key::Escape),
                     exit: crate::input::pressed(Key::Backspace),
                     restart: restart_pressed,
@@ -8460,10 +8471,24 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     window.set_title("Galaxia Vesper | Vuelo libre | Reloj de Arena");
                     continue;
                 }
+                ship_controller
+                    .update_weapon_and_projectiles(rescue_input.firing, delta_time);
+                hourglass_rescue.update_enemies(
+                    &mut ship_controller.ship,
+                    &mut ship_controller.projectiles,
+                    delta_time,
+                );
                 hourglass_rescue.render(
                     &mut scene_framebuffer,
                     active_model,
                     &ship_controller.ship,
+                );
+                hourglass_rescue.render_weapon(
+                    &mut scene_framebuffer,
+                    &laser_bolt,
+                    &ship_controller.projectiles,
+                    &ship_controller.ship,
+                    ship_controller.charge_ratio(),
                 );
             }
         }

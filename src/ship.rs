@@ -577,7 +577,14 @@ impl ShipController {
 
     pub fn update(&mut self, input: &ShipInput, delta_time: f32) {
         self.ship.update_flight(input, delta_time);
-        self.update_weapon(input.firing, delta_time);
+        self.update_weapon_and_projectiles(input.firing, delta_time);
+    }
+
+    /// Update the free-flight weapon without moving the ship. Minigames that
+    /// provide their own flight physics can still share charging, muzzle
+    /// placement, projectile pooling, speed and lifetime with the free world.
+    pub fn update_weapon_and_projectiles(&mut self, firing: bool, delta_time: f32) {
+        self.update_weapon(firing, delta_time);
         for projectile in self
             .projectiles
             .iter_mut()
@@ -717,6 +724,19 @@ mod tests {
             controller.spawn_projectile(projectile(2.0));
         }
         assert_eq!(controller.projectiles.len(), MAX_PROJECTILES);
+    }
+
+    #[test]
+    fn weapon_only_update_fires_without_moving_the_ship() {
+        let mut controller = ShipController::new(&ARWING_SPEC);
+        let start = controller.ship.position;
+        controller.update_weapon_and_projectiles(true, 0.08);
+        controller.update_weapon_and_projectiles(false, 0.02);
+
+        let movement = controller.ship.position.sub(start);
+        assert!(movement.dot(movement) < f32::EPSILON);
+        assert!(!controller.projectiles.is_empty());
+        assert!(controller.projectiles.iter().all(|shot| shot.lifetime > 0.0));
     }
 
     #[test]

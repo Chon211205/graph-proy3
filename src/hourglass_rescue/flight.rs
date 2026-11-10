@@ -15,20 +15,14 @@ impl HourglassRescue {
                 roll: input.roll_right as i8 - input.roll_left as i8,
                 accelerating: input.forward,
                 braking: input.brake,
-                firing: false,
+                // Weapon state is updated by ShipController after the
+                // level-specific movement step, avoiding double movement.
+                firing: input.firing,
             },
             dt,
         );
-        if input.boost && self.boost_reserve > 0.0 {
-            self.boost_reserve = (self.boost_reserve - dt).max(0.0);
-        } else {
-            self.boost_reserve = (self.boost_reserve + dt * 0.26).min(2.2);
-        }
-        let boost = if input.boost && self.boost_reserve > 0.0 {
-            45.0
-        } else {
-            0.0
-        };
+        self.boost_reserve = 2.2;
+        let boost = if input.boost { 45.0 } else { 0.0 };
         // The time planet uses the free-flight controls with a slightly faster
         // traversal pace so its distant objectives do not feel sluggish.
         let travel_speed = ship.speed * 1.35 + boost;

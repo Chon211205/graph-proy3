@@ -3,7 +3,7 @@ use crate::{draw_selection_label, framebuffer::Framebuffer};
 
 use super::scene::CAPSULE_POSITIONS;
 use super::ui::{bar, draw_overlay, panel, shield_icon};
-use super::{HourglassRescue, Phase, CAPSULE_COUNT, EXIT_POSITION};
+use super::{HourglassRescue, Phase};
 
 pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship) {
     let w = frame.width as i32;
@@ -113,6 +113,8 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
         0x9deafa,
     );
 
+    draw_aiming_reticle(game, frame, ship, scale);
+
     for index in 0..3 {
         let color = if index < game.shields {
             0x73e8ef
@@ -126,7 +128,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
     panel(frame, 0.018, 0.83, 0.28, 0.965, 0x15121e, 0x795c9c);
     draw_selection_label(
         frame,
-        "IMPULSO",
+        "IMPULSO ILIMITADO",
         (w as f32 * 0.15) as i32,
         (h as f32 * 0.846) as i32,
         scale,
@@ -138,33 +140,26 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
         (h as f32 * 0.88) as i32,
         (w as f32 * 0.23) as i32,
         (scale * 5).max(5),
-        game.boost_reserve / 2.2,
+        1.0,
         0x6bd9ee,
     );
     draw_selection_label(
         frame,
-        "SHIFT: IMPULSO",
+        "SHIFT: MANTENER IMPULSO",
         (w as f32 * 0.15) as i32,
         (h as f32 * 0.913) as i32,
         scale,
         0xaccbd8,
     );
 
-    let target = if game.rescued as usize == CAPSULE_COUNT {
-        Some((EXIT_POSITION, "PORTAL"))
-    } else {
-        game.rescue_target
-            .map(|index| (CAPSULE_POSITIONS[index], "FRAGMENTO DE ENERGIA"))
-    };
+    let target = game
+        .rescue_target
+        .map(|index| (CAPSULE_POSITIONS[index], "FRAGMENTO DE ENERGIA"));
     if let Some((position, label)) = target {
         let distance = game.target_distance_for_hud(ship).unwrap_or(f32::INFINITY);
         // Long-range labels used to point straight at each capsule from spawn.
         // The signal only resolves once the pilot has searched the region.
-        let signal_range = if game.rescued as usize == CAPSULE_COUNT {
-            140.0
-        } else {
-            85.0
-        };
+        let signal_range = 85.0;
         let (signal_label, signal_color) = if distance <= signal_range {
             ("RADAR: OBJETIVO CERCA", 0x8ce7ef)
         } else if distance <= 180.0 {
@@ -244,7 +239,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
             );
             draw_selection_label(
                 frame,
-                "ABRE LA PUERTA Y CONSIGUE LA ESFERA  //  BACKSPACE: ESPACIO",
+                "EL ULTIMO FRAGMENTO OTORGA LA ESFERA  //  BACKSPACE: ESPACIO",
                 w / 2,
                 (h as f32 * 0.60) as i32,
                 (scale / 2).max(1),
@@ -252,5 +247,59 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
             );
         }
         _ => {}
+    }
+}
+
+fn draw_aiming_reticle(
+    game: &HourglassRescue,
+    frame: &mut Framebuffer,
+    ship: &Ship,
+    scale: i32,
+) {
+    let forward = ship.basis().0;
+    let locked = game.enemies.iter().filter(|enemy| enemy.alive).any(|enemy| {
+        let offset = enemy.position.sub(ship.position);
+        let distance = offset.dot(offset).sqrt();
+        distance > 0.001 && forward.dot(offset.mul(1.0 / distance)) > 0.985
+    });
+    let color = if locked { 0xff684f } else { 0x8debf4 };
+    let cx = frame.width as i32 / 2;
+    let cy = frame.height as i32 / 2;
+    let radius = 13 * scale.max(1);
+    let gap = 5 * scale.max(1);
+    let arm = 10 * scale.max(1);
+    for offset in gap..=gap + arm {
+        set_reticle_pixel(frame, cx - offset, cy, color);
+        set_reticle_pixel(frame, cx + offset, cy, color);
+        set_reticle_pixel(frame, cx, cy - offset, color);
+        set_reticle_pixel(frame, cx, cy + offset, color);
+    }
+    for degree in (0..360).step_by(8) {
+        let angle = (degree as f32).to_radians();
+        set_reticle_pixel(
+            frame,
+            cx + (angle.cos() * radius as f32) as i32,
+            cy + (angle.sin() * radius as f32) as i32,
+            color,
+        );
+    }
+    for dy in -1..=1 {
+        for dx in -1..=1 {
+            set_reticle_pixel(frame, cx + dx, cy + dy, color);
+        }
+    }
+    draw_selection_label(
+        frame,
+        if locked { "OBJETIVO FIJADO" } else { "ENTER: DISPARAR" },
+        cx,
+        cy + radius + 12 * scale.max(1),
+        (scale / 2).max(1),
+        color,
+    );
+}
+
+fn set_reticle_pixel(frame: &mut Framebuffer, x: i32, y: i32, color: u32) {
+    if x >= 0 && y >= 0 && x < frame.width as i32 && y < frame.height as i32 {
+        frame.pixels[y as usize * frame.width + x as usize] = color;
     }
 }

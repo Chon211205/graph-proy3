@@ -176,6 +176,99 @@ fn energy_pickups_use_the_imported_blender_fragment() {
 }
 
 #[test]
+fn time_planet_uses_three_distinct_imported_enemy_models() {
+    let game = HourglassRescue::new();
+    for group in [
+        "CHRONOGUARD_Body",
+        "PENDULUM_REAPER_Core",
+        "HOURGLASS_WRAITH_Top_Rim",
+    ] {
+        assert!(
+            game.scene.model.faces.iter().any(|face| face.group == group),
+            "missing imported enemy group {group}"
+        );
+    }
+}
+
+#[test]
+fn time_enemy_chases_attacks_and_can_be_destroyed() {
+    let mut game = HourglassRescue::new();
+    let mut ship = Ship::new(&crate::ship::ARWING_SPEC);
+    game.phase = Phase::Playing;
+    ship.position = game.enemies[0].position.add(Vec3::new(20.0, 0.0, 0.0));
+    let old_distance = ship.position.sub(game.enemies[0].position).dot(
+        ship.position.sub(game.enemies[0].position),
+    );
+    game.update_enemies(&mut ship, &mut [], 0.05);
+    let new_distance = ship.position.sub(game.enemies[0].position).dot(
+        ship.position.sub(game.enemies[0].position),
+    );
+    assert!(new_distance < old_distance);
+    for _ in 0..15 {
+        game.update_enemies(&mut ship, &mut [], 0.05);
+    }
+    assert!(!game.enemy_projectiles.is_empty());
+
+    ship.position = game.enemies[0].position;
+    game.enemy_projectiles.clear();
+    game.hit_cooldown = 0.0;
+    let shields = game.shields;
+    game.update_enemies(&mut ship, &mut [], 0.05);
+    assert_eq!(game.shields, shields - 1);
+
+    let mut charged_shot = [crate::ship::Projectile {
+        position: game.enemies[0].position,
+        direction: Vec3::new(1.0, 0.0, 0.0),
+        lifetime: 1.0,
+        scale: 4.0,
+    }];
+    game.update_enemies(&mut ship, &mut charged_shot, 0.05);
+    assert!(!game.enemies[0].alive);
+    assert_eq!(game.enemies_destroyed, 1);
+    assert_eq!(charged_shot[0].lifetime, 0.0);
+}
+
+#[test]
+fn time_planet_boost_never_runs_out() {
+    let mut game = HourglassRescue::new();
+    let mut ship = Ship::new(&crate::ship::ARWING_SPEC);
+    game.place_ship_at_start(&mut ship);
+    for _ in 0..200 {
+        game.move_ship(
+            &mut ship,
+            Input {
+                boost: true,
+                ..Input::default()
+            },
+            0.05,
+        );
+    }
+    assert_eq!(game.boost_reserve, 2.2);
+}
+
+#[test]
+fn five_star_reward_plays_race_style_animation_before_exit() {
+    let mut game = HourglassRescue::new();
+    let mut ship = Ship::new(&ARWING_SPEC);
+    game.phase = Phase::Playing;
+    game.rescued = CAPSULE_COUNT as u8 - 1;
+    game.capsules.fill(CapsuleState::Rescued);
+    game.capsules[CAPSULE_COUNT - 1] = CapsuleState::Pending;
+    game.elapsed = 0.0;
+    ship.position = CAPSULE_POSITIONS[CAPSULE_COUNT - 1];
+
+    assert_eq!(game.update(&mut ship, Input::default(), 0.016), Action::Continue);
+    assert_eq!(game.phase, Phase::Reward);
+    let frozen = game.reward_position;
+    for _ in 0..103 {
+        assert_eq!(game.update(&mut ship, Input::default(), 0.05), Action::Continue);
+        assert!(ship.position.sub(frozen).dot(ship.position.sub(frozen)) < 0.001);
+    }
+    assert_eq!(game.update(&mut ship, Input::default(), 0.05), Action::Exit);
+    assert_eq!(game.phase, Phase::Won);
+}
+
+#[test]
 fn colliding_with_fragment_collects_it_once() {
     let mut game = HourglassRescue::new();
     let mut ship = Ship::new(&ARWING_SPEC);
@@ -204,20 +297,15 @@ fn clock_pickup_adds_time_and_can_only_be_collected_once() {
 }
 
 #[test]
-fn portal_stays_solid_until_every_energy_fragment_is_collected() {
-    let mut game = HourglassRescue::new();
+fn former_portal_location_is_open_space() {
+    let game = HourglassRescue::new();
     let approach = Vec3::new(0.0, 155.0, -501.0);
-    assert!(game.scene.resolve_obstacle(approach, 3.2).is_some());
-
-    game.scene.set_portal_open(true);
     assert!(game.scene.resolve_obstacle(approach, 3.2).is_none());
 }
 
 #[test]
-fn portal_uses_layered_iris_and_imported_four_star_ball() {
-    let mut game = HourglassRescue::new();
-    assert!(!game.scene.portal_faces.is_empty());
-    assert!(!game.scene.portal_energy_faces.is_empty());
+fn five_star_ball_stays_hidden_until_it_is_awarded() {
+    let game = HourglassRescue::new();
     assert!(game
         .scene
         .model
@@ -229,13 +317,22 @@ fn portal_uses_layered_iris_and_imported_four_star_ball() {
         .model
         .faces
         .iter()
+        .any(|face| face.group == "dragon_star_4"));
+    assert!(game
+        .scene
+        .model
+        .faces
+        .iter()
         .filter(|face| face.group == "dragon_ball")
         .all(|face| face.shader == crate::obj_loader::SurfaceShader::DragonBallGlass));
-
-    game.scene.set_portal_open(true);
-    assert!(game.scene.model.faces[game.scene.portal_energy_faces.clone()]
+    assert!(game
+        .scene
+        .model
+        .faces
         .iter()
-        .all(|face| face.color == crate::obj_loader::MaterialColor::Fixed([56, 238, 255])));
+        .filter(|face| face.group == "dragon_ball" || face.group.starts_with("dragon_star_"))
+        .flat_map(|face| face.indices)
+        .all(|index| game.scene.model.vertices[index].y < -9_900.0));
 }
 
 #[test]
