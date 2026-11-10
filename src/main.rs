@@ -2,6 +2,7 @@ mod core_guardian;
 mod framebuffer;
 mod galaxy;
 mod hourglass_rescue;
+mod lava_castle;
 mod input;
 mod menu;
 mod obj_loader;
@@ -708,6 +709,7 @@ enum GameMode {
     HourglassRescue,
     Racing,
     TowerGuard,
+    LavaCastle,
 }
 
 struct WaterLevelState {
@@ -7379,6 +7381,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut bubble_emitter = BubbleEmitter::new();
     let mut guardian_fight = CoreGuardian::new();
     let mut hourglass_rescue = hourglass_rescue::HourglassRescue::new();
+    let mut lava_castle = lava_castle::LavaCastle::new();
     let mut tower_game = tower_guard::TowerGame::new(&tower_sprites);
     let mut previous = Instant::now();
     let mut world_time = 0.0_f32;
@@ -7791,8 +7794,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 // Vesper's other bodies have no minigame; keep the player in
                 // orbit instead of accidentally launching the water level.
             } else if active_galaxy == Galaxy::Nova {
-                // The castle currently acts as a free-flight destination. Keep
-                // Enter from accidentally launching the aquatic level here.
+                lava_castle.enter(&mut ship_controller);
+                game_mode = GameMode::LavaCastle;
+                entered_level = true;
+                window.set_title("Castillo de Lava | Guardian de Lava | Enter: disparar");
             } else if ship_controller.ship.spiky_planet_locked {
                 guardian_fight = CoreGuardian::new();
                 game_mode = GameMode::CoreGuardian;
@@ -8491,6 +8496,42 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     ship_controller.charge_ratio(),
                 );
             }
+            GameMode::LavaCastle => {
+                let castle_input = lava_castle::Input {
+                    pitch: pitch_input,
+                    yaw: active_yaw_input,
+                    roll: roll_input,
+                    accelerate: window.is_key_down(Key::Space),
+                    brake: window.is_key_down(Key::LeftCtrl)
+                        || window.is_key_down(Key::RightCtrl),
+                    boost: window.is_key_down(Key::LeftShift)
+                        || window.is_key_down(Key::RightShift),
+                    fire: window.is_key_down(Key::Enter),
+                    restart: crate::input::pressed(Key::R),
+                    exit: crate::input::pressed(Key::Backspace),
+                };
+                let castle_action =
+                    lava_castle.update(&mut ship_controller, castle_input, delta_time);
+                match castle_action {
+                    lava_castle::Action::Continue => {}
+                    lava_castle::Action::Exit | lava_castle::Action::InteriorTransition => {
+                        game_mode = GameMode::FreeWorld;
+                        launch_ship_from_planet(
+                            &mut ship_controller,
+                            castle_planet.center,
+                            castle_planet.radius,
+                        );
+                        window.set_title(match castle_action {
+                            lava_castle::Action::InteriorTransition => {
+                                "Castillo de Lava | Entrada interior preparada (Parte 2)"
+                            }
+                            _ => "Galaxia Nova | Planeta Castillo",
+                        });
+                        continue;
+                    }
+                }
+                lava_castle.render(&mut scene_framebuffer, active_model, &ship_controller);
+            }
         }
 
         if galaxy_transition
@@ -8706,6 +8747,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::CoreGuardian => "SOBREVIVE Y ABRE EL NUCLEO",
             GameMode::TowerGuard => "DEFIENDE LA TORRE",
             GameMode::HourglassRescue => "REUNE FRAGMENTOS Y CONSIGUE LA ESFERA",
+            GameMode::LavaCastle => "DERROTA AL GUARDIAN Y ABRE EL CASTILLO",
         };
         let shield_ratio = match game_mode {
             GameMode::WaterLevel => {
@@ -8719,6 +8761,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::CoreGuardian => ((1.0 - guardian_fight.health_ratio()) * 100_000.0) as u32,
             GameMode::TowerGuard => tower_game.score(),
             GameMode::HourglassRescue => hourglass_rescue.rescued_count() as u32 * 1_000,
+            GameMode::LavaCastle => 0,
             GameMode::Racing => {
                 (ship_controller.ship.position.x.abs() + ship_controller.ship.position.z.abs())
                     as u32
