@@ -177,8 +177,12 @@ const ORBIT_LIMIT_RADIUS: f32 = 60.0;
 const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
 // Each authored Vesper structure has a different visual center and footprint.
 // Use structure-centered horizontal orbits instead of the complete OBJ bounds.
-const VESPER_ORBIT_HEIGHTS: [f32; 3] = [0.0, 3.0, 12.0];
-const VESPER_ORBIT_RADII: [f32; 3] = [30.0, 26.0, 20.0];
+const VESPER_ORBIT_HEIGHTS: [f32; 2] = [0.0, 12.0];
+const VESPER_ORBIT_RADII: [f32; 2] = [30.0, 20.0];
+const VESPER_SYSTEM_CENTER: Vec3 = Vec3::new(0.0, 48.0, 0.0);
+const VESPER_SYSTEM_ORBIT_RADII: [f32; 2] = [225.0, 345.0];
+const VESPER_SYSTEM_ORBIT_SPEEDS: [f32; 2] = [0.075, -0.048];
+const VESPER_SYSTEM_ORBIT_PHASES: [f32; 2] = [0.45, 3.35];
 // The castle asset's 58-unit bounding sphere includes its tall flag and portal;
 // its rocky equator is much narrower and is the surface used for free-flight orbit.
 const NOVA_CASTLE_ORBIT_RADIUS: f32 = 34.0;
@@ -3504,7 +3508,6 @@ enum PlanetVisual {
     Spiky,
     Racing,
     VesperClock,
-    VesperLantern,
     VesperShell,
     Castle,
 }
@@ -3605,9 +3608,6 @@ fn make_planet_lod(radius: f32, stacks: usize, slices: usize, visual: PlanetVisu
             PlanetVisual::VesperClock if band == stacks / 2 => "race_rgb_228_174_72",
             PlanetVisual::VesperClock if index % 3 == 0 => "race_rgb_159_110_58",
             PlanetVisual::VesperClock => "race_rgb_112_79_49",
-            PlanetVisual::VesperLantern if band == stacks / 2 => "race_rgb_248_172_58",
-            PlanetVisual::VesperLantern if index % 3 == 0 => "race_rgb_113_65_159",
-            PlanetVisual::VesperLantern => "race_rgb_78_44_118",
             PlanetVisual::VesperShell if band < 2 => "race_rgb_239_226_194",
             PlanetVisual::VesperShell if index % 3 == 0 => "race_rgb_24_112_119",
             PlanetVisual::VesperShell => "race_rgb_192_204_184",
@@ -3683,6 +3683,64 @@ fn make_wormhole_sphere(radius: f32, stacks: usize, slices: usize) -> Model {
         face.color = MaterialColor::Fixed([2, 1, 7]);
     }
     model
+}
+
+fn make_vesper_black_hole() -> Model {
+    let mut core = make_sphere(22.0, 18, 32, false);
+    for face in &mut core.faces {
+        face.shader = SurfaceShader::Flat;
+        face.color = MaterialColor::Fixed([1, 0, 5]);
+        face.material = "vesper_black_hole_core".to_string();
+        face.group = "vesper_black_hole_core".to_string();
+    }
+
+    let mut vertices = core.vertices;
+    let mut faces = core.faces;
+    let segments = 96;
+    let bands = [
+        (24.0, 34.0, [255, 211, 150], [238, 83, 255]),
+        (34.0, 48.0, [238, 83, 255], [129, 37, 255]),
+        (48.0, 67.0, [129, 37, 255], [52, 76, 238]),
+        (67.0, 92.0, [52, 76, 238], [38, 13, 112]),
+    ];
+    for (band, (inner, outer, inner_color, outer_color)) in bands.into_iter().enumerate() {
+        let base = vertices.len();
+        for segment in 0..segments {
+            let angle = TAU * segment as f32 / segments as f32;
+            let (sin, cos) = angle.sin_cos();
+            let ripple = (angle * 5.0 + band as f32 * 1.7).sin() * (0.35 + band as f32 * 0.12);
+            vertices.push(Vec3::new(cos * inner, ripple, sin * inner));
+            vertices.push(Vec3::new(cos * outer, ripple * 1.35, sin * outer));
+        }
+        for segment in 0..segments {
+            let next = (segment + 1) % segments;
+            let a = base + segment * 2;
+            let b = base + next * 2;
+            let c = a + 1;
+            let d = b + 1;
+            let flare = (segment + band * 11) % 13 < 3;
+            for (indices, color) in [
+                ([a, b, c], if flare { inner_color } else { outer_color }),
+                ([c, b, d], if flare { outer_color } else { inner_color }),
+            ] {
+                let mut face = Face::new(indices, "vesper_accretion_disk", "accretion_disk");
+                face.shader = SurfaceShader::Flat;
+                face.color = MaterialColor::Fixed(color);
+                faces.push(face);
+            }
+        }
+    }
+    Model::new(vertices, faces)
+}
+
+fn vesper_planet_position(index: usize, world_time: f32) -> Vec3 {
+    let angle = VESPER_SYSTEM_ORBIT_PHASES[index] + VESPER_SYSTEM_ORBIT_SPEEDS[index] * world_time;
+    let (sin, cos) = angle.sin_cos();
+    VESPER_SYSTEM_CENTER.add(Vec3::new(
+        cos * VESPER_SYSTEM_ORBIT_RADII[index],
+        VESPER_ORBIT_HEIGHTS[index],
+        sin * VESPER_SYSTEM_ORBIT_RADII[index],
+    ))
 }
 
 fn make_underwater_boost_ring() -> Model {
@@ -5075,12 +5133,13 @@ fn render_scene(
     wormhole: &Model,
     wormhole_center: Vec3,
     galaxy: Galaxy,
-    vesper_planets: &[VesperPlanet; 3],
+    vesper_planets: &[VesperPlanet; 2],
+    vesper_black_hole: &Model,
     castle_planet: &VesperPlanet,
     race_planet: &Model,
     planet_lods: [&PlanetLodModels; 3],
     planet_lod_states: &mut [PlanetLodState; 3],
-    vesper_lod_states: &mut [PlanetLodState; 3],
+    vesper_lod_states: &mut [PlanetLodState; 2],
     castle_lod_state: &mut PlanetLodState,
     framebuffer: &mut Framebuffer,
     batch: &mut TriangleBatch,
@@ -5228,11 +5287,28 @@ fn render_scene(
             None,
         );
     } else if galaxy == Galaxy::Vesper {
+        let (disk_sin, disk_cos) = (world_time * 0.22).sin_cos();
+        queue_model(
+            vesper_black_hole,
+            batch,
+            &camera,
+            |vertex| {
+                Vec3::new(
+                    vertex.x * disk_cos - vertex.z * disk_sin,
+                    vertex.y,
+                    vertex.x * disk_sin + vertex.z * disk_cos,
+                )
+                .add(VESPER_SYSTEM_CENTER)
+            },
+            Some(world_time),
+            None,
+        );
         for (index, body) in vesper_planets.iter().enumerate() {
+            let body_position = vesper_planet_position(index, world_time);
             let (sin, cos) = (body.rotation_y + world_time * 0.035).sin_cos();
             let lod = vesper_lod_states[index].update(projected_planet_radius(
                 &camera,
-                body.center,
+                body_position,
                 body.radius,
                 batch.projection.focal,
             ));
@@ -5252,7 +5328,7 @@ fn render_scene(
                         local.y,
                         local.x * sin + local.z * cos,
                     )
-                    .add(body.center)
+                    .add(body_position)
                 },
                 None,
                 None,
@@ -6946,7 +7022,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         make_planet_lods(race_track::PLANET_RADIUS, PlanetVisual::Racing),
     ];
     let mut planet_lod_states = [PlanetLodState::default(); 3];
-    let mut vesper_lod_states = [PlanetLodState::default(); 3];
+    let mut vesper_lod_states = [PlanetLodState::default(); 2];
     let mut castle_lod_state = PlanetLodState::default();
     let water_level_path = "assets/levels/waterlevel_extendido.obj";
     let mut water_level = load_obj(water_level_path)
@@ -6992,26 +7068,20 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let vesper_planets = [
         VesperPlanet::load(
             "assets/planets/reloj_arena.obj",
-            Vec3::new(-70.0, 48.0, 250.0),
+            vesper_planet_position(0, 0.0),
             42.0,
             0.24,
             PlanetVisual::VesperClock,
         )?,
         VesperPlanet::load(
-            "assets/planets/farol.obj",
-            Vec3::new(-350.0, 48.0, 0.0),
-            36.0,
-            0.0,
-            PlanetVisual::VesperLantern,
-        )?,
-        VesperPlanet::load(
             "assets/planets/caracola.obj",
-            Vec3::new(210.0, 48.0, 0.0),
+            vesper_planet_position(1, 0.0),
             34.0,
             0.0,
             PlanetVisual::VesperShell,
         )?,
     ];
+    let vesper_black_hole = make_vesper_black_hole();
     let castle_planet = VesperPlanet::load(
         "assets/planets/planeta_castillo_lava.obj",
         Vec3::new(0.0, 55.0, -80.0),
@@ -7420,7 +7490,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 window.set_title(
                     "Planeta del Reloj | controles de vuelo libre | Enter recoge energia",
                 );
-            } else if active_galaxy == Galaxy::Vesper && vesper_orbit_index == Some(2) {
+            } else if active_galaxy == Galaxy::Vesper && vesper_orbit_index == Some(1) {
                 window.set_cursor_visibility(true);
                 let resident_directory = std::env::current_dir()?.join("resident_level1");
                 let resident_executable =
@@ -7658,18 +7728,20 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             vesper_planets
                                 .iter()
                                 .enumerate()
-                                .min_by(|(_, a), (_, b)| {
-                                    let a_offset = ship.position.sub(a.center);
-                                    let b_offset = ship.position.sub(b.center);
+                                .min_by(|(a_index, _), (b_index, _)| {
+                                    let a_offset = ship
+                                        .position
+                                        .sub(vesper_planet_position(*a_index, world_time));
+                                    let b_offset = ship
+                                        .position
+                                        .sub(vesper_planet_position(*b_index, world_time));
                                     a_offset.dot(a_offset).total_cmp(&b_offset.dot(b_offset))
                                 })
                                 .map(|(index, _)| index)
                                 .unwrap_or(0)
                         });
                         let body = &vesper_planets[nearest];
-                        let orbit_center =
-                            body.center
-                                .add(Vec3::new(0.0, VESPER_ORBIT_HEIGHTS[nearest], 0.0));
+                        let orbit_center = vesper_planet_position(nearest, world_time);
                         let orbit_radius = VESPER_ORBIT_RADII[nearest];
                         move_around_planet(
                             ship,
@@ -7764,7 +7836,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             1 => "Farol",
                             _ => "Casa Torre",
                         };
-                        if vesper_orbit_index == Some(2) {
+                        if vesper_orbit_index == Some(1) {
                             window.set_title(
                                 "Casa Torre | Enter: jugar Resident Evil nivel 1 | Backspace: salir",
                             );
@@ -7807,6 +7879,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     wormhole_position(active_galaxy),
                     active_galaxy,
                     &vesper_planets,
+                    &vesper_black_hole,
                     &castle_planet,
                     &race_track.planet,
                     [&planet_lods[0], &planet_lods[1], &planet_lods[2]],
@@ -8026,8 +8099,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         game_mode = GameMode::FreeWorld;
                         launch_ship_from_planet(
                             &mut ship_controller,
-                            vesper_planets[2].center,
-                            vesper_planets[2].radius,
+                            vesper_planet_position(1, world_time),
+                            vesper_planets[1].radius,
                         );
                         window.set_cursor_visibility(true);
                         window.set_title("Casa Torre | En orbita | Backspace: salir");
@@ -8065,7 +8138,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     game_mode = GameMode::FreeWorld;
                     launch_ship_from_planet(
                         &mut ship_controller,
-                        vesper_planets[0].center,
+                        vesper_planet_position(0, world_time),
                         vesper_planets[0].radius,
                     );
                     window.set_title("Galaxia Vesper | Vuelo libre | Reloj de Arena");
@@ -8386,9 +8459,17 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         if performance_hud {
             let stats = triangle_batch.stats();
             let displayed_lods = if active_galaxy == Galaxy::Vesper {
-                &vesper_lod_states
+                [
+                    vesper_lod_states[0].level,
+                    vesper_lod_states[1].level,
+                    0,
+                ]
             } else {
-                &planet_lod_states
+                [
+                    planet_lod_states[0].level,
+                    planet_lod_states[1].level,
+                    planet_lod_states[2].level,
+                ]
             };
             // Keep diagnostics away from the top-center objective and draw
             // them after gameplay HUDs so the opaque panel stays readable.
@@ -8445,9 +8526,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 &format!(
                     "DRS {} LOD {}/{}/{}",
                     dynamic_resolution.status,
-                    displayed_lods[0].level,
-                    displayed_lods[1].level,
-                    displayed_lods[2].level,
+                    displayed_lods[0], displayed_lods[1], displayed_lods[2],
                 ),
                 center,
                 PANEL_TOP as i32 + 96,
@@ -8555,6 +8634,43 @@ mod tests {
                 .dot(race_planet_position(20.0).sub(race_planet_position(0.0)))
                 > 1.0
         );
+    }
+
+    #[test]
+    fn vesper_planets_orbit_the_central_black_hole() {
+        for index in 0..2 {
+            let start = vesper_planet_position(index, 0.0);
+            let later = vesper_planet_position(index, 12.0);
+            let radial = start.sub(VESPER_SYSTEM_CENTER);
+            let later_radial = later.sub(VESPER_SYSTEM_CENTER);
+            let horizontal_radius = (radial.x * radial.x + radial.z * radial.z).sqrt();
+            let later_radius =
+                (later_radial.x * later_radial.x + later_radial.z * later_radial.z).sqrt();
+            assert!((horizontal_radius - VESPER_SYSTEM_ORBIT_RADII[index]).abs() < 0.01);
+            assert!((later_radius - horizontal_radius).abs() < 0.01);
+            assert!(later.sub(start).dot(later.sub(start)) > 100.0);
+        }
+    }
+
+    #[test]
+    fn vesper_black_hole_has_a_dark_core_and_layered_accretion_disk() {
+        let model = make_vesper_black_hole();
+        assert!(model
+            .faces
+            .iter()
+            .any(|face| face.group == "vesper_black_hole_core"));
+        let disk_faces = model
+            .faces
+            .iter()
+            .filter(|face| face.group == "accretion_disk")
+            .count();
+        assert_eq!(disk_faces, 4 * 96 * 2);
+        assert!(model.faces.iter().any(|face| {
+            face.group == "accretion_disk" && face.color == MaterialColor::Fixed([255, 211, 150])
+        }));
+        assert!(model.faces.iter().any(|face| {
+            face.group == "accretion_disk" && face.color == MaterialColor::Fixed([38, 13, 112])
+        }));
     }
 
     #[test]
