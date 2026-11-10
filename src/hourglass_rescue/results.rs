@@ -28,7 +28,7 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, scale: i32) 
     draw_selection_label(
         frame,
         if won {
-            "ESFERA DEL DRAGON CONSEGUIDA"
+            "ESFERA DE 5 ESTRELLAS CONSEGUIDA"
         } else {
             "MISION FALLIDA"
         },

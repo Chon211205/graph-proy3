@@ -3,6 +3,7 @@ use std::ops::Range;
 use crate::obj_loader::{load_obj, Face, MaterialColor, Model, SurfaceShader, Vec3};
 
 pub(super) const CAPSULE_COUNT: usize = 5;
+pub(super) const ENEMY_COUNT: usize = 3;
 pub(super) const CAPSULE_POSITIONS: [Vec3; CAPSULE_COUNT] = [
     Vec3::new(-70.0, 3.5, -130.0),
     Vec3::new(130.0, 29.0, -240.0),
@@ -18,9 +19,9 @@ pub(super) struct Scene {
     capsule_indices: [Vec<[usize; 3]>; CAPSULE_COUNT],
     clock_faces: [Range<usize>; super::CLOCK_COUNT],
     clock_indices: [Vec<[usize; 3]>; super::CLOCK_COUNT],
-    pub(super) portal_faces: Range<usize>,
-    pub(super) portal_energy_faces: Range<usize>,
-    portal_open: bool,
+    enemy_indices: [Vec<usize>; ENEMY_COUNT],
+    enemy_centers: [Vec3; ENEMY_COUNT],
+    reward_vertices: Vec<(usize, Vec3)>,
     obstacles: Vec<(Vec3, Vec3)>,
 }
 
@@ -307,19 +308,28 @@ impl Builder {
     }
 
     fn imported_pickup(&mut self, source: &Model, center: Vec3) -> Range<usize> {
+        self.imported_model(source, center, 1.0, 0.0)
+    }
+
+    fn imported_model(
+        &mut self,
+        source: &Model,
+        center: Vec3,
+        scale: f32,
+        yaw: f32,
+    ) -> Range<usize> {
         let start = self.faces.len();
         let vertex_start = self.vertices.len();
         let (source_center, _) = source.bounds();
-        // Blender's OBJ export maps its Z-up coordinates to the engine's
-        // Y-up coordinates, so the modeled face already points down -Z here.
-        // Center every instance on the original pickup position and keep the
-        // authored size (about seven world units tall).
-        self.vertices.extend(
-            source
-                .vertices
-                .iter()
-                .map(|vertex| center.add(vertex.sub(source_center))),
-        );
+        let (sin_yaw, cos_yaw) = yaw.sin_cos();
+        self.vertices.extend(source.vertices.iter().map(|vertex| {
+            let local = vertex.sub(source_center).mul(scale);
+            center.add(Vec3::new(
+                local.x * cos_yaw - local.z * sin_yaw,
+                local.y,
+                local.x * sin_yaw + local.z * cos_yaw,
+            ))
+        }));
         for source_face in &source.faces {
             let mut face = Face::new(
                 source_face.indices.map(|index| vertex_start + index),
@@ -332,81 +342,6 @@ impl Builder {
             self.faces.push(face);
         }
         start..self.faces.len()
-    }
-
-    fn portal_ring(&mut self, center: Vec3, radius: f32) -> (Range<usize>, Range<usize>) {
-        let frame_start = self.faces.len();
-        let segments = 32;
-        let tube = 1.55;
-        for index in 0..segments {
-            let a0 = index as f32 * std::f32::consts::TAU / segments as f32;
-            let a1 = (index + 1) as f32 * std::f32::consts::TAU / segments as f32;
-            let p = |angle: f32, r: f32, z: f32| {
-                Vec3::new(
-                    center.x + r * angle.cos(),
-                    center.y + r * angle.sin(),
-                    center.z + z,
-                )
-            };
-            let color = if index % 4 == 0 {
-                [139, 74, 164]
-            } else {
-                [48, 38, 78]
-            };
-            self.quad(
-                p(a0, radius - tube, -0.8),
-                p(a1, radius - tube, -0.8),
-                p(a1, radius + tube, -0.8),
-                p(a0, radius + tube, -0.8),
-                color,
-            );
-            self.quad(
-                p(a0, radius - tube, 0.8),
-                p(a0, radius + tube, 0.8),
-                p(a1, radius + tube, 0.8),
-                p(a1, radius - tube, 0.8),
-                color,
-            );
-            self.quad(
-                p(a0, radius + tube, -0.8),
-                p(a1, radius + tube, -0.8),
-                p(a1, radius + tube, 0.8),
-                p(a0, radius + tube, 0.8),
-                color,
-            );
-            // Raised outer clockwork teeth make the silhouette readable from afar.
-            if index % 2 == 0 {
-                self.quad(
-                    p(a0, radius + tube, -1.05),
-                    p(a1, radius + tube, -1.05),
-                    p(a1, radius + tube + 1.0, -1.05),
-                    p(a0, radius + tube + 1.0, -1.05),
-                    [184, 103, 194],
-                );
-            }
-        }
-        let frame_faces = frame_start..self.faces.len();
-        let energy_start = self.faces.len();
-        // A recessed iris suggests a sealed temporal membrane. It changes to
-        // bright cyan when all fragments are collected.
-        for index in 0..segments {
-            let a0 = index as f32 * std::f32::consts::TAU / segments as f32;
-            let a1 = (index + 1) as f32 * std::f32::consts::TAU / segments as f32;
-            let p = |angle: f32, r: f32, z: f32| {
-                Vec3::new(
-                    center.x + r * angle.cos(),
-                    center.y + r * angle.sin(),
-                    center.z + z,
-                )
-            };
-            self.triangle(
-                center.add(Vec3::new(0.0, 0.0, 0.95)),
-                p(a0, radius - tube - 0.35, 0.95),
-                p(a1, radius - tube - 0.35, 0.95),
-                if index % 2 == 0 { [53, 25, 83] } else { [79, 36, 105] },
-            );
-        }
-        (frame_faces, energy_start..self.faces.len())
     }
 
     fn sand_dunes(&mut self) -> Range<usize> {
@@ -457,9 +392,17 @@ impl Scene {
             .expect("No se pudo cargar el reloj de Time Planet");
         let fragment_model = load_obj("assets/levels/time_planet/fragmento_energia.obj")
             .expect("No se pudo cargar el fragmento de energia de Time Planet");
-        // Reuse the exact four-star reward from the Water Level. Rotate it so
-        // its stars face the approach direction through this level's portal.
-        let mut dragon_ball_model = crate::make_four_star_dragon_ball();
+        let time_enemies = [
+            load_obj("assets/enemies/time_planet/chronoguard.obj")
+                .expect("No se pudo cargar el Chronoguard de Time Planet"),
+            load_obj("assets/enemies/time_planet/pendulum_reaper.obj")
+                .expect("No se pudo cargar el Pendulum Reaper de Time Planet"),
+            load_obj("assets/enemies/time_planet/hourglass_wraith.obj")
+                .expect("No se pudo cargar el Hourglass Wraith de Time Planet"),
+        ];
+        // The Time Planet awards the five-star ball. Rotate it so its stars
+        // face the approach direction through the temporal gate.
+        let mut dragon_ball_model = crate::make_five_star_dragon_ball();
         for vertex in &mut dragon_ball_model.vertices {
             *vertex = Vec3::new(-vertex.z, vertex.y, vertex.x);
         }
@@ -613,22 +556,17 @@ impl Scene {
             );
         }
 
-        // Clockwork sentinels patrol the visual route. Their collision volumes
-        // use the same time-damage rule as the ruins and other hazards.
-        for (x, y, z) in [
-            (-35.0, 30.0, -155.0),
-            (105.0, 72.0, -325.0),
-            (-95.0, 132.0, -445.0),
-        ] {
-            builder.box_at(Vec3::new(x, y, z), Vec3::new(4.0, 2.0, 5.0), [137, 42, 78]);
-            builder.crystal(
-                Vec3::new(x, y + 2.0, z),
-                5.0,
-                3.0,
-                3.0,
-                [[231, 70, 73], [177, 39, 81], [255, 122, 64], [112, 30, 72]],
-            );
-            obstacles.push((Vec3::new(x, y, z), Vec3::new(5.0, 5.0, 6.0)));
+        // Three distinct clockwork enemies replace the old box-and-crystal
+        // placeholders. Each silhouette teaches a different temporal motif.
+        let enemy_spawns = [
+            (Vec3::new(-35.0, 30.0, -155.0), 0.35, 2.25),
+            (Vec3::new(105.0, 72.0, -325.0), -0.55, 2.15),
+            (Vec3::new(-95.0, 132.0, -445.0), 0.70, 2.20),
+        ];
+        let mut enemy_faces: [Range<usize>; ENEMY_COUNT] = std::array::from_fn(|_| 0..0);
+        for (index, (position, yaw, scale)) in enemy_spawns.iter().copied().enumerate() {
+            enemy_faces[index] =
+                builder.imported_model(&time_enemies[index], position, scale, yaw);
         }
 
         let capsule_faces = std::array::from_fn(|index| {
@@ -637,9 +575,10 @@ impl Scene {
         let clock_faces = std::array::from_fn(|index| {
             builder.imported_pickup(&clock_model, super::CLOCK_POSITIONS[index])
         });
-        let (portal_faces, portal_energy_faces) =
-            builder.portal_ring(Vec3::new(0.0, 155.0, -505.0), 12.0);
-        builder.imported_pickup(&dragon_ball_model, Vec3::new(0.0, 155.0, -510.0));
+        // The reward remains outside the playable world until it is granted
+        // at the exact position where the final fragment is collected.
+        let reward_center = Vec3::new(0.0, -10_000.0, 0.0);
+        let reward_faces = builder.imported_pickup(&dragon_ball_model, reward_center);
         let model = builder.finish();
         let capsule_indices = std::array::from_fn(|index| {
             capsule_faces[index]
@@ -653,6 +592,24 @@ impl Scene {
                 .map(|face_index| model.faces[face_index].indices)
                 .collect()
         });
+        let enemy_indices = std::array::from_fn(|index| {
+            let mut indices: Vec<usize> = enemy_faces[index]
+                .clone()
+                .flat_map(|face_index| model.faces[face_index].indices)
+                .collect();
+            indices.sort_unstable();
+            indices.dedup();
+            indices
+        });
+        let mut reward_indices: Vec<usize> = reward_faces
+            .flat_map(|face_index| model.faces[face_index].indices)
+            .collect();
+        reward_indices.sort_unstable();
+        reward_indices.dedup();
+        let reward_vertices = reward_indices
+            .into_iter()
+            .map(|index| (index, model.vertices[index].sub(reward_center)))
+            .collect();
         Self {
             model,
             sand_vertices,
@@ -660,9 +617,9 @@ impl Scene {
             capsule_indices,
             clock_faces,
             clock_indices,
-            portal_faces,
-            portal_energy_faces,
-            portal_open: false,
+            enemy_indices,
+            enemy_centers: enemy_spawns.map(|spawn| spawn.0),
+            reward_vertices,
             obstacles,
         }
     }
@@ -675,19 +632,28 @@ impl Scene {
         self.model.recalculate_bounds();
     }
 
-    pub fn resolve_obstacle(&self, position: Vec3, clearance: f32) -> Option<Vec3> {
-        if !self.portal_open {
-            let center = Vec3::new(0.0, 155.0, -505.0);
-            let delta = position.sub(center);
-            if delta.x.abs() < 11.0 + clearance
-                && delta.y.abs() < 11.0 + clearance
-                && delta.z.abs() < 2.0 + clearance
-            {
-                let mut corrected = position;
-                corrected.z = center.z + if delta.z >= 0.0 { 2.0 + clearance } else { -2.0 - clearance };
-                return Some(corrected);
-            }
+    pub(super) fn set_enemy_position(&mut self, index: usize, position: Vec3) {
+        let delta = position.sub(self.enemy_centers[index]);
+        for &vertex_index in &self.enemy_indices[index] {
+            self.model.vertices[vertex_index] = self.model.vertices[vertex_index].add(delta);
         }
+        self.enemy_centers[index] = position;
+    }
+
+    pub(super) fn set_reward_transform(&mut self, center: Vec3, scale: f32, rotation: f32) {
+        let (sin, cos) = rotation.sin_cos();
+        for &(index, local) in &self.reward_vertices {
+            let local = local.mul(scale);
+            self.model.vertices[index] = Vec3::new(
+                local.x * cos - local.z * sin,
+                local.y,
+                local.x * sin + local.z * cos,
+            )
+            .add(center);
+        }
+    }
+
+    pub fn resolve_obstacle(&self, position: Vec3, clearance: f32) -> Option<Vec3> {
         for &(center, half) in &self.obstacles {
             let delta = position.sub(center);
             let expanded = Vec3::new(half.x + clearance, half.y + clearance, half.z + clearance);
@@ -743,18 +709,6 @@ impl Scene {
         };
         for (face, &indices) in self.model.faces[range.clone()].iter_mut().zip(original) {
             face.indices = if visible { indices } else { [0, 0, 0] };
-        }
-    }
-
-    pub fn set_portal_open(&mut self, open: bool) {
-        self.portal_open = open;
-        let color = if open { [171, 102, 205] } else { [62, 43, 91] };
-        for face in &mut self.model.faces[self.portal_faces.clone()] {
-            face.color = MaterialColor::Fixed(color);
-        }
-        let energy = if open { [56, 238, 255] } else { [66, 27, 91] };
-        for face in &mut self.model.faces[self.portal_energy_faces.clone()] {
-            face.color = MaterialColor::Fixed(energy);
         }
     }
 

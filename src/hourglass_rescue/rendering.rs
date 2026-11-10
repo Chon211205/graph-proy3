@@ -1,9 +1,9 @@
 use crate::framebuffer::Framebuffer;
 use crate::obj_loader::{Model, Vec3};
-use crate::ship::Ship;
+use crate::ship::{Projectile, Ship};
 use crate::{model_center, render_model, Camera};
 
-use super::{HourglassRescue, CAPSULE_COUNT, CAPSULE_POSITIONS, EXIT_POSITION};
+use super::{HourglassRescue, CAPSULE_COUNT, CAPSULE_POSITIONS};
 
 impl HourglassRescue {
     pub fn render(&self, frame: &mut Framebuffer, ship_model: &Model, ship: &Ship) {
@@ -43,6 +43,104 @@ impl HourglassRescue {
             Some(ship.spec),
         );
         self.draw_beacons(frame, &camera);
+    }
+
+    pub fn render_weapon(
+        &self,
+        frame: &mut Framebuffer,
+        laser_model: &Model,
+        projectiles: &[Projectile],
+        ship: &Ship,
+        charge: f32,
+    ) {
+        let camera = self.camera(ship);
+        for projectile in projectiles.iter().filter(|shot| shot.lifetime > 0.0) {
+            let mut right = projectile
+                .direction
+                .cross(Vec3::new(0.0, 1.0, 0.0))
+                .normalize();
+            if right.dot(right) < 0.001 {
+                right = Vec3::new(1.0, 0.0, 0.0);
+            }
+            let up = right.cross(projectile.direction).normalize();
+            render_model(
+                laser_model,
+                frame,
+                &camera,
+                |vertex| {
+                    projectile
+                        .position
+                        .add(projectile.direction.mul(vertex.x * projectile.scale))
+                        .add(up.mul(vertex.y * projectile.scale))
+                        .add(right.mul(vertex.z * projectile.scale))
+                },
+                None,
+                Some(ship.spec),
+            );
+        }
+        crate::draw_projectile_glow(
+            frame,
+            projectiles,
+            &camera,
+            self.visual_time,
+            ship.spec.laser_color,
+            1.65,
+        );
+        for projectile in self
+            .enemy_projectiles
+            .iter()
+            .filter(|shot| shot.lifetime > 0.0)
+        {
+            let mut right = projectile
+                .direction
+                .cross(Vec3::new(0.0, 1.0, 0.0))
+                .normalize();
+            if right.dot(right) < 0.001 {
+                right = Vec3::new(1.0, 0.0, 0.0);
+            }
+            let up = right.cross(projectile.direction).normalize();
+            render_model(
+                laser_model,
+                frame,
+                &camera,
+                |vertex| {
+                    projectile
+                        .position
+                        .add(projectile.direction.mul(vertex.x * projectile.scale))
+                        .add(up.mul(vertex.y * projectile.scale))
+                        .add(right.mul(vertex.z * projectile.scale))
+                },
+                None,
+                Some(ship.spec),
+            );
+        }
+        crate::draw_projectile_glow(
+            frame,
+            &self.enemy_projectiles,
+            &camera,
+            self.visual_time,
+            [255, 92, 38],
+            1.45,
+        );
+
+        if charge > 0.0 {
+            let (forward, right, up) = ship.basis();
+            let center = ship.position.add(forward.mul(ship.spec.muzzle_forward + 0.4));
+            let scale = 0.35 + charge * 1.15;
+            render_model(
+                laser_model,
+                frame,
+                &camera,
+                |vertex| {
+                    center
+                        .add(forward.mul(vertex.x * scale))
+                        .add(up.mul(vertex.y * scale))
+                        .add(right.mul(vertex.z * scale))
+                },
+                None,
+                Some(ship.spec),
+            );
+        }
     }
 
     fn draw_stars(&self, frame: &mut Framebuffer) {
@@ -122,12 +220,7 @@ impl HourglassRescue {
 
     fn draw_beacons(&self, frame: &mut Framebuffer, camera: &Camera) {
         let mut points = [None; CAPSULE_COUNT];
-        if self.rescued as usize == CAPSULE_COUNT {
-            let offset = EXIT_POSITION.sub(camera.position);
-            if offset.dot(offset).sqrt() < 110.0 {
-                points[0] = Some((EXIT_POSITION, true));
-            }
-        } else if let Some(index) = self.rescue_target {
+        if let Some(index) = self.rescue_target {
             let position = CAPSULE_POSITIONS[index];
             let offset = position.sub(camera.position);
             if offset.dot(offset).sqrt() < 95.0 {
