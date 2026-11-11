@@ -5,8 +5,9 @@ use crate::galaxy::Galaxy;
 use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
 
 // A belt is mostly fine debris; keep large rocks sparse and add many tiny chips.
-const ASTEROID_COUNT: usize = 56;
-const ASTEROID_RING_SEGMENTS: usize = 6;
+const ASTEROID_COUNT: usize = 40;
+const ASTEROID_RING_SEGMENTS: usize = 7;
+const ASTEROID_SHAPE_RINGS: usize = 3;
 const BELT_DUST_COUNT: usize = 144;
 const DUST_COUNT: u32 = 420;
 
@@ -28,9 +29,13 @@ pub(crate) fn asteroid_belt(galaxy: Galaxy) -> &'static Model {
 
 fn make_asteroid_belt(palette: [[u8; 3]; 3]) -> Model {
     let mut vertices = Vec::with_capacity(
-        ASTEROID_COUNT * (ASTEROID_RING_SEGMENTS + 2) + BELT_DUST_COUNT * 3,
+        ASTEROID_COUNT * (ASTEROID_RING_SEGMENTS * ASTEROID_SHAPE_RINGS + 2)
+            + BELT_DUST_COUNT * 3,
     );
-    let mut faces = Vec::with_capacity(ASTEROID_COUNT * ASTEROID_RING_SEGMENTS * 2 + BELT_DUST_COUNT);
+    let mut faces = Vec::with_capacity(
+        ASTEROID_COUNT * ASTEROID_RING_SEGMENTS * (ASTEROID_SHAPE_RINGS + 1)
+            + BELT_DUST_COUNT,
+    );
 
     for asteroid in 0..ASTEROID_COUNT {
         let seed = asteroid as u32 * 7919 + 53;
@@ -47,42 +52,79 @@ fn make_asteroid_belt(palette: [[u8; 3]; 3]) -> Model {
         );
         let size = 0.008 + unit(seed ^ 0x9e37_79b9) * 0.014;
         let rotation = unit(seed ^ 0x7f4a_7c15) * std::f32::consts::TAU;
-        let base = vertices.len();
+        let mut ring_bases = [0; ASTEROID_SHAPE_RINGS];
+        let ring_heights = [-0.30, 0.04, 0.34];
+        let ring_widths = [0.72, 1.0, 0.78];
+        let body_stretch = 0.78 + unit(seed ^ 0x243f_6a88) * 0.46;
 
-        for segment in 0..ASTEROID_RING_SEGMENTS {
-            let facet_seed = seed.wrapping_add(segment as u32 * 313);
-            let a = rotation + segment as f32 * std::f32::consts::TAU
-                / ASTEROID_RING_SEGMENTS as f32;
-            let wobble = 0.70 + unit(facet_seed) * 0.55;
-            let y = (unit(facet_seed ^ 0xd1b5_4a35) - 0.5) * 0.8;
-            vertices.push(center.add(Vec3::new(
-                a.cos() * size * wobble,
-                y * size,
-                a.sin() * size * wobble,
-            )));
+        for ring in 0..ASTEROID_SHAPE_RINGS {
+            ring_bases[ring] = vertices.len();
+            for segment in 0..ASTEROID_RING_SEGMENTS {
+                let facet_seed = seed
+                    .wrapping_add(segment as u32 * 313)
+                    .wrapping_add(ring as u32 * 0x9e37);
+                let angle = rotation
+                    + segment as f32 * std::f32::consts::TAU
+                        / ASTEROID_RING_SEGMENTS as f32
+                    + (unit(facet_seed ^ 0xd1b5_4a35) - 0.5) * 0.20;
+                let wobble = 0.72 + unit(facet_seed) * 0.52;
+                let vertical_jag = (unit(facet_seed ^ 0x85eb_ca6b) - 0.5) * 0.15;
+                vertices.push(center.add(Vec3::new(
+                    angle.cos() * size * ring_widths[ring] * wobble * body_stretch,
+                    size * (ring_heights[ring] + vertical_jag),
+                    angle.sin() * size * ring_widths[ring] * wobble / body_stretch,
+                )));
+            }
         }
         let top = vertices.len();
         vertices.push(center.add(Vec3::new(
-            (unit(seed ^ 0x94d0_49bb) - 0.5) * size * 0.5,
-            size * (0.55 + unit(seed ^ 0x369d_ea0f) * 0.35),
-            (unit(seed ^ 0xdb4f_0b91) - 0.5) * size * 0.5,
+            (unit(seed ^ 0x94d0_49bb) - 0.5) * size * 0.62,
+            size * (0.48 + unit(seed ^ 0x369d_ea0f) * 0.24),
+            (unit(seed ^ 0xdb4f_0b91) - 0.5) * size * 0.62,
         )));
         let bottom = vertices.len();
         vertices.push(center.add(Vec3::new(
-            (unit(seed ^ 0x3c6e_f372) - 0.5) * size * 0.5,
-            -size * (0.48 + unit(seed ^ 0xa54f_f53a) * 0.35),
-            (unit(seed ^ 0x510e_527f) - 0.5) * size * 0.5,
+            (unit(seed ^ 0x3c6e_f372) - 0.5) * size * 0.62,
+            -size * (0.42 + unit(seed ^ 0xa54f_f53a) * 0.25),
+            (unit(seed ^ 0x510e_527f) - 0.5) * size * 0.62,
         )));
 
         for segment in 0..ASTEROID_RING_SEGMENTS {
             let next = (segment + 1) % ASTEROID_RING_SEGMENTS;
+            let shade_seed = seed.wrapping_add(segment as u32 * 911);
             let color = palette[(asteroid + segment / 2) % palette.len()];
-            for indices in [[top, base + segment, base + next], [bottom, base + next, base + segment]] {
+            let mut push_face = |indices: [usize; 3], layer: usize, face_index: usize| {
                 let mut face = Face::new(indices, "space_asteroid", "asteroid_belt");
                 face.shader = SurfaceShader::Flat;
-                face.color = MaterialColor::Fixed(color);
+                let shade = 0.68
+                    + unit(shade_seed ^ (layer as u32 * 0x45d9_f3b + face_index as u32)) * 0.46;
+                face.color = MaterialColor::Fixed([
+                    (color[0] as f32 * shade).min(255.0) as u8,
+                    (color[1] as f32 * shade).min(255.0) as u8,
+                    (color[2] as f32 * shade).min(255.0) as u8,
+                ]);
                 faces.push(face);
+            };
+
+            for layer in 0..ASTEROID_SHAPE_RINGS - 1 {
+                let lower = ring_bases[layer];
+                let upper = ring_bases[layer + 1];
+                let a = lower + segment;
+                let b = lower + next;
+                let c = upper + segment;
+                let d = upper + next;
+                if segment % 2 == 0 {
+                    push_face([a, c, b], layer, 0);
+                    push_face([b, c, d], layer, 1);
+                } else {
+                    push_face([a, c, d], layer, 0);
+                    push_face([a, d, b], layer, 1);
+                }
             }
+            let upper = ring_bases[ASTEROID_SHAPE_RINGS - 1];
+            let lower = ring_bases[0];
+            push_face([top, upper + segment, upper + next], ASTEROID_SHAPE_RINGS, 0);
+            push_face([bottom, lower + next, lower + segment], ASTEROID_SHAPE_RINGS + 1, 0);
         }
     }
 
