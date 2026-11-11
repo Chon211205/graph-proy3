@@ -161,13 +161,13 @@ const PLANET_ORBIT_SPEED: f32 = 0.075;
 const SUN_POSITION_X: f32 = -520.0;
 const SUN_VISUAL_SCALE: f32 = 1.35;
 const SOLAR_SHIP_EXPLOSION_DURATION: f32 = 1.35;
-const PLANET_ORBIT_RADIUS: f32 = 220.0;
+const PLANET_ORBIT_RADIUS: f32 = 260.0;
 const SPIKY_PLANET_ORBIT_SPEED: f32 = -0.075;
-const SPIKY_PLANET_ORBIT_RADIUS: f32 = 330.0;
+const SPIKY_PLANET_ORBIT_RADIUS: f32 = 440.0;
 const SPIKY_PLANET_ORBIT_PHASE: f32 = PI * 0.5;
 const SPIKY_PLANET_ORBIT_INCLINATION: f32 = 0.30;
 const RACE_PLANET_ORBIT_SPEED: f32 = 0.075;
-const RACE_PLANET_ORBIT_RADIUS: f32 = 440.0;
+const RACE_PLANET_ORBIT_RADIUS: f32 = 620.0;
 const RACE_PLANET_ORBIT_PHASE: f32 = PI * 1.18;
 const RACE_PLANET_ORBIT_INCLINATION: f32 = -0.16;
 const SPIKY_PLANET_RADIUS: f32 = 39.0;
@@ -184,7 +184,7 @@ const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
 const VESPER_ORBIT_HEIGHTS: [f32; 2] = [0.0, 12.0];
 const VESPER_ORBIT_RADII: [f32; 2] = [30.0, 20.0];
 const VESPER_SYSTEM_CENTER: Vec3 = Vec3::new(0.0, 48.0, 0.0);
-const VESPER_SYSTEM_ORBIT_RADII: [f32; 2] = [225.0, 345.0];
+const VESPER_SYSTEM_ORBIT_RADII: [f32; 2] = [275.0, 440.0];
 const VESPER_SYSTEM_ORBIT_SPEEDS: [f32; 2] = [0.075, -0.075];
 const VESPER_SYSTEM_ORBIT_PHASES: [f32; 2] = [0.45, 3.35];
 const VESPER_BLACK_HOLE_GRAVITY_RADIUS: f32 = 175.0;
@@ -5571,8 +5571,8 @@ fn render_scene(
     // Place natural, thin debris belts between the planetary orbits in the
     // two star systems. Nova is a standalone world and has no orbital belt.
     let asteroid_orbit = match galaxy {
-        Galaxy::Home => Some((sun_position, 275.0)),
-        Galaxy::Vesper => Some((VESPER_SYSTEM_CENTER, 285.0)),
+        Galaxy::Home => Some((sun_position, 350.0)),
+        Galaxy::Vesper => Some((VESPER_SYSTEM_CENTER, 350.0)),
         Galaxy::Nova => None,
     };
     if let Some((asteroid_center, asteroid_radius)) = asteroid_orbit {
