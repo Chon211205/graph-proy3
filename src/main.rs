@@ -5549,29 +5549,33 @@ fn render_scene(
         );
     }
 
-    let (asteroid_center, asteroid_radius) = match galaxy {
-        Galaxy::Home => (sun_position, 560.0),
-        Galaxy::Vesper => (VESPER_SYSTEM_CENTER, 445.0),
-        Galaxy::Nova => (castle_planet.center, 360.0),
+    // Place natural, thin debris belts between the planetary orbits in the
+    // two star systems. Nova is a standalone world and has no orbital belt.
+    let asteroid_orbit = match galaxy {
+        Galaxy::Home => Some((sun_position, 275.0)),
+        Galaxy::Vesper => Some((VESPER_SYSTEM_CENTER, 285.0)),
+        Galaxy::Nova => None,
     };
-    let asteroid_rotation = world_time * 0.006;
-    let (asteroid_sin, asteroid_cos) = asteroid_rotation.sin_cos();
-    queue_model(
-        space_decor::asteroid_belt(galaxy),
-        batch,
-        &camera,
-        |vertex| {
-            let local = vertex.mul(asteroid_radius);
-            Vec3::new(
-                local.x * asteroid_cos - local.z * asteroid_sin,
-                local.y,
-                local.x * asteroid_sin + local.z * asteroid_cos,
-            )
-            .add(asteroid_center)
-        },
-        None,
-        None,
-    );
+    if let Some((asteroid_center, asteroid_radius)) = asteroid_orbit {
+        let asteroid_rotation = world_time * 0.006;
+        let (asteroid_sin, asteroid_cos) = asteroid_rotation.sin_cos();
+        queue_model(
+            space_decor::asteroid_belt(galaxy),
+            batch,
+            &camera,
+            |vertex| {
+                let local = vertex.mul(asteroid_radius);
+                Vec3::new(
+                    local.x * asteroid_cos - local.z * asteroid_sin,
+                    local.y,
+                    local.x * asteroid_sin + local.z * asteroid_cos,
+                )
+                .add(asteroid_center)
+            },
+            None,
+            None,
+        );
+    }
 
     queue_model(
         wormhole,
