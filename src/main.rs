@@ -3312,6 +3312,17 @@ fn make_five_star_dragon_ball() -> Model {
     ])
 }
 
+fn make_six_star_dragon_ball() -> Model {
+    make_dragon_ball(&[
+        (-0.62, -0.70),
+        (0.62, -0.70),
+        (-0.62, 0.0),
+        (0.62, 0.0),
+        (-0.62, 0.70),
+        (0.62, 0.70),
+    ])
+}
+
 fn make_one_star_dragon_ball() -> Model {
     make_dragon_ball(&[(0.0, 0.0)])
 }
@@ -7342,6 +7353,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let one_star_dragon_ball = make_one_star_dragon_ball();
     let two_star_dragon_ball = make_two_star_dragon_ball();
     let three_star_dragon_ball = make_three_star_dragon_ball();
+    let six_star_dragon_ball = make_six_star_dragon_ball();
     let reward_pedestal = make_reward_pedestal();
     let reward_chamber = make_reward_chamber();
     let reward_door = make_reward_door();
@@ -8529,6 +8541,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &mut scene_framebuffer,
                     active_model,
                     &laser_bolt,
+                    &six_star_dragon_ball,
                     &ship_controller,
                 );
             }
@@ -11038,6 +11051,7 @@ mod tests {
             make_two_star_dragon_ball(),
             make_three_star_dragon_ball(),
             make_four_star_dragon_ball(),
+            make_six_star_dragon_ball(),
         ] {
             let shell: Vec<_> = ball
                 .faces

@@ -15,6 +15,9 @@ const ARENA_MAX_Z: f32 = 52.0;
 const PLAYER_PLANE_Z: f32 = 32.0;
 const PLANE_SPEED_MULTIPLIER: f32 = 2.25;
 const VERTICAL_SPEED_MULTIPLIER: f32 = 2.0;
+const REWARD_DURATION: f32 = 5.5;
+const REWARD_COLLECT_TIME: f32 = 2.8;
+const REWARD_RECEIVE_TIME: f32 = 3.35;
 const BOSS_POSITION: Vec3 = Vec3::new(0.0, 58.0, -128.0);
 const DOOR_POSITION: Vec3 = Vec3::new(0.0, 34.0, -191.0);
 
@@ -45,6 +48,7 @@ enum Phase {
     Enraged,
     Dying,
     DoorOpening,
+    Reward,
     Complete,
     Defeat,
 }
@@ -82,6 +86,8 @@ pub struct LavaCastle {
     elapsed: f32,
     destruction_timer: f32,
     door_open: f32,
+    reward_elapsed: f32,
+    reward_position: Vec3,
     message: &'static str,
     message_timer: f32,
     environment: Model,
@@ -117,6 +123,8 @@ impl LavaCastle {
             elapsed: 0.0,
             destruction_timer: 0.0,
             door_open: 0.0,
+            reward_elapsed: 0.0,
+            reward_position: Vec3::default(),
             message: "ACERCATE AL GUARDIAN DE LAVA",
             message_timer: 3.0,
             environment: load_obj(
@@ -172,7 +180,10 @@ impl LavaCastle {
             return Action::Continue;
         }
 
-        if !matches!(self.phase, Phase::Dying | Phase::DoorOpening) {
+        if !matches!(
+            self.phase,
+            Phase::Dying | Phase::DoorOpening | Phase::Reward
+        ) {
             self.update_player_plane(controller, input, dt);
             controller.update_weapon_and_projectiles(input.fire, dt);
         }
@@ -216,12 +227,23 @@ impl LavaCastle {
         } else if self.phase == Phase::DoorOpening {
             self.door_open = (self.door_open + dt / 2.2).min(1.0);
             if self.door_open >= 1.0 {
+                self.phase = Phase::Reward;
+                self.reward_elapsed = 0.0;
+                self.reward_position = controller.ship.position;
+                controller.ship.speed = 0.0;
+                self.message = "RECIBIENDO ESFERA DEL DRAGON";
+                self.message_timer = REWARD_RECEIVE_TIME;
+            }
+        } else if self.phase == Phase::Reward {
+            self.reward_elapsed = (self.reward_elapsed + dt).min(REWARD_DURATION);
+            controller.ship.position = self.reward_position;
+            controller.ship.speed = 0.0;
+            self.player_velocity = Vec3::default();
+            if self.reward_elapsed >= REWARD_DURATION {
                 self.phase = Phase::Complete;
             }
         } else if self.phase == Phase::Complete {
-            if input.accelerate {
-                return Action::InteriorTransition;
-            }
+            return Action::InteriorTransition;
         }
 
         if self.player_health <= 0 {
@@ -438,6 +460,7 @@ impl LavaCastle {
         frame: &mut Framebuffer,
         ship_model: &Model,
         laser_model: &Model,
+        dragon_ball: &Model,
         controller: &ShipController,
     ) {
         draw_sky(frame);
@@ -455,7 +478,7 @@ impl LavaCastle {
             Some(self.elapsed),
             None,
         );
-        let door_y = self.door_open * 32.0;
+        let door_y = -self.door_open * 32.0;
         render_model(
             &self.door,
             frame,
@@ -497,6 +520,7 @@ impl LavaCastle {
         }
         self.render_player_weapon(frame, &camera, laser_model, controller);
         self.render_special_attack(frame, &camera);
+        self.render_reward(frame, &camera, dragon_ball);
         let ship_center = ship_model.bounds().0;
         let (forward, right, up) = controller.ship.basis();
         render_model(
@@ -518,6 +542,42 @@ impl LavaCastle {
             Some(controller.ship.spec),
         );
         self.draw_hud(frame);
+    }
+
+    fn render_reward(&self, frame: &mut Framebuffer, camera: &Camera, dragon_ball: &Model) {
+        if self.phase != Phase::Reward {
+            return;
+        }
+        let descent = (self.reward_elapsed / 2.2).clamp(0.0, 1.0);
+        let descent = descent * descent * (3.0 - 2.0 * descent);
+        let hover = (self.reward_elapsed * 3.2).sin() * 0.22;
+        let position = self
+            .reward_position
+            .add(Vec3::new(0.0, 13.0 - descent * 8.0 + hover, -5.0));
+        let center = dragon_ball.bounds().0;
+        let rotation = self.reward_elapsed * 1.8;
+        let (sin, cos) = rotation.sin_cos();
+        let collect_scale =
+            (1.0 - (self.reward_elapsed - REWARD_COLLECT_TIME).max(0.0) / 0.55).clamp(0.0, 1.0);
+        if collect_scale <= 0.0 {
+            return;
+        }
+        render_model(
+            dragon_ball,
+            frame,
+            camera,
+            |vertex| {
+                let local = vertex.sub(center).mul(collect_scale);
+                Vec3::new(
+                    local.x * cos - local.z * sin,
+                    local.y,
+                    local.x * sin + local.z * cos,
+                )
+                .add(position)
+            },
+            Some(self.elapsed),
+            None,
+        );
     }
 
     fn render_player_weapon(
@@ -684,10 +744,39 @@ impl LavaCastle {
         if self.message_timer > 0.0 {
             draw_selection_label(frame, self.message, w / 2, h - 75, scale, 0xffd27a);
         }
-        if self.phase == Phase::Complete {
+        if self.phase == Phase::Reward && self.reward_elapsed < REWARD_RECEIVE_TIME {
             draw_selection_label(
                 frame,
-                "PUERTA ABIERTA  //  ESPACIO: ENTRAR AL CASTILLO",
+                "RECIBIENDO ESFERA DEL DRAGON",
+                w / 2,
+                h / 3,
+                scale * 2,
+                0xffd15c,
+            );
+        } else if self.phase == Phase::Reward {
+            draw_selection_label(
+                frame,
+                "ESFERA DE 6 ESTRELLAS OBTENIDA",
+                w / 2,
+                h / 3,
+                scale * 2,
+                0xffa62b,
+            );
+            draw_selection_label(
+                frame,
+                &format!(
+                    "AVANZANDO EN {}",
+                    (REWARD_DURATION - self.reward_elapsed).ceil() as u32
+                ),
+                w / 2,
+                h / 3 + 42,
+                scale,
+                0x8feaff,
+            );
+        } else if self.phase == Phase::Complete {
+            draw_selection_label(
+                frame,
+                "ENTRANDO AL CASTILLO",
                 w / 2,
                 h / 3,
                 scale * 2,
@@ -1202,5 +1291,47 @@ mod tests {
         }
         assert!((arena.ship.yaw_rate - free.ship.yaw_rate).abs() < 0.001);
         assert!((arena.ship.pitch_rate - free.ship.pitch_rate).abs() < 0.001);
+    }
+
+    #[test]
+    fn lowered_door_awards_reward_before_entering_part_two() {
+        let mut level = LavaCastle::new();
+        let mut controller = ShipController::new(&ARWING_SPEC);
+        level.enter(&mut controller);
+        level.phase = Phase::DoorOpening;
+        for _ in 0..45 {
+            assert_eq!(
+                level.update(&mut controller, Input::default(), 0.05),
+                Action::Continue
+            );
+        }
+        assert_eq!(level.phase, Phase::Reward);
+        assert_eq!(level.door_open, 1.0);
+        let frozen = controller.ship.position;
+        let mut reward_frames = 0;
+        while level.phase == Phase::Reward {
+            assert_eq!(
+                level.update(
+                    &mut controller,
+                    Input {
+                        yaw: 1,
+                        pitch: 1,
+                        accelerate: true,
+                        ..Input::default()
+                    },
+                    0.05,
+                ),
+                Action::Continue
+            );
+            let offset = controller.ship.position.sub(frozen);
+            assert!(offset.dot(offset) < 0.0001);
+            reward_frames += 1;
+            assert!(reward_frames < 120);
+        }
+        assert_eq!(level.phase, Phase::Complete);
+        assert_eq!(
+            level.update(&mut controller, Input::default(), 0.05),
+            Action::InteriorTransition
+        );
     }
 }
