@@ -820,11 +820,10 @@ fn zone_name(z: f32) -> &'static str {
 fn interior_camera(controller: &ShipController) -> Camera {
     let (forward, right, up) = controller.ship.camera_basis();
     Camera {
-        position: controller
-            .ship
-            .position
-            .sub(forward.mul(18.0))
-            .add(up.mul(6.0)),
+        // Keep the ship on the optical axis.  Raising this camera pushed the
+        // player toward the bottom edge even though the on-rails controls were
+        // centered correctly.
+        position: controller.ship.position.sub(forward.mul(18.0)),
         forward,
         right,
         up,
@@ -1570,6 +1569,18 @@ mod tests {
         assert!((level.height - 8.0).abs() < 0.001);
         assert_eq!(controller.ship.yaw, FRAC_PI_2);
         assert_eq!(controller.ship.pitch, 0.0);
+    }
+
+    #[test]
+    fn part_two_camera_keeps_ship_in_screen_center() {
+        let mut controller = ShipController::new(&ARWING_SPEC);
+        let mut level = LavaCastleInterior::new();
+        level.enter(&mut controller);
+        let camera = interior_camera(&controller);
+        let ship_from_camera = controller.ship.position.sub(camera.position);
+        assert!(ship_from_camera.dot(camera.right).abs() < 0.001);
+        assert!(ship_from_camera.dot(camera.up).abs() < 0.001);
+        assert!(ship_from_camera.dot(camera.forward) > 0.0);
     }
 
     #[test]
