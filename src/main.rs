@@ -4,6 +4,7 @@ mod galaxy;
 mod hourglass_rescue;
 mod input;
 mod lava_castle;
+mod lava_castle_interior;
 mod menu;
 mod obj_loader;
 mod race_track;
@@ -712,6 +713,7 @@ enum GameMode {
     Racing,
     TowerGuard,
     LavaCastle,
+    LavaCastleInterior,
 }
 
 struct WaterLevelState {
@@ -3350,6 +3352,18 @@ fn make_six_star_dragon_ball() -> Model {
         (0.62, 0.0),
         (-0.62, 0.70),
         (0.62, 0.70),
+    ])
+}
+
+fn make_seven_star_dragon_ball() -> Model {
+    make_dragon_ball(&[
+        (-0.62, -0.70),
+        (0.62, -0.70),
+        (-0.62, 0.0),
+        (0.62, 0.0),
+        (-0.62, 0.70),
+        (0.62, 0.70),
+        (0.0, 0.0),
     ])
 }
 
@@ -7471,6 +7485,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let two_star_dragon_ball = make_two_star_dragon_ball();
     let three_star_dragon_ball = make_three_star_dragon_ball();
     let six_star_dragon_ball = make_six_star_dragon_ball();
+    let seven_star_dragon_ball = make_seven_star_dragon_ball();
     let reward_pedestal = make_reward_pedestal();
     let reward_chamber = make_reward_chamber();
     let reward_door = make_reward_door();
@@ -7513,6 +7528,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut guardian_fight = CoreGuardian::new();
     let mut hourglass_rescue = hourglass_rescue::HourglassRescue::new();
     let mut lava_castle = lava_castle::LavaCastle::new();
+    let mut lava_castle_interior = lava_castle_interior::LavaCastleInterior::new();
     let mut tower_game = tower_guard::TowerGame::new(&tower_sprites);
     let mut ambient_battle = space_battle::SpaceBattle::new();
     let mut previous = Instant::now();
@@ -8657,18 +8673,19 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 match castle_action {
                     lava_castle::Action::Continue => {}
                     lava_castle::Action::Exit | lava_castle::Action::InteriorTransition => {
-                        game_mode = GameMode::FreeWorld;
-                        launch_ship_from_planet(
-                            &mut ship_controller,
-                            castle_planet.center,
-                            castle_planet.radius,
-                        );
-                        window.set_title(match castle_action {
-                            lava_castle::Action::InteriorTransition => {
-                                "Castillo de Lava | Entrada interior preparada (Parte 2)"
-                            }
-                            _ => "Galaxia Nova | Planeta Castillo",
-                        });
+                        if castle_action == lava_castle::Action::InteriorTransition {
+                            game_mode = GameMode::LavaCastleInterior;
+                            lava_castle_interior.enter(&mut ship_controller);
+                            window.set_title("Nivel Final | Castillo de Lava | Parte 2");
+                        } else {
+                            game_mode = GameMode::FreeWorld;
+                            launch_ship_from_planet(
+                                &mut ship_controller,
+                                castle_planet.center,
+                                castle_planet.radius,
+                            );
+                            window.set_title("Galaxia Nova | Planeta Castillo");
+                        }
                         continue;
                     }
                 }
@@ -8677,6 +8694,39 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     active_model,
                     &laser_bolt,
                     &six_star_dragon_ball,
+                    &ship_controller,
+                );
+            }
+            GameMode::LavaCastleInterior => {
+                let action = lava_castle_interior.update(
+                    &mut ship_controller,
+                    &input,
+                    crate::input::pressed(Key::R),
+                    crate::input::pressed(Key::Backspace),
+                    delta_time,
+                );
+                match action {
+                    lava_castle_interior::Action::Continue => {}
+                    lava_castle_interior::Action::Exit | lava_castle_interior::Action::Victory => {
+                        game_mode = GameMode::FreeWorld;
+                        launch_ship_from_planet(
+                            &mut ship_controller,
+                            castle_planet.center,
+                            castle_planet.radius,
+                        );
+                        window.set_title(if action == lava_castle_interior::Action::Victory {
+                            "JUEGO COMPLETADO | Esfera de 7 estrellas obtenida"
+                        } else {
+                            "Galaxia Nova | Planeta Castillo"
+                        });
+                        continue;
+                    }
+                }
+                lava_castle_interior.render(
+                    &mut scene_framebuffer,
+                    active_model,
+                    &laser_bolt,
+                    &seven_star_dragon_ball,
                     &ship_controller,
                 );
             }
@@ -8896,6 +8946,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::TowerGuard => "DEFIENDE LA TORRE",
             GameMode::HourglassRescue => "REUNE FRAGMENTOS Y CONSIGUE LA ESFERA",
             GameMode::LavaCastle => "DERROTA AL GUARDIAN Y ABRE EL CASTILLO",
+            GameMode::LavaCastleInterior => "REUNE 3 FRAGMENTOS Y ABRE EL SELLO FINAL",
         };
         let shield_ratio = match game_mode {
             GameMode::WaterLevel => {
@@ -8910,6 +8961,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::TowerGuard => tower_game.score(),
             GameMode::HourglassRescue => hourglass_rescue.rescued_count() as u32 * 1_000,
             GameMode::LavaCastle => 0,
+            GameMode::LavaCastleInterior => 0,
             GameMode::Racing => {
                 (ship_controller.ship.position.x.abs() + ship_controller.ship.position.z.abs())
                     as u32
@@ -11187,6 +11239,7 @@ mod tests {
             make_three_star_dragon_ball(),
             make_four_star_dragon_ball(),
             make_six_star_dragon_ball(),
+            make_seven_star_dragon_ball(),
         ] {
             let shell: Vec<_> = ball
                 .faces
