@@ -115,10 +115,17 @@ pub(crate) fn asteroids(galaxy: Galaxy) -> &'static [Asteroid] {
     }]
 }
 
-pub(crate) fn draw_nebula(framebuffer: &mut Framebuffer, galaxy: Galaxy) {
-    let nebula_index = match galaxy {
-        Galaxy::Home => 0,
-        Galaxy::Vesper => 1,
+pub(crate) fn draw_nebula(
+    framebuffer: &mut Framebuffer,
+    galaxy: Galaxy,
+    camera_forward: Vec3,
+    camera_right: Vec3,
+    camera_up: Vec3,
+) {
+    let (nebula_index, center_longitude) = match galaxy {
+        // These are fixed directions in each system's distant sky.
+        Galaxy::Home => (0, std::f32::consts::PI),
+        Galaxy::Vesper => (1, -std::f32::consts::FRAC_PI_2),
         Galaxy::Nova => return,
     };
     static NEBULAS: OnceLock<[Option<NebulaTexture>; 2]> = OnceLock::new();
@@ -132,16 +139,35 @@ pub(crate) fn draw_nebula(framebuffer: &mut Framebuffer, galaxy: Galaxy) {
         return;
     };
 
-    // Render at a capped resolution and enlarge in small blocks; this keeps
-    // the detailed cloud inexpensive on the software framebuffer renderer.
+    // Project camera rays into a fixed celestial direction. Rotation pans the
+    // cloud across the view; translation causes no visible near-field parallax.
     let block = (framebuffer.width.div_ceil(NEBULA_WIDTH))
         .max(framebuffer.height.div_ceil(NEBULA_HEIGHT))
         .max(1);
+    let focal = framebuffer.height as f32 * 0.5 / (std::f32::consts::PI / 6.0).tan();
+    let center_x = framebuffer.width as f32 * 0.5;
+    let center_y = framebuffer.height as f32 * 0.5;
+    let angular_width = 1.95;
+    let angular_height = 1.05;
     let opacity = if galaxy == Galaxy::Home { 0.50 } else { 0.47 };
     for y in (0..framebuffer.height).step_by(block) {
-        let source_y = (y * NEBULA_HEIGHT / framebuffer.height).min(NEBULA_HEIGHT - 1);
         for x in (0..framebuffer.width).step_by(block) {
-            let source_x = (x * NEBULA_WIDTH / framebuffer.width).min(NEBULA_WIDTH - 1);
+            let ray = camera_forward
+                .add(camera_right.mul((x as f32 - center_x) / focal))
+                .add(camera_up.mul((center_y - y as f32) / focal))
+                .normalize();
+            let longitude = ray.z.atan2(ray.x);
+            let longitude_delta = (longitude - center_longitude + std::f32::consts::PI)
+                .rem_euclid(std::f32::consts::TAU)
+                - std::f32::consts::PI;
+            let latitude = ray.y.clamp(-1.0, 1.0).asin();
+            let u = 0.5 + longitude_delta / angular_width;
+            let v = 0.5 - latitude / angular_height;
+            if !(0.0..1.0).contains(&u) || !(0.0..1.0).contains(&v) {
+                continue;
+            }
+            let source_x = (u * NEBULA_WIDTH as f32) as usize;
+            let source_y = (v * NEBULA_HEIGHT as f32) as usize;
             let [red, green, blue, alpha] = nebula.pixels[source_y * NEBULA_WIDTH + source_x];
             let alpha = alpha as f32 / 255.0 * opacity;
             if alpha < 0.008 {

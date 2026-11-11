@@ -3084,7 +3084,12 @@ fn hash(mut value: u32) -> u32 {
     value ^ (value >> 16)
 }
 
-fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
+fn draw_skybox(
+    framebuffer: &mut Framebuffer,
+    travel: f32,
+    galaxy: Galaxy,
+    camera: Option<&Camera>,
+) {
     let (base, horizon_glow, star_tint) = match galaxy {
         Galaxy::Home => ([4.0, 7.0, 20.0], [8.0, 11.0, 24.0], None),
         Galaxy::Vesper => ([7.0, 3.0, 25.0], [18.0, 11.0, 48.0], Some([130, 198, 255])),
@@ -3128,7 +3133,15 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
     }
 
     // Use the supplied transparent nebula art as a low-resolution sky overlay.
-    space_decor::draw_nebula(framebuffer, galaxy);
+    if let Some(camera) = camera {
+        space_decor::draw_nebula(
+            framebuffer,
+            galaxy,
+            camera.forward,
+            camera.right,
+            camera.up,
+        );
+    }
 
     let center_x = framebuffer.width as f32 * 0.5;
     let center_y = framebuffer.height as f32 * 0.48;
@@ -5319,8 +5332,8 @@ fn render_scene(
     tower_reward: Option<(&Model, f32, Vec3)>,
 ) {
     framebuffer.clear(0);
-    draw_skybox(framebuffer, travel, galaxy);
     let camera = chase_camera(ship, matches!(galaxy, Galaxy::Vesper | Galaxy::Nova));
+    draw_skybox(framebuffer, travel, galaxy, Some(&camera));
     debug_assert!(batch.commands.is_empty());
     let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let planet_position = water_planet_position(world_time);

@@ -61,7 +61,7 @@ pub(crate) fn draw_backdrop(frame: &mut Framebuffer) {
     if let Some(pixels) = MENU_BACKGROUND.get_or_init(load_background) {
         frame.pixels.copy_from_slice(pixels);
     } else {
-        draw_skybox(frame, 0.0, crate::galaxy::Galaxy::Home);
+        draw_skybox(frame, 0.0, crate::galaxy::Galaxy::Home, None);
     }
 }
 
