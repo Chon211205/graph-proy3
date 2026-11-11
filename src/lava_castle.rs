@@ -13,7 +13,7 @@ const ARENA_MAX_Y: f32 = 105.0;
 const ARENA_MIN_Z: f32 = -210.0;
 const ARENA_MAX_Z: f32 = 52.0;
 const PLAYER_PLANE_Z: f32 = 32.0;
-const PLANE_SPEED_MULTIPLIER: f32 = 1.65;
+const PLANE_SPEED_MULTIPLIER: f32 = 2.25;
 const VERTICAL_SPEED_MULTIPLIER: f32 = 2.0;
 const BOSS_POSITION: Vec3 = Vec3::new(0.0, 58.0, -128.0);
 const DOOR_POSITION: Vec3 = Vec3::new(0.0, 34.0, -191.0);
@@ -92,7 +92,7 @@ pub struct LavaCastle {
 
 impl LavaCastle {
     pub fn new() -> Self {
-        let boss = load_obj("assets/bosses/lava_guardian/guardian_lava_gigante.obj")
+        let boss = load_obj("assets/bosses/lava_guardian/guardian_lava_gigante_optimized.obj")
             .unwrap_or_else(|error| {
                 eprintln!("No se pudo cargar el Guardian de Lava Blender: {error}");
                 make_boss()
@@ -119,11 +119,13 @@ impl LavaCastle {
             door_open: 0.0,
             message: "ACERCATE AL GUARDIAN DE LAVA",
             message_timer: 3.0,
-            environment: load_obj("assets/levels/lava_castle/lava_castle_environment.obj")
-                .unwrap_or_else(|error| {
-                    eprintln!("No se pudo cargar el escenario Blender del castillo: {error}");
-                    make_environment()
-                }),
+            environment: load_obj(
+                "assets/levels/lava_castle/lava_castle_environment_optimized.obj",
+            )
+            .unwrap_or_else(|error| {
+                eprintln!("No se pudo cargar el escenario Blender del castillo: {error}");
+                make_environment()
+            }),
             boss,
             door: load_obj("assets/levels/lava_castle/lava_castle_door.obj").unwrap_or_else(
                 |error| {
@@ -142,6 +144,8 @@ impl LavaCastle {
         controller.ship.yaw = std::f32::consts::FRAC_PI_2;
         controller.ship.pitch = 0.0;
         controller.ship.roll = 0.0;
+        controller.ship.yaw_rate = 0.0;
+        controller.ship.pitch_rate = 0.0;
         controller.ship.speed = controller.ship.spec.cruise_speed;
     }
 
@@ -231,12 +235,12 @@ impl LavaCastle {
     fn update_player_plane(&mut self, controller: &mut ShipController, input: Input, dt: f32) {
         let horizontal = input.yaw as f32;
         let vertical = input.pitch as f32;
-        // Use the selected ship's exact free-world speed curve. The resulting
-        // speed is projected onto this fixed combat plane instead of world Z.
+        // Use the selected ship's exact free-world steering response and speed
+        // curve, then project those turn rates onto this fixed combat plane.
         controller.ship.update_flight(
             &ShipInput {
-                pitch: 0,
-                yaw: 0,
+                pitch: input.pitch,
+                yaw: input.yaw,
                 roll: input.roll,
                 accelerating: input.accelerate || input.boost,
                 braking: input.brake,
@@ -244,15 +248,21 @@ impl LavaCastle {
             },
             dt,
         );
-        let input_length = horizontal.hypot(vertical).max(1.0);
-        let target_x = horizontal / input_length * controller.ship.speed * PLANE_SPEED_MULTIPLIER;
-        let target_y = vertical / input_length
+        let yaw_sensitivity = if controller.ship.spec.max_yaw_rate > 0.0 {
+            controller.ship.yaw_rate / controller.ship.spec.max_yaw_rate
+        } else {
+            horizontal
+        };
+        let pitch_sensitivity = if controller.ship.spec.max_pitch_rate > 0.0 {
+            controller.ship.pitch_rate / controller.ship.spec.max_pitch_rate
+        } else {
+            vertical
+        };
+        self.player_velocity.x = yaw_sensitivity * controller.ship.speed * PLANE_SPEED_MULTIPLIER;
+        self.player_velocity.y = pitch_sensitivity
             * controller.ship.speed
             * PLANE_SPEED_MULTIPLIER
             * VERTICAL_SPEED_MULTIPLIER;
-        let response = 1.0 - (-controller.ship.spec.turn_response * dt).exp();
-        self.player_velocity.x += (target_x - self.player_velocity.x) * response;
-        self.player_velocity.y += (target_y - self.player_velocity.y) * response;
         controller.ship.position.x += self.player_velocity.x * dt;
         controller.ship.position.y += self.player_velocity.y * dt;
         controller.ship.position.z = PLAYER_PLANE_Z;
@@ -947,7 +957,7 @@ mod tests {
 
     #[test]
     fn blender_boss_is_gigantic_and_has_a_real_weak_core() {
-        let boss = load_obj("assets/bosses/lava_guardian/guardian_lava_gigante.obj")
+        let boss = load_obj("assets/bosses/lava_guardian/guardian_lava_gigante_optimized.obj")
             .expect("giant Blender boss should load");
         for group in [
             "Guardian_Torso",
@@ -959,6 +969,18 @@ mod tests {
             assert!(boss.faces.iter().any(|face| face.group == group));
         }
         assert!(boss.bounds().1 > 28.0, "boss must dominate the arena");
+        assert!(boss.faces.iter().any(|face| {
+            face.material == "Castle_Rock" && face.shader == SurfaceShader::CastleRockTexture
+        }));
+        assert!(boss.faces.iter().any(|face| {
+            face.material == "Castle_Rock_Dark" && face.shader == SurfaceShader::CastleRockTexture
+        }));
+        assert!(boss.faces.iter().any(|face| {
+            face.material == "Castle_Lava" && face.shader == SurfaceShader::CastleLavaTexture
+        }));
+        assert!(boss.faces.iter().any(|face| {
+            face.material == "Castle_Lava_Hot" && face.shader == SurfaceShader::CastleLavaTexture
+        }));
         let core = model_group_center(&boss, "Guardian_Core_Inner")
             .expect("boss should expose its modeled weak point");
         let (center, radius) = boss.bounds();
@@ -967,8 +989,9 @@ mod tests {
 
     #[test]
     fn blender_arena_contains_castle_lava_obstacles_and_animated_door() {
-        let environment = load_obj("assets/levels/lava_castle/lava_castle_environment.obj")
-            .expect("Blender castle environment should load");
+        let environment =
+            load_obj("assets/levels/lava_castle/lava_castle_environment_optimized.obj")
+                .expect("Blender castle environment should load");
         let door = load_obj("assets/levels/lava_castle/lava_castle_door.obj")
             .expect("Blender castle door should load");
         for group in [
@@ -992,6 +1015,32 @@ mod tests {
                 .iter()
                 .any(|face| face.group == "Animated_Castle_Door")
         );
+    }
+
+    #[test]
+    fn runtime_meshes_reduce_part_one_geometry_without_losing_gameplay_groups() {
+        let source_environment =
+            load_obj("assets/levels/lava_castle/lava_castle_environment.obj").unwrap();
+        let runtime_environment =
+            load_obj("assets/levels/lava_castle/lava_castle_environment_optimized.obj").unwrap();
+        let source_boss =
+            load_obj("assets/bosses/lava_guardian/guardian_lava_gigante.obj").unwrap();
+        let runtime_boss =
+            load_obj("assets/bosses/lava_guardian/guardian_lava_gigante_optimized.obj").unwrap();
+
+        assert!(runtime_environment.faces.len() * 100 < source_environment.faces.len() * 65);
+        assert!(runtime_boss.faces.len() * 100 < source_boss.faces.len() * 75);
+        for group in ["Lava_Basin", "Castle_Main_Keep", "Arena_Island_0"] {
+            assert!(
+                runtime_environment
+                    .faces
+                    .iter()
+                    .any(|face| face.group == group)
+            );
+        }
+        for group in ["Guardian_Torso", "Guardian_Core_Inner", "Guardian_Head"] {
+            assert!(runtime_boss.faces.iter().any(|face| face.group == group));
+        }
     }
     #[test]
     fn boss_enters_second_phase_and_opens_door_only_after_defeat() {
@@ -1124,5 +1173,34 @@ mod tests {
             vertical.ship.position.y - vertical_start.y
                 > horizontal.ship.position.x - horizontal_start.x
         );
+    }
+
+    #[test]
+    fn combat_plane_uses_the_free_world_steering_sensitivity() {
+        let mut level = LavaCastle::new();
+        let mut arena = ShipController::new(&ARWING_SPEC);
+        let mut free = ShipController::new(&ARWING_SPEC);
+        level.enter(&mut arena);
+        for _ in 0..8 {
+            level.update(
+                &mut arena,
+                Input {
+                    yaw: 1,
+                    pitch: 1,
+                    ..Input::default()
+                },
+                0.05,
+            );
+            free.ship.update_flight(
+                &ShipInput {
+                    yaw: 1,
+                    pitch: 1,
+                    ..ShipInput::default()
+                },
+                0.05,
+            );
+        }
+        assert!((arena.ship.yaw_rate - free.ship.yaw_rate).abs() < 0.001);
+        assert!((arena.ship.pitch_rate - free.ship.pitch_rate).abs() < 0.001);
     }
 }
