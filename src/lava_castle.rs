@@ -18,6 +18,7 @@ const VERTICAL_SPEED_MULTIPLIER: f32 = 2.0;
 const REWARD_DURATION: f32 = 5.5;
 const REWARD_COLLECT_TIME: f32 = 2.8;
 const REWARD_RECEIVE_TIME: f32 = 3.35;
+const DOOR_LOWER_DISTANCE: f32 = 70.0;
 const BOSS_POSITION: Vec3 = Vec3::new(0.0, 58.0, -128.0);
 const DOOR_POSITION: Vec3 = Vec3::new(0.0, 34.0, -191.0);
 
@@ -478,7 +479,7 @@ impl LavaCastle {
             Some(self.elapsed),
             None,
         );
-        let door_y = -self.door_open * 32.0;
+        let door_y = -self.door_open * DOOR_LOWER_DISTANCE;
         render_model(
             &self.door,
             frame,
@@ -1307,6 +1308,13 @@ mod tests {
         }
         assert_eq!(level.phase, Phase::Reward);
         assert_eq!(level.door_open, 1.0);
+        let lowered_top = level
+            .door
+            .vertices
+            .iter()
+            .map(|vertex| vertex.y - DOOR_LOWER_DISTANCE)
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(lowered_top < ARENA_MIN_Y);
         let frozen = controller.ship.position;
         let mut reward_frames = 0;
         while level.phase == Phase::Reward {
