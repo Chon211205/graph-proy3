@@ -1,14 +1,14 @@
 use crate::{
-    draw_selection_label as label, draw_selection_panel as panel, framebuffer::Framebuffer,
-    obj_loader::Vec3, HEIGHT, WIDTH,
+    HEIGHT, WIDTH, draw_selection_label as label, draw_selection_panel as panel,
+    framebuffer::Framebuffer, obj_loader::Vec3,
 };
 
 use super::{
+    RacePhase,
     course::RaceCourse,
     drive::DriveState,
     progress::{ProgressEvent, RaceProgress},
     racer::Rival,
-    RacePhase,
 };
 
 pub(super) fn draw(

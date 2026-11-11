@@ -736,7 +736,12 @@ mod tests {
         let movement = controller.ship.position.sub(start);
         assert!(movement.dot(movement) < f32::EPSILON);
         assert!(!controller.projectiles.is_empty());
-        assert!(controller.projectiles.iter().all(|shot| shot.lifetime > 0.0));
+        assert!(
+            controller
+                .projectiles
+                .iter()
+                .all(|shot| shot.lifetime > 0.0)
+        );
     }
 
     #[test]

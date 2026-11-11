@@ -1,6 +1,8 @@
 use crate::ship::Ship;
 
-use super::{CapsuleState, Cue, HourglassRescue, CAPSULE_COUNT, CAPSULE_POSITIONS, RESCUE_DISTANCE};
+use super::{
+    CAPSULE_COUNT, CAPSULE_POSITIONS, CapsuleState, Cue, HourglassRescue, RESCUE_DISTANCE,
+};
 
 impl HourglassRescue {
     pub(super) fn update_clocks(&mut self, ship: &Ship) {
@@ -48,7 +50,8 @@ impl HourglassRescue {
                 self.reward_elapsed = 0.0;
                 self.reward_position = ship.position;
                 self.scene.set_reward_transform(
-                    self.reward_position.add(crate::obj_loader::Vec3::new(0.0, 13.0, 0.0)),
+                    self.reward_position
+                        .add(crate::obj_loader::Vec3::new(0.0, 13.0, 0.0)),
                     1.0,
                     0.0,
                 );

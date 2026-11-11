@@ -60,12 +60,9 @@ impl NebulaTexture {
                         source[offset + 2],
                         source[offset + 3],
                     ],
-                    png::ColorType::Rgb => [
-                        source[offset],
-                        source[offset + 1],
-                        source[offset + 2],
-                        255,
-                    ],
+                    png::ColorType::Rgb => {
+                        [source[offset], source[offset + 1], source[offset + 2], 255]
+                    }
                     png::ColorType::GrayscaleAlpha => [
                         source[offset],
                         source[offset],
@@ -104,9 +101,18 @@ pub(crate) fn asteroids(galaxy: Galaxy) -> &'static [Asteroid] {
     static FIELDS: OnceLock<[Vec<Asteroid>; 3]> = OnceLock::new();
     let fields = FIELDS.get_or_init(|| {
         [
-            make_asteroids([[91, 111, 142], [129, 116, 104], [66, 82, 105]], 0x13a5_8f21),
-            make_asteroids([[122, 126, 169], [90, 103, 145], [157, 139, 166]], 0x7e31_4c99),
-            make_asteroids([[137, 112, 91], [93, 112, 108], [171, 153, 121]], 0xc049_827b),
+            make_asteroids(
+                [[91, 111, 142], [129, 116, 104], [66, 82, 105]],
+                0x13a5_8f21,
+            ),
+            make_asteroids(
+                [[122, 126, 169], [90, 103, 145], [157, 139, 166]],
+                0x7e31_4c99,
+            ),
+            make_asteroids(
+                [[137, 112, 91], [93, 112, 108], [171, 153, 121]],
+                0xc049_827b,
+            ),
         ]
     });
     &fields[match galaxy {
@@ -411,8 +417,8 @@ fn make_asteroid(seed: u32, palette: [[u8; 3]; 3], asteroid: usize, size_scale: 
         let mut push_face = |indices: [usize; 3], layer: usize, face_index: usize| {
             let mut face = Face::new(indices, "space_asteroid", "asteroid_belt");
             face.shader = SurfaceShader::Flat;
-            let shade = 0.68
-                + unit(shade_seed ^ (layer as u32 * 0x45d9_f3b + face_index as u32)) * 0.46;
+            let shade =
+                0.68 + unit(shade_seed ^ (layer as u32 * 0x45d9_f3b + face_index as u32)) * 0.46;
             face.color = MaterialColor::Fixed([
                 (color[0] as f32 * shade).min(255.0) as u8,
                 (color[1] as f32 * shade).min(255.0) as u8,
@@ -438,8 +444,16 @@ fn make_asteroid(seed: u32, palette: [[u8; 3]; 3], asteroid: usize, size_scale: 
         }
         let upper = ring_bases[ASTEROID_SHAPE_RINGS - 1];
         let lower = ring_bases[0];
-        push_face([top, upper + segment, upper + next], ASTEROID_SHAPE_RINGS, 0);
-        push_face([bottom, lower + next, lower + segment], ASTEROID_SHAPE_RINGS + 1, 0);
+        push_face(
+            [top, upper + segment, upper + next],
+            ASTEROID_SHAPE_RINGS,
+            0,
+        );
+        push_face(
+            [bottom, lower + next, lower + segment],
+            ASTEROID_SHAPE_RINGS + 1,
+            0,
+        );
     }
 
     Model::new(vertices, faces)
@@ -455,8 +469,7 @@ fn make_dust_belt(palette: [[u8; 3]; 3]) -> Model {
         let radius = 0.82 + unit(seed ^ 0x9e37_79b9) * 0.36;
         let center = Vec3::new(
             angle.cos() * radius,
-            angle.sin() * radius * 0.055
-                + (unit(seed ^ 0x63d8_3595) - 0.5) * 0.035,
+            angle.sin() * radius * 0.055 + (unit(seed ^ 0x63d8_3595) - 0.5) * 0.035,
             angle.sin() * radius,
         );
         let size = 0.0015 + unit(seed ^ 0xa511_e9b3) * 0.003;

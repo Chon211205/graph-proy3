@@ -14,7 +14,7 @@ use crate::obj_loader::Vec3;
 use crate::ship::{Projectile, Ship};
 
 use audio::{Audio, Cue};
-use scene::{Scene, CAPSULE_COUNT, CAPSULE_POSITIONS};
+use scene::{CAPSULE_COUNT, CAPSULE_POSITIONS, Scene};
 
 const ENEMY_SPAWNS: [Vec3; scene::ENEMY_COUNT] = [
     Vec3::new(-35.0, 30.0, -155.0),
@@ -231,11 +231,10 @@ impl HourglassRescue {
                 let descent = (self.reward_elapsed / 2.2).clamp(0.0, 1.0);
                 let descent = descent * descent * (3.0 - 2.0 * descent);
                 let hover = (self.reward_elapsed * 3.2).sin() * 0.22;
-                let center = self
-                    .reward_position
-                    .add(Vec3::new(0.0, 13.0 - descent * 8.0 + hover, 0.0));
-                let scale = (1.0
-                    - (self.reward_elapsed - REWARD_COLLECT_TIME).max(0.0) / 0.55)
+                let center =
+                    self.reward_position
+                        .add(Vec3::new(0.0, 13.0 - descent * 8.0 + hover, 0.0));
+                let scale = (1.0 - (self.reward_elapsed - REWARD_COLLECT_TIME).max(0.0) / 0.55)
                     .clamp(0.0, 1.0);
                 self.scene
                     .set_reward_transform(center, scale, self.reward_elapsed * 1.8);
@@ -397,5 +396,4 @@ impl HourglassRescue {
     fn target_distance_for_hud(&self, ship: &Ship) -> Option<f32> {
         self.target_distance(ship)
     }
-
 }

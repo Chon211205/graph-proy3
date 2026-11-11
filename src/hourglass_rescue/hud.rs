@@ -250,18 +250,17 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
     }
 }
 
-fn draw_aiming_reticle(
-    game: &HourglassRescue,
-    frame: &mut Framebuffer,
-    ship: &Ship,
-    scale: i32,
-) {
+fn draw_aiming_reticle(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship, scale: i32) {
     let forward = ship.basis().0;
-    let locked = game.enemies.iter().filter(|enemy| enemy.alive).any(|enemy| {
-        let offset = enemy.position.sub(ship.position);
-        let distance = offset.dot(offset).sqrt();
-        distance > 0.001 && forward.dot(offset.mul(1.0 / distance)) > 0.985
-    });
+    let locked = game
+        .enemies
+        .iter()
+        .filter(|enemy| enemy.alive)
+        .any(|enemy| {
+            let offset = enemy.position.sub(ship.position);
+            let distance = offset.dot(offset).sqrt();
+            distance > 0.001 && forward.dot(offset.mul(1.0 / distance)) > 0.985
+        });
     let color = if locked { 0xff684f } else { 0x8debf4 };
     let cx = frame.width as i32 / 2;
     let cy = frame.height as i32 / 2;
@@ -290,7 +289,11 @@ fn draw_aiming_reticle(
     }
     draw_selection_label(
         frame,
-        if locked { "OBJETIVO FIJADO" } else { "ENTER: DISPARAR" },
+        if locked {
+            "OBJETIVO FIJADO"
+        } else {
+            "ENTER: DISPARAR"
+        },
         cx,
         cy + radius + 12 * scale.max(1),
         (scale / 2).max(1),

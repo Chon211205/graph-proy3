@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
 
-use super::course::{RaceCourse, CURB_WIDTH, HALF_ROAD};
+use super::course::{CURB_WIDTH, HALF_ROAD, RaceCourse};
 
 pub(super) struct RaceScenery {
     pub forests: Vec<Model>,
@@ -701,17 +701,21 @@ mod tests {
                 .sum::<usize>(),
             44 * 36 * 2 + 30 * 2
         );
-        assert!(scenery
-            .terrain
-            .iter()
-            .chain(&scenery.hills)
-            .all(|model| !model.faces.is_empty() && !model.vertices.is_empty()));
-        assert!(scenery
-            .terrain
-            .iter()
-            .flat_map(|model| &model.faces)
-            .filter(|face| face.group == "lush_track_ground")
-            .all(|face| face.shader == SurfaceShader::RaceGrassTexture));
+        assert!(
+            scenery
+                .terrain
+                .iter()
+                .chain(&scenery.hills)
+                .all(|model| !model.faces.is_empty() && !model.vertices.is_empty())
+        );
+        assert!(
+            scenery
+                .terrain
+                .iter()
+                .flat_map(|model| &model.faces)
+                .filter(|face| face.group == "lush_track_ground")
+                .all(|face| face.shader == SurfaceShader::RaceGrassTexture)
+        );
         for (detailed, lod) in scenery.forests.iter().zip(&scenery.forest_lods) {
             assert!(lod.faces.len() <= detailed.faces.len().div_ceil(3));
             for group in ["alien_tree_trunks", "alien_tree_roots", "smooth_canopies"] {
@@ -760,55 +764,75 @@ mod tests {
             assert!(sample.position.z - terrain_min_z > 240.0);
             assert!(terrain_max_z - sample.position.z > 240.0);
         }
-        assert!(scenery.forests.iter().any(|model| model
-            .faces
-            .iter()
-            .any(|face| face.group == "alien_tree_roots")));
-        for group in ["alien_tree_trunks", "smooth_canopies"] {
-            assert!(scenery.forests.iter().any(|model| model
+        assert!(scenery.forests.iter().any(|model| {
+            model
                 .faces
                 .iter()
-                .any(|face| face.group == group && face.smooth)));
-        }
-        assert!(scenery.forests.iter().all(|model| model
-            .faces
-            .iter()
-            .filter(|face| matches!(
-                face.group.as_str(),
-                "alien_tree_trunks" | "alien_tree_roots"
-            ))
-            .all(|face| face.shader == SurfaceShader::RaceBarkTexture)));
-        assert!(scenery.arches.iter().any(|model| model
-            .faces
-            .iter()
-            .any(|face| face.group == "arch_carved_capitals")));
-        assert!(scenery.arches.iter().all(|model| model
-            .faces
-            .iter()
-            .filter(|face| matches!(
-                face.group.as_str(),
-                "mossy_arch_stone" | "arch_carved_bases" | "arch_carved_capitals"
-            ))
-            .all(|face| face.shader == SurfaceShader::RaceBricksTexture)));
-        assert!(scenery
-            .hills
-            .iter()
-            .flat_map(|model| &model.faces)
-            .any(|face| face.group == "detailed_hill_peaks"));
-        assert!(scenery
-            .hills
-            .iter()
-            .flat_map(|model| &model.faces)
-            .all(|face| {
-                !matches!(
-                    face.group.as_str(),
-                    "misty_green_hills" | "detailed_hill_peaks"
-                ) || face.shader == SurfaceShader::RaceGroundTexture
+                .any(|face| face.group == "alien_tree_roots")
+        }));
+        for group in ["alien_tree_trunks", "smooth_canopies"] {
+            assert!(scenery.forests.iter().any(|model| {
+                model
+                    .faces
+                    .iter()
+                    .any(|face| face.group == group && face.smooth)
             }));
-        assert!(scenery.forests.iter().all(|model| model
-            .faces
-            .iter()
-            .filter(|face| face.group == "smooth_canopies")
-            .all(|face| face.shader == SurfaceShader::RaceGrassTexture)));
+        }
+        assert!(scenery.forests.iter().all(|model| {
+            model
+                .faces
+                .iter()
+                .filter(|face| {
+                    matches!(
+                        face.group.as_str(),
+                        "alien_tree_trunks" | "alien_tree_roots"
+                    )
+                })
+                .all(|face| face.shader == SurfaceShader::RaceBarkTexture)
+        }));
+        assert!(scenery.arches.iter().any(|model| {
+            model
+                .faces
+                .iter()
+                .any(|face| face.group == "arch_carved_capitals")
+        }));
+        assert!(scenery.arches.iter().all(|model| {
+            model
+                .faces
+                .iter()
+                .filter(|face| {
+                    matches!(
+                        face.group.as_str(),
+                        "mossy_arch_stone" | "arch_carved_bases" | "arch_carved_capitals"
+                    )
+                })
+                .all(|face| face.shader == SurfaceShader::RaceBricksTexture)
+        }));
+        assert!(
+            scenery
+                .hills
+                .iter()
+                .flat_map(|model| &model.faces)
+                .any(|face| face.group == "detailed_hill_peaks")
+        );
+        assert!(
+            scenery
+                .hills
+                .iter()
+                .flat_map(|model| &model.faces)
+                .all(|face| {
+                    !matches!(
+                        face.group.as_str(),
+                        "misty_green_hills" | "detailed_hill_peaks"
+                    ) || face.shader == SurfaceShader::RaceGroundTexture
+                })
+        );
+        assert!(scenery.forests.iter().all(|model| {
+            model
+                .faces
+                .iter()
+                .filter(|face| face.group == "smooth_canopies")
+                .all(|face| face.shader == SurfaceShader::RaceGrassTexture)
+        }));
     }
 }

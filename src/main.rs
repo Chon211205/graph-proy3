@@ -9,8 +9,8 @@ mod menu;
 mod obj_loader;
 mod race_track;
 mod ship;
-mod space_decor;
 mod space_battle;
+mod space_decor;
 mod tower_guard;
 mod triangle;
 
@@ -3138,13 +3138,7 @@ fn draw_skybox(
 
     // Use the supplied transparent nebula art as a low-resolution sky overlay.
     if let Some(camera) = camera {
-        space_decor::draw_nebula(
-            framebuffer,
-            galaxy,
-            camera.forward,
-            camera.right,
-            camera.up,
-        );
+        space_decor::draw_nebula(framebuffer, galaxy, camera.forward, camera.right, camera.up);
     }
 
     let center_x = framebuffer.width as f32 * 0.5;
@@ -7096,6 +7090,7 @@ fn select_ship(
         (428, 385),
     ];
     let mut thumbnails = Vec::with_capacity(choices.len());
+    let mut gamepad = crate::input::Gamepad::default();
     for (index, forms) in ship_forms.iter().enumerate() {
         let (model, spec, _) = forms[0];
         let (left, top) = card_positions[index];
@@ -7110,16 +7105,23 @@ fn select_ship(
         ));
     }
     while window.is_open() {
-        if crate::input::pressed(Key::Escape) {
+        gamepad.update();
+        if crate::input::pressed(Key::Escape) || gamepad.pressed(crate::input::Gamepad::B) {
             return Ok(None);
         }
-        if crate::input::pressed(Key::Left) || crate::input::pressed(Key::A) {
+        if crate::input::pressed(Key::Left)
+            || crate::input::pressed(Key::A)
+            || gamepad.pressed(crate::input::Gamepad::DPAD_LEFT)
+        {
             selected = (selected + choices.len() - 1) % choices.len();
         }
-        if crate::input::pressed(Key::Right) || crate::input::pressed(Key::D) {
+        if crate::input::pressed(Key::Right)
+            || crate::input::pressed(Key::D)
+            || gamepad.pressed(crate::input::Gamepad::DPAD_RIGHT)
+        {
             selected = (selected + 1) % choices.len();
         }
-        if crate::input::pressed(Key::V) {
+        if crate::input::pressed(Key::V) || gamepad.pressed(crate::input::Gamepad::X) {
             variants[selected] = (variants[selected] + 1) % ship_forms[selected].len();
             let (model, spec, _) = ship_forms[selected][variants[selected]];
             let (left, top) = card_positions[selected];
@@ -7133,7 +7135,7 @@ fn select_ship(
                 0.36,
             );
         }
-        if crate::input::pressed(Key::Enter) {
+        if crate::input::pressed(Key::Enter) || gamepad.pressed(crate::input::Gamepad::A) {
             return Ok(Some((selected, variants[selected])));
         }
         window.set_title("Hangar | A/D: nave | V: cambiar forma | Enter: jugar | Esc: menu");
@@ -7215,6 +7217,16 @@ fn select_ship(
         draw_selection_label(framebuffer, "V: CAMBIAR FORMA", 430, 724, 2, 0xc9d9ea);
         draw_selection_label(framebuffer, "ENTER: CONFIRMAR", 740, 724, 2, 0xc9d9ea);
         draw_selection_label(framebuffer, "ESC: VOLVER", 1050, 724, 2, 0xc9d9ea);
+        if gamepad.connected {
+            draw_selection_label(
+                framebuffer,
+                "CONTROL BLUETOOTH / USB DETECTADO",
+                WIDTH as i32 / 2,
+                765,
+                2,
+                0x42dff0,
+            );
+        }
         crate::input::clear();
         window.update_with_buffer(&framebuffer.pixels, WIDTH, HEIGHT)?;
     }
@@ -7545,8 +7557,19 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut solar_explosion_position = Vec3::default();
     let mut black_hole_absorption_timer = 0.0_f32;
     let mut black_hole_absorption_start = Vec3::default();
+    let mut gamepad = crate::input::Gamepad::default();
+    let mut gamepad_was_connected = false;
 
     while window.is_open() {
+        gamepad.update();
+        if gamepad.connected != gamepad_was_connected {
+            if gamepad.connected {
+                println!("Control detectado y listo para jugar");
+            } else {
+                println!("Control desconectado; teclado y mouse siguen activos");
+            }
+            gamepad_was_connected = gamepad.connected;
+        }
         let benchmark_frame_start = Instant::now();
         if game_mode == GameMode::HourglassRescue && !window.is_active() {
             // Do not let Alt+Tab or a transient Windows focus change eat the
@@ -7561,7 +7584,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             reset_race_benchmark_categories();
         }
         if game_mode == GameMode::Racing
-            && (crate::input::pressed(Key::Escape) || crate::input::pressed(Key::P))
+            && (crate::input::pressed(Key::Escape)
+                || crate::input::pressed(Key::P)
+                || gamepad.pressed(crate::input::Gamepad::START))
         {
             race_track.pause();
             match menu::show(&mut window, &mut framebuffer, true)? {
@@ -7596,7 +7621,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             continue;
         }
         if game_mode == GameMode::TowerGuard
-            && (crate::input::pressed(Key::Escape) || crate::input::pressed(Key::P))
+            && (crate::input::pressed(Key::Escape)
+                || crate::input::pressed(Key::P)
+                || gamepad.pressed(crate::input::Gamepad::START))
         {
             tower_game.pause();
             window.set_cursor_visibility(true);
@@ -7637,7 +7664,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         }
         if game_mode != GameMode::TowerGuard
             && game_mode != GameMode::HourglassRescue
-            && crate::input::pressed(Key::Escape)
+            && (crate::input::pressed(Key::Escape) || gamepad.pressed(crate::input::Gamepad::START))
         {
             match menu::show(&mut window, &mut framebuffer, true)? {
                 menu::Action::Quit => return Ok(false),
@@ -7848,11 +7875,26 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             place_ship_near_race_planet(&mut ship_controller, world_time);
         }
 
-        let pitch_input = (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8
+        let keyboard_pitch = (window.is_key_down(Key::W) || window.is_key_down(Key::Up)) as i8
             - (window.is_key_down(Key::S) || window.is_key_down(Key::Down)) as i8;
-        let yaw_input = (window.is_key_down(Key::D) || window.is_key_down(Key::Right)) as i8
+        let keyboard_yaw = (window.is_key_down(Key::D) || window.is_key_down(Key::Right)) as i8
             - (window.is_key_down(Key::A) || window.is_key_down(Key::Left)) as i8;
-        let roll_input = window.is_key_down(Key::E) as i8 - window.is_key_down(Key::Q) as i8;
+        let keyboard_roll = window.is_key_down(Key::E) as i8 - window.is_key_down(Key::Q) as i8;
+        let pitch_input = if keyboard_pitch != 0 {
+            keyboard_pitch
+        } else {
+            gamepad.vertical()
+        };
+        let yaw_input = if keyboard_yaw != 0 {
+            keyboard_yaw
+        } else {
+            gamepad.horizontal()
+        };
+        let roll_input = if keyboard_roll != 0 {
+            keyboard_roll
+        } else {
+            gamepad.roll_right as i8 - gamepad.roll_left as i8
+        };
         let active_yaw_input = if game_mode == GameMode::WaterLevel {
             -yaw_input
         } else {
@@ -7861,7 +7903,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         let mut entered_level = false;
         if game_mode == GameMode::FreeWorld
             && ship_controller.ship.planet_locked
-            && crate::input::pressed(Key::Enter)
+            && (crate::input::pressed(Key::Enter) || gamepad.pressed(crate::input::Gamepad::A))
         {
             if ship_controller.ship.race_planet_locked {
                 if let Some((_, car_spec)) = race_vehicles[selected_ship] {
@@ -7980,9 +8022,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             pitch: pitch_input,
             yaw: active_yaw_input,
             roll: roll_input,
-            accelerating: window.is_key_down(Key::Space),
-            braking: window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl),
-            firing: window.is_key_down(Key::Enter) && !entered_level,
+            accelerating: window.is_key_down(Key::Space) || gamepad.accelerate,
+            braking: window.is_key_down(Key::LeftCtrl)
+                || window.is_key_down(Key::RightCtrl)
+                || gamepad.brake,
+            firing: (window.is_key_down(Key::Enter) || gamepad.fire) && !entered_level,
         };
 
         if let Some(run) = benchmark.as_ref() {
@@ -8404,15 +8448,21 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
             GameMode::Racing => {
                 let race_input = race_track::RaceInput {
-                    accelerate: window.is_key_down(Key::W) || window.is_key_down(Key::Up),
-                    reverse: window.is_key_down(Key::S) || window.is_key_down(Key::Down),
-                    brake: false,
+                    accelerate: window.is_key_down(Key::W)
+                        || window.is_key_down(Key::Up)
+                        || gamepad.accelerate,
+                    reverse: window.is_key_down(Key::S)
+                        || window.is_key_down(Key::Down)
+                        || gamepad.brake,
+                    brake: gamepad.brake,
                     steering: -yaw_input,
-                    drift: window.is_key_down(Key::Space),
+                    drift: window.is_key_down(Key::Space) || gamepad.down(crate::input::Gamepad::X),
                     boost: window.is_key_down(Key::LeftShift)
-                        || window.is_key_down(Key::RightShift),
-                    pause: false,
-                    confirm: crate::input::pressed(Key::Enter),
+                        || window.is_key_down(Key::RightShift)
+                        || gamepad.boost,
+                    pause: gamepad.pressed(crate::input::Gamepad::START),
+                    confirm: crate::input::pressed(Key::Enter)
+                        || gamepad.pressed(crate::input::Gamepad::A),
                 };
                 if race_track.reward_complete() {
                     game_mode = GameMode::FreeWorld;
@@ -8492,15 +8542,21 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
             GameMode::CoreGuardian => {
                 let input = GuardianInput {
-                    horizontal: window.is_key_down(Key::D) as i8 as f32
-                        - window.is_key_down(Key::A) as i8 as f32,
-                    vertical: window.is_key_down(Key::S) as i8 as f32
+                    horizontal: (window.is_key_down(Key::D) as i8 as f32
+                        - window.is_key_down(Key::A) as i8 as f32)
+                        + gamepad.move_x,
+                    vertical: (window.is_key_down(Key::S) as i8 as f32
                         + window.is_key_down(Key::Down) as i8 as f32
                         - window.is_key_down(Key::W) as i8 as f32
-                        - window.is_key_down(Key::Up) as i8 as f32,
-                    fire: window.is_key_down(Key::Space) || window.is_key_down(Key::Enter),
-                    confirm: crate::input::pressed(Key::Enter),
-                    exit: crate::input::pressed(Key::Backspace),
+                        - window.is_key_down(Key::Up) as i8 as f32)
+                        - gamepad.move_y,
+                    fire: window.is_key_down(Key::Space)
+                        || window.is_key_down(Key::Enter)
+                        || gamepad.fire,
+                    confirm: crate::input::pressed(Key::Enter)
+                        || gamepad.pressed(crate::input::Gamepad::A),
+                    exit: crate::input::pressed(Key::Backspace)
+                        || gamepad.pressed(crate::input::Gamepad::B),
                 };
                 let action = guardian_fight.update(
                     delta_time,
@@ -8606,21 +8662,36 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 ));
             }
             GameMode::HourglassRescue => {
-                let restart_pressed = crate::input::pressed(Key::R);
+                let restart_pressed =
+                    crate::input::pressed(Key::R) || gamepad.pressed(crate::input::Gamepad::Y);
                 let rescue_input = hourglass_rescue::Input {
-                    forward: window.is_key_down(Key::Space),
-                    brake: window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl),
-                    left: window.is_key_down(Key::A) || window.is_key_down(Key::Left),
-                    right: window.is_key_down(Key::D) || window.is_key_down(Key::Right),
-                    rise: window.is_key_down(Key::W) || window.is_key_down(Key::Up),
-                    descend: window.is_key_down(Key::S) || window.is_key_down(Key::Down),
-                    roll_left: window.is_key_down(Key::Q),
-                    roll_right: window.is_key_down(Key::E),
+                    forward: window.is_key_down(Key::Space) || gamepad.accelerate,
+                    brake: window.is_key_down(Key::LeftCtrl)
+                        || window.is_key_down(Key::RightCtrl)
+                        || gamepad.brake,
+                    left: window.is_key_down(Key::A)
+                        || window.is_key_down(Key::Left)
+                        || gamepad.horizontal() < 0,
+                    right: window.is_key_down(Key::D)
+                        || window.is_key_down(Key::Right)
+                        || gamepad.horizontal() > 0,
+                    rise: window.is_key_down(Key::W)
+                        || window.is_key_down(Key::Up)
+                        || gamepad.vertical() > 0,
+                    descend: window.is_key_down(Key::S)
+                        || window.is_key_down(Key::Down)
+                        || gamepad.vertical() < 0,
+                    roll_left: window.is_key_down(Key::Q) || gamepad.roll_left,
+                    roll_right: window.is_key_down(Key::E) || gamepad.roll_right,
                     boost: window.is_key_down(Key::LeftShift)
-                        || window.is_key_down(Key::RightShift),
-                    firing: window.is_key_down(Key::Enter),
-                    pause: crate::input::pressed(Key::P) || crate::input::pressed(Key::Escape),
-                    exit: crate::input::pressed(Key::Backspace),
+                        || window.is_key_down(Key::RightShift)
+                        || gamepad.boost,
+                    firing: window.is_key_down(Key::Enter) || gamepad.fire,
+                    pause: crate::input::pressed(Key::P)
+                        || crate::input::pressed(Key::Escape)
+                        || gamepad.pressed(crate::input::Gamepad::START),
+                    exit: crate::input::pressed(Key::Backspace)
+                        || gamepad.pressed(crate::input::Gamepad::B),
                     restart: restart_pressed,
                     recover: restart_pressed,
                 };
@@ -8660,13 +8731,18 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     pitch: pitch_input,
                     yaw: active_yaw_input,
                     roll: roll_input,
-                    accelerate: window.is_key_down(Key::Space),
-                    brake: window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl),
+                    accelerate: window.is_key_down(Key::Space) || gamepad.accelerate,
+                    brake: window.is_key_down(Key::LeftCtrl)
+                        || window.is_key_down(Key::RightCtrl)
+                        || gamepad.brake,
                     boost: window.is_key_down(Key::LeftShift)
-                        || window.is_key_down(Key::RightShift),
-                    fire: window.is_key_down(Key::Enter),
-                    restart: crate::input::pressed(Key::R),
-                    exit: crate::input::pressed(Key::Backspace),
+                        || window.is_key_down(Key::RightShift)
+                        || gamepad.boost,
+                    fire: window.is_key_down(Key::Enter) || gamepad.fire,
+                    restart: crate::input::pressed(Key::R)
+                        || gamepad.pressed(crate::input::Gamepad::Y),
+                    exit: crate::input::pressed(Key::Backspace)
+                        || gamepad.pressed(crate::input::Gamepad::B),
                 };
                 let castle_action =
                     lava_castle.update(&mut ship_controller, castle_input, delta_time);
@@ -8701,8 +8777,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 let action = lava_castle_interior.update(
                     &mut ship_controller,
                     &input,
-                    crate::input::pressed(Key::R),
-                    crate::input::pressed(Key::Backspace),
+                    crate::input::pressed(Key::R) || gamepad.pressed(crate::input::Gamepad::Y),
+                    crate::input::pressed(Key::Backspace)
+                        || gamepad.pressed(crate::input::Gamepad::B),
                     delta_time,
                 );
                 match action {

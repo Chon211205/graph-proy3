@@ -4,7 +4,7 @@ use super::{
 use crate::framebuffer::Framebuffer;
 use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
 use crate::ship::ShipSpec;
-use crate::{render_model, Camera};
+use crate::{Camera, render_model};
 use std::sync::OnceLock;
 
 static GUARDIAN_BODY: OnceLock<Model> = OnceLock::new();
@@ -1092,10 +1092,11 @@ mod texture_tests {
             SurfaceShader::WaterMonsterCoreTexture,
             "guardian_alien_egg_core",
         );
-        assert!(core
-            .faces
-            .iter()
-            .all(|face| face.shader == SurfaceShader::WaterMonsterCoreTexture));
+        assert!(
+            core.faces
+                .iter()
+                .all(|face| face.shader == SurfaceShader::WaterMonsterCoreTexture)
+        );
 
         let body = sphere_model_with_shader(
             2.25,
@@ -1107,10 +1108,12 @@ mod texture_tests {
         let tentacles = boss_tentacle_model();
         for model in [&body, &shell, &tentacles] {
             assert!(!model.faces.is_empty());
-            assert!(model
-                .faces
-                .iter()
-                .all(|face| face.shader == SurfaceShader::WaterMonsterTissueTexture));
+            assert!(
+                model
+                    .faces
+                    .iter()
+                    .all(|face| face.shader == SurfaceShader::WaterMonsterTissueTexture)
+            );
         }
 
         // The boss projectiles remain independent from its organic skin.
@@ -1126,28 +1129,35 @@ mod texture_tests {
         let growths = cavern_spines_model();
         for model in [&tunnel, &growths] {
             assert!(!model.faces.is_empty());
-            assert!(model
-                .faces
-                .iter()
-                .all(|face| { face.shader == SurfaceShader::CoreGuardianEnvironmentTexture }));
+            assert!(
+                model
+                    .faces
+                    .iter()
+                    .all(|face| { face.shader == SurfaceShader::CoreGuardianEnvironmentTexture })
+            );
         }
         let crystals = crystal_cluster_model();
-        assert!(crystals
-            .faces
-            .iter()
-            .all(|face| { face.shader != SurfaceShader::CoreGuardianEnvironmentTexture }));
+        assert!(
+            crystals
+                .faces
+                .iter()
+                .all(|face| { face.shader != SurfaceShader::CoreGuardianEnvironmentTexture })
+        );
 
         for variant in 0..2 {
             let rock = obstacle_model(variant);
-            assert!(rock
-                .faces
-                .iter()
-                .all(|face| { face.shader == SurfaceShader::CoreGuardianEnvironmentTexture }));
+            assert!(
+                rock.faces
+                    .iter()
+                    .all(|face| { face.shader == SurfaceShader::CoreGuardianEnvironmentTexture })
+            );
         }
         let yellow_rock = obstacle_model(2);
-        assert!(yellow_rock
-            .faces
-            .iter()
-            .all(|face| { face.shader == SurfaceShader::WaterMonsterCoreTexture }));
+        assert!(
+            yellow_rock
+                .faces
+                .iter()
+                .all(|face| { face.shader == SurfaceShader::WaterMonsterCoreTexture })
+        );
     }
 }

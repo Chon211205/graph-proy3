@@ -44,7 +44,10 @@ fn clocks_form_a_reachable_route_through_the_valley() {
             "clock gap {} should be challenging but reachable, got {distance}",
             index + 1
         );
-        assert!(pair[1].z < pair[0].z, "clocks should advance toward the exit");
+        assert!(
+            pair[1].z < pair[0].z,
+            "clocks should advance toward the exit"
+        );
         assert!(
             pair[1].y >= pair[0].y,
             "clock height should follow the rising route"
@@ -171,7 +174,11 @@ fn energy_pickups_use_the_imported_blender_fragment() {
                 .iter()
                 .any(|face| face.group == "Cristal_Central_Superior")
         );
-        assert!(faces.iter().any(|face| face.group == "Aro_Temporal_Exterior"));
+        assert!(
+            faces
+                .iter()
+                .any(|face| face.group == "Aro_Temporal_Exterior")
+        );
     }
 }
 
@@ -184,7 +191,11 @@ fn time_planet_uses_three_distinct_imported_enemy_models() {
         "HOURGLASS_WRAITH_Top_Rim",
     ] {
         assert!(
-            game.scene.model.faces.iter().any(|face| face.group == group),
+            game.scene
+                .model
+                .faces
+                .iter()
+                .any(|face| face.group == group),
             "missing imported enemy group {group}"
         );
     }
@@ -196,13 +207,15 @@ fn time_enemy_chases_attacks_and_can_be_destroyed() {
     let mut ship = Ship::new(&crate::ship::ARWING_SPEC);
     game.phase = Phase::Playing;
     ship.position = game.enemies[0].position.add(Vec3::new(20.0, 0.0, 0.0));
-    let old_distance = ship.position.sub(game.enemies[0].position).dot(
-        ship.position.sub(game.enemies[0].position),
-    );
+    let old_distance = ship
+        .position
+        .sub(game.enemies[0].position)
+        .dot(ship.position.sub(game.enemies[0].position));
     game.update_enemies(&mut ship, &mut [], 0.05);
-    let new_distance = ship.position.sub(game.enemies[0].position).dot(
-        ship.position.sub(game.enemies[0].position),
-    );
+    let new_distance = ship
+        .position
+        .sub(game.enemies[0].position)
+        .dot(ship.position.sub(game.enemies[0].position));
     assert!(new_distance < old_distance);
     for _ in 0..15 {
         game.update_enemies(&mut ship, &mut [], 0.05);
@@ -257,11 +270,17 @@ fn five_star_reward_plays_race_style_animation_before_exit() {
     game.elapsed = 0.0;
     ship.position = CAPSULE_POSITIONS[CAPSULE_COUNT - 1];
 
-    assert_eq!(game.update(&mut ship, Input::default(), 0.016), Action::Continue);
+    assert_eq!(
+        game.update(&mut ship, Input::default(), 0.016),
+        Action::Continue
+    );
     assert_eq!(game.phase, Phase::Reward);
     let frozen = game.reward_position;
     for _ in 0..103 {
-        assert_eq!(game.update(&mut ship, Input::default(), 0.05), Action::Continue);
+        assert_eq!(
+            game.update(&mut ship, Input::default(), 0.05),
+            Action::Continue
+        );
         assert!(ship.position.sub(frozen).dot(ship.position.sub(frozen)) < 0.001);
     }
     assert_eq!(game.update(&mut ship, Input::default(), 0.05), Action::Exit);
@@ -306,33 +325,37 @@ fn former_portal_location_is_open_space() {
 #[test]
 fn five_star_ball_stays_hidden_until_it_is_awarded() {
     let game = HourglassRescue::new();
-    assert!(game
-        .scene
-        .model
-        .faces
-        .iter()
-        .any(|face| face.group == "dragon_star_3"));
-    assert!(game
-        .scene
-        .model
-        .faces
-        .iter()
-        .any(|face| face.group == "dragon_star_4"));
-    assert!(game
-        .scene
-        .model
-        .faces
-        .iter()
-        .filter(|face| face.group == "dragon_ball")
-        .all(|face| face.shader == crate::obj_loader::SurfaceShader::DragonBallGlass));
-    assert!(game
-        .scene
-        .model
-        .faces
-        .iter()
-        .filter(|face| face.group == "dragon_ball" || face.group.starts_with("dragon_star_"))
-        .flat_map(|face| face.indices)
-        .all(|index| game.scene.model.vertices[index].y < -9_900.0));
+    assert!(
+        game.scene
+            .model
+            .faces
+            .iter()
+            .any(|face| face.group == "dragon_star_3")
+    );
+    assert!(
+        game.scene
+            .model
+            .faces
+            .iter()
+            .any(|face| face.group == "dragon_star_4")
+    );
+    assert!(
+        game.scene
+            .model
+            .faces
+            .iter()
+            .filter(|face| face.group == "dragon_ball")
+            .all(|face| face.shader == crate::obj_loader::SurfaceShader::DragonBallGlass)
+    );
+    assert!(
+        game.scene
+            .model
+            .faces
+            .iter()
+            .filter(|face| face.group == "dragon_ball" || face.group.starts_with("dragon_star_"))
+            .flat_map(|face| face.indices)
+            .all(|index| game.scene.model.vertices[index].y < -9_900.0)
+    );
 }
 
 #[test]
@@ -434,7 +457,13 @@ fn follow_camera_stays_behind_the_ship_when_it_turns() {
     let second = game.camera(&ship);
     let second_forward = ship.movement_basis().0;
     assert!(second.position.sub(ship.position).dot(second_forward) < 0.0);
-    assert!(second.forward.sub(first.forward).dot(second.forward.sub(first.forward)) > 0.1);
+    assert!(
+        second
+            .forward
+            .sub(first.forward)
+            .dot(second.forward.sub(first.forward))
+            > 0.1
+    );
 }
 
 #[test]
