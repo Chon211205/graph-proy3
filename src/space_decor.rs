@@ -14,6 +14,7 @@ const BELT_DUST_COUNT: usize = 144;
 const DUST_COUNT: u32 = 420;
 const NEBULA_WIDTH: usize = 640;
 const NEBULA_HEIGHT: usize = 360;
+const STAR_BIT_COUNT: usize = 144;
 
 pub(crate) struct Asteroid {
     pub model: Model,
@@ -186,6 +187,148 @@ pub(crate) fn draw_nebula(
             }
         }
     }
+}
+
+/// Draw distant, four-point star bits as a lightweight 2D sky decoration.
+/// Their directions are fixed in the sky, so only camera rotation moves them;
+/// flying forward does not make the stars drift like nearby particles.
+pub(crate) fn draw_star_bits(
+    framebuffer: &mut Framebuffer,
+    galaxy: Galaxy,
+    camera_forward: Vec3,
+    camera_right: Vec3,
+    camera_up: Vec3,
+    time: f32,
+) {
+    let (sky_rotation, palette) = match galaxy {
+        Galaxy::Home => (
+            0.38,
+            [[255_u32, 231, 163], [151, 229, 255], [255, 177, 222]],
+        ),
+        Galaxy::Vesper => (
+            2.14,
+            [[206_u32, 174, 255], [123, 218, 255], [255, 188, 236]],
+        ),
+        Galaxy::Nova => (
+            4.02,
+            [[144_u32, 255, 211], [145, 216, 255], [255, 221, 153]],
+        ),
+    };
+
+    let width = framebuffer.width as f32;
+    let height = framebuffer.height as f32;
+    let focal = height * 0.5 / (std::f32::consts::PI / 6.0).tan();
+    let center_x = width * 0.5;
+    let center_y = height * 0.48;
+    let golden_angle = std::f32::consts::PI * (3.0 - 5.0_f32.sqrt());
+
+    for index in 0..STAR_BIT_COUNT {
+        // Fibonacci sphere gives a stable, evenly distributed star field.
+        let vertical = 1.0 - 2.0 * (index as f32 + 0.5) / STAR_BIT_COUNT as f32;
+        let horizontal_radius = (1.0 - vertical * vertical).sqrt();
+        let angle = index as f32 * golden_angle + sky_rotation;
+        let direction = Vec3::new(
+            angle.cos() * horizontal_radius,
+            vertical,
+            angle.sin() * horizontal_radius,
+        );
+        let depth = direction.dot(camera_forward);
+        if depth <= 0.08 {
+            continue;
+        }
+
+        let screen_x = center_x + direction.dot(camera_right) / depth * focal;
+        let screen_y = center_y - direction.dot(camera_up) / depth * focal;
+        if screen_x < -12.0
+            || screen_y < -12.0
+            || screen_x >= width + 12.0
+            || screen_y >= height + 12.0
+        {
+            continue;
+        }
+
+        let seed = (index as u32).wrapping_mul(0x9e37_79b9)
+            ^ match galaxy {
+                Galaxy::Home => 0x13a5_8f21,
+                Galaxy::Vesper => 0x7e31_4c99,
+                Galaxy::Nova => 0xc049_827b,
+            };
+        let twinkle_phase = unit(seed ^ 0x85eb_ca6b) * std::f32::consts::TAU;
+        let twinkle_speed = 1.0 + unit(seed ^ 0xa511_e9b3) * 1.5;
+        let twinkle = 0.62 + ((time * twinkle_speed + twinkle_phase).sin() * 0.5 + 0.5) * 0.38;
+        let radius = 2 + (unit(seed ^ 0x68bc_21eb) * 3.0 * twinkle) as i32;
+        let color = palette[(index + (hash(seed) as usize % palette.len())) % palette.len()];
+        draw_glowing_star_bit(
+            framebuffer,
+            screen_x.round() as i32,
+            screen_y.round() as i32,
+            radius,
+            color,
+            twinkle,
+        );
+    }
+}
+
+fn draw_glowing_star_bit(
+    framebuffer: &mut Framebuffer,
+    center_x: i32,
+    center_y: i32,
+    radius: i32,
+    color: [u32; 3],
+    intensity: f32,
+) {
+    let glow_radius = radius * 2 + 2;
+    for y in -glow_radius..=glow_radius {
+        for x in -glow_radius..=glow_radius {
+            let distance_squared = (x * x + y * y) as f32;
+            if distance_squared > (glow_radius * glow_radius) as f32 {
+                continue;
+            }
+            let falloff = 1.0 - distance_squared.sqrt() / (glow_radius as f32 + 1.0);
+            let strength = falloff * falloff * intensity * 0.36;
+            add_pixel(framebuffer, center_x + x, center_y + y, color, strength);
+        }
+    }
+
+    // Long cardinal rays and short diagonal rays create the iconic glint.
+    for offset in -radius..=radius {
+        let falloff = 1.0 - offset.abs() as f32 / (radius as f32 + 1.0);
+        let strength = (0.58 + falloff * 0.34) * intensity;
+        add_pixel(framebuffer, center_x + offset, center_y, color, strength);
+        add_pixel(framebuffer, center_x, center_y + offset, color, strength);
+    }
+    for offset in 1..=(radius / 2).max(1) {
+        for (dx, dy) in [
+            (offset, offset),
+            (-offset, offset),
+            (offset, -offset),
+            (-offset, -offset),
+        ] {
+            add_pixel(
+                framebuffer,
+                center_x + dx,
+                center_y + dy,
+                color,
+                0.48 * intensity,
+            );
+        }
+    }
+    add_pixel(framebuffer, center_x, center_y, [255, 255, 255], intensity);
+}
+
+fn add_pixel(framebuffer: &mut Framebuffer, x: i32, y: i32, color: [u32; 3], strength: f32) {
+    if x < 0 || y < 0 || x >= framebuffer.width as i32 || y >= framebuffer.height as i32 {
+        return;
+    }
+    let pixel = &mut framebuffer.pixels[y as usize * framebuffer.width + x as usize];
+    let shifts = [16, 8, 0];
+    let mut channels = [0_u32; 3];
+    for (channel, shift) in shifts.into_iter().enumerate() {
+        let background = (*pixel >> shift) & 255;
+        channels[channel] =
+            (background as f32 + color[channel] as f32 * strength).clamp(0.0, 255.0) as u32;
+    }
+    *pixel = (channels[0] << 16) | (channels[1] << 8) | channels[2];
 }
 
 fn make_asteroids(palette: [[u8; 3]; 3], galaxy_seed: u32) -> Vec<Asteroid> {
