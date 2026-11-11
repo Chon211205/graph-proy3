@@ -8,6 +8,8 @@ mod menu;
 mod obj_loader;
 mod race_track;
 mod ship;
+mod space_decor;
+mod space_battle;
 mod tower_guard;
 mod triangle;
 
@@ -159,13 +161,13 @@ const PLANET_ORBIT_SPEED: f32 = 0.075;
 const SUN_POSITION_X: f32 = -520.0;
 const SUN_VISUAL_SCALE: f32 = 1.35;
 const SOLAR_SHIP_EXPLOSION_DURATION: f32 = 1.35;
-const PLANET_ORBIT_RADIUS: f32 = 220.0;
+const PLANET_ORBIT_RADIUS: f32 = 260.0;
 const SPIKY_PLANET_ORBIT_SPEED: f32 = -0.075;
-const SPIKY_PLANET_ORBIT_RADIUS: f32 = 330.0;
+const SPIKY_PLANET_ORBIT_RADIUS: f32 = 440.0;
 const SPIKY_PLANET_ORBIT_PHASE: f32 = PI * 0.5;
 const SPIKY_PLANET_ORBIT_INCLINATION: f32 = 0.30;
 const RACE_PLANET_ORBIT_SPEED: f32 = 0.075;
-const RACE_PLANET_ORBIT_RADIUS: f32 = 440.0;
+const RACE_PLANET_ORBIT_RADIUS: f32 = 620.0;
 const RACE_PLANET_ORBIT_PHASE: f32 = PI * 1.18;
 const RACE_PLANET_ORBIT_INCLINATION: f32 = -0.16;
 const SPIKY_PLANET_RADIUS: f32 = 39.0;
@@ -182,7 +184,7 @@ const ORBIT_FLIGHT_ALTITUDE: f32 = 8.0;
 const VESPER_ORBIT_HEIGHTS: [f32; 2] = [0.0, 12.0];
 const VESPER_ORBIT_RADII: [f32; 2] = [30.0, 20.0];
 const VESPER_SYSTEM_CENTER: Vec3 = Vec3::new(0.0, 48.0, 0.0);
-const VESPER_SYSTEM_ORBIT_RADII: [f32; 2] = [225.0, 345.0];
+const VESPER_SYSTEM_ORBIT_RADII: [f32; 2] = [275.0, 440.0];
 const VESPER_SYSTEM_ORBIT_SPEEDS: [f32; 2] = [0.075, -0.075];
 const VESPER_SYSTEM_ORBIT_PHASES: [f32; 2] = [0.45, 3.35];
 const VESPER_BLACK_HOLE_GRAVITY_RADIUS: f32 = 175.0;
@@ -3083,7 +3085,13 @@ fn hash(mut value: u32) -> u32 {
     value ^ (value >> 16)
 }
 
-fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
+fn draw_skybox(
+    framebuffer: &mut Framebuffer,
+    travel: f32,
+    galaxy: Galaxy,
+    camera: Option<&Camera>,
+    world_time: f32,
+) {
     let (base, horizon_glow, star_tint) = match galaxy {
         Galaxy::Home => ([4.0, 7.0, 20.0], [8.0, 11.0, 24.0], None),
         Galaxy::Vesper => ([7.0, 3.0, 25.0], [18.0, 11.0, 48.0], Some([130, 198, 255])),
@@ -3099,7 +3107,7 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
         framebuffer.pixels[start..start + framebuffer.width].fill(color);
     }
 
-    if matches!(galaxy, Galaxy::Vesper | Galaxy::Nova) {
+    if galaxy == Galaxy::Nova {
         let cx = framebuffer.width as f32 * 0.58;
         let cy = framebuffer.height as f32 * 0.44;
         let scale = framebuffer.width.min(framebuffer.height) as f32;
@@ -3124,6 +3132,17 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
                     | (blue + 130.0 * glow) as u32;
             }
         }
+    }
+
+    // Use the supplied transparent nebula art as a low-resolution sky overlay.
+    if let Some(camera) = camera {
+        space_decor::draw_nebula(
+            framebuffer,
+            galaxy,
+            camera.forward,
+            camera.right,
+            camera.up,
+        );
     }
 
     let center_x = framebuffer.width as f32 * 0.5;
@@ -3165,6 +3184,17 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
             }
         }
     }
+    if let Some(camera) = camera {
+        space_decor::draw_star_bits(
+            framebuffer,
+            galaxy,
+            camera.forward,
+            camera.right,
+            camera.up,
+            world_time,
+        );
+    }
+    space_decor::draw_dust(framebuffer, travel, galaxy);
 }
 
 fn draw_water_planet_atmosphere(
@@ -5298,6 +5328,8 @@ fn render_scene(
     vesper_orbit_rings: &Model,
     castle_planet: &VesperPlanet,
     race_planet: &Model,
+    ship_choices: &[(&Model, &'static ShipSpec)],
+    space_battle: &space_battle::SpaceBattle,
     planet_lods: [&PlanetLodModels; 3],
     planet_lod_states: &mut [PlanetLodState; 3],
     vesper_lod_states: &mut [PlanetLodState; 2],
@@ -5314,8 +5346,8 @@ fn render_scene(
     tower_reward: Option<(&Model, f32, Vec3)>,
 ) {
     framebuffer.clear(0);
-    draw_skybox(framebuffer, travel, galaxy);
     let camera = chase_camera(ship, matches!(galaxy, Galaxy::Vesper | Galaxy::Nova));
+    draw_skybox(framebuffer, travel, galaxy, Some(&camera), world_time);
     debug_assert!(batch.commands.is_empty());
     let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let planet_position = water_planet_position(world_time);
@@ -5547,6 +5579,62 @@ fn render_scene(
         );
     }
 
+    // Place natural, thin debris belts between the planetary orbits in the
+    // two star systems. Nova is a standalone world and has no orbital belt.
+    let asteroid_orbit = match galaxy {
+        Galaxy::Home => Some((sun_position, 350.0)),
+        Galaxy::Vesper => Some((VESPER_SYSTEM_CENTER, 350.0)),
+        Galaxy::Nova => None,
+    };
+    if let Some((asteroid_center, asteroid_radius)) = asteroid_orbit {
+        let dust_rotation = world_time * 0.006;
+        let (dust_sin, dust_cos) = dust_rotation.sin_cos();
+        queue_model(
+            space_decor::asteroid_belt(galaxy),
+            batch,
+            &camera,
+            |vertex| {
+                let local = vertex.mul(asteroid_radius);
+                Vec3::new(
+                    local.x * dust_cos - local.z * dust_sin,
+                    local.y,
+                    local.x * dust_sin + local.z * dust_cos,
+                )
+                .add(asteroid_center)
+            },
+            None,
+            None,
+        );
+
+        for asteroid in space_decor::asteroids(galaxy) {
+            let orbit_angle = asteroid.orbit_phase + world_time * asteroid.orbit_speed;
+            let (orbit_sin, orbit_cos) = orbit_angle.sin_cos();
+            let radius = asteroid.orbit_fraction * asteroid_radius;
+            let position = asteroid_center.add(Vec3::new(
+                orbit_cos * radius,
+                orbit_sin * radius * 0.055 + asteroid.vertical_offset,
+                orbit_sin * radius,
+            ));
+            let spin = asteroid.spin_phase + world_time * asteroid.spin_speed;
+            let (spin_sin, spin_cos) = spin.sin_cos();
+            queue_model(
+                &asteroid.model,
+                batch,
+                &camera,
+                |vertex| {
+                    Vec3::new(
+                        vertex.x * spin_cos - vertex.z * spin_sin,
+                        vertex.y,
+                        vertex.x * spin_sin + vertex.z * spin_cos,
+                    )
+                    .add(position)
+                },
+                None,
+                None,
+            );
+        }
+    }
+
     queue_model(
         wormhole,
         batch,
@@ -5564,6 +5652,35 @@ fn render_scene(
             None,
             None,
         );
+    }
+
+    // Four background fighters are enough to sell a battle without crowding
+    // the view. Their ship indices are assigned from the non-player choices.
+    if matches!(galaxy, Galaxy::Home | Galaxy::Vesper) {
+        for fighter in &space_battle.fighters {
+            let Some((model, spec)) = ship_choices.get(fighter.ship_index) else {
+                continue;
+            };
+            let mut npc = Ship::new(spec);
+            npc.position = fighter.position;
+            npc.yaw = fighter.yaw;
+            npc.pitch = fighter.pitch;
+            render_ship_components(
+                model,
+                model_center(model),
+                turbo_plume,
+                laser_bolt,
+                &fighter.shots,
+                batch,
+                &camera,
+                &npc,
+                world_time,
+                0.18,
+                0.0,
+                true,
+                0.72,
+            );
+        }
     }
 
     if show_ship {
@@ -7397,6 +7514,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut hourglass_rescue = hourglass_rescue::HourglassRescue::new();
     let mut lava_castle = lava_castle::LavaCastle::new();
     let mut tower_game = tower_guard::TowerGame::new(&tower_sprites);
+    let mut ambient_battle = space_battle::SpaceBattle::new();
     let mut previous = Instant::now();
     let mut world_time = 0.0_f32;
     let mut distance = 0.0_f32;
@@ -8187,6 +8305,21 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         Galaxy::Nova => "Galaxia Nova | Planeta Castillo | Portal: Vesper",
                     });
                 }
+                if matches!(active_galaxy, Galaxy::Home | Galaxy::Vesper) {
+                    let battle_center = match active_galaxy {
+                        Galaxy::Home => Vec3::new(SUN_POSITION_X, 20.0, 0.0),
+                        Galaxy::Vesper => VESPER_SYSTEM_CENTER,
+                        Galaxy::Nova => unreachable!(),
+                    };
+                    ambient_battle.update(
+                        delta_time,
+                        world_time,
+                        battle_center,
+                        ship_controller.ship.position,
+                        selected_ship,
+                        &choices,
+                    );
+                }
                 render_scene(
                     active_model,
                     ship_center,
@@ -8210,6 +8343,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &vesper_orbit_rings,
                     &castle_planet,
                     &race_track.planet,
+                    &choices,
+                    &ambient_battle,
                     [&planet_lods[0], &planet_lods[1], &planet_lods[2]],
                     &mut planet_lod_states,
                     &mut vesper_lod_states,
