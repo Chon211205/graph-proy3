@@ -3090,6 +3090,7 @@ fn draw_skybox(
     travel: f32,
     galaxy: Galaxy,
     camera: Option<&Camera>,
+    world_time: f32,
 ) {
     let (base, horizon_glow, star_tint) = match galaxy {
         Galaxy::Home => ([4.0, 7.0, 20.0], [8.0, 11.0, 24.0], None),
@@ -3182,6 +3183,16 @@ fn draw_skybox(
                 }
             }
         }
+    }
+    if let Some(camera) = camera {
+        space_decor::draw_star_bits(
+            framebuffer,
+            galaxy,
+            camera.forward,
+            camera.right,
+            camera.up,
+            world_time,
+        );
     }
     space_decor::draw_dust(framebuffer, travel, galaxy);
 }
@@ -5336,7 +5347,7 @@ fn render_scene(
 ) {
     framebuffer.clear(0);
     let camera = chase_camera(ship, matches!(galaxy, Galaxy::Vesper | Galaxy::Nova));
-    draw_skybox(framebuffer, travel, galaxy, Some(&camera));
+    draw_skybox(framebuffer, travel, galaxy, Some(&camera), world_time);
     debug_assert!(batch.commands.is_empty());
     let sun_position = Vec3::new(SUN_POSITION_X, 20.0, 0.0);
     let planet_position = water_planet_position(world_time);
