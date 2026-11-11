@@ -5557,8 +5557,8 @@ fn render_scene(
         Galaxy::Nova => None,
     };
     if let Some((asteroid_center, asteroid_radius)) = asteroid_orbit {
-        let asteroid_rotation = world_time * 0.006;
-        let (asteroid_sin, asteroid_cos) = asteroid_rotation.sin_cos();
+        let dust_rotation = world_time * 0.006;
+        let (dust_sin, dust_cos) = dust_rotation.sin_cos();
         queue_model(
             space_decor::asteroid_belt(galaxy),
             batch,
@@ -5566,15 +5566,43 @@ fn render_scene(
             |vertex| {
                 let local = vertex.mul(asteroid_radius);
                 Vec3::new(
-                    local.x * asteroid_cos - local.z * asteroid_sin,
+                    local.x * dust_cos - local.z * dust_sin,
                     local.y,
-                    local.x * asteroid_sin + local.z * asteroid_cos,
+                    local.x * dust_sin + local.z * dust_cos,
                 )
                 .add(asteroid_center)
             },
             None,
             None,
         );
+
+        for asteroid in space_decor::asteroids(galaxy) {
+            let orbit_angle = asteroid.orbit_phase + world_time * asteroid.orbit_speed;
+            let (orbit_sin, orbit_cos) = orbit_angle.sin_cos();
+            let radius = asteroid.orbit_fraction * asteroid_radius;
+            let position = asteroid_center.add(Vec3::new(
+                orbit_cos * radius,
+                orbit_sin * radius * 0.055 + asteroid.vertical_offset,
+                orbit_sin * radius,
+            ));
+            let spin = asteroid.spin_phase + world_time * asteroid.spin_speed;
+            let (spin_sin, spin_cos) = spin.sin_cos();
+            queue_model(
+                &asteroid.model,
+                batch,
+                &camera,
+                |vertex| {
+                    Vec3::new(
+                        vertex.x * spin_cos - vertex.z * spin_sin,
+                        vertex.y,
+                        vertex.x * spin_sin + vertex.z * spin_cos,
+                    )
+                    .add(position)
+                },
+                None,
+                None,
+            );
+        }
     }
 
     queue_model(
