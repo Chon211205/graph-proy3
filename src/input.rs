@@ -59,6 +59,8 @@ pub struct Gamepad {
     pub connected: bool,
     pub move_x: f32,
     pub move_y: f32,
+    pub motion_x: f32,
+    pub motion_y: f32,
     pub accelerate: bool,
     pub brake: bool,
     pub fire: bool,
@@ -90,6 +92,8 @@ impl Gamepad {
         self.buttons = raw.buttons;
         self.move_x = normalize_stick(raw.left_x);
         self.move_y = normalize_stick(raw.left_y);
+        self.motion_x = normalize_stick(raw.motion_x);
+        self.motion_y = normalize_stick(raw.motion_y);
         self.accelerate = raw.right_trigger > 32 || self.down(Self::A);
         self.brake = raw.left_trigger > 32 || self.down(Self::B);
         self.fire = self.down(Self::X);
@@ -107,12 +111,20 @@ impl Gamepad {
     }
 
     pub fn horizontal(&self) -> i8 {
-        digital_axis(self.move_x)
+        digital_axis(preferred_motion_axis(self.move_x, self.motion_x))
     }
 
     pub fn vertical(&self) -> i8 {
-        digital_axis(self.move_y)
+        digital_axis(preferred_motion_axis(self.move_y, self.motion_y))
     }
+
+    pub fn motion_active(&self) -> bool {
+        self.motion_x.abs() > 0.22 || self.motion_y.abs() > 0.22
+    }
+}
+
+fn preferred_motion_axis(stick: f32, motion: f32) -> f32 {
+    if motion.abs() > 0.22 { motion } else { stick }
 }
 
 fn digital_axis(value: f32) -> i8 {
@@ -141,6 +153,8 @@ struct RawGamepad {
     buttons: u16,
     left_x: i16,
     left_y: i16,
+    motion_x: i16,
+    motion_y: i16,
     left_trigger: u8,
     right_trigger: u8,
 }
@@ -153,6 +167,12 @@ fn merge_raw_gamepad(target: &mut Option<RawGamepad>, source: RawGamepad) {
         }
         if source.left_y.unsigned_abs() > current.left_y.unsigned_abs() {
             current.left_y = source.left_y;
+        }
+        if source.motion_x.unsigned_abs() > current.motion_x.unsigned_abs() {
+            current.motion_x = source.motion_x;
+        }
+        if source.motion_y.unsigned_abs() > current.motion_y.unsigned_abs() {
+            current.motion_y = source.motion_y;
         }
         current.left_trigger = current.left_trigger.max(source.left_trigger);
         current.right_trigger = current.right_trigger.max(source.right_trigger);
@@ -224,6 +244,8 @@ fn platform_gamepad_state() -> Option<RawGamepad> {
                         buttons: state.gamepad.buttons,
                         left_x: state.gamepad.thumb_lx,
                         left_y: state.gamepad.thumb_ly,
+                        motion_x: state.gamepad.thumb_rx,
+                        motion_y: state.gamepad.thumb_ry,
                         left_trigger: state.gamepad.left_trigger,
                         right_trigger: state.gamepad.right_trigger,
                     },
@@ -340,6 +362,8 @@ fn winmm_gamepad_state() -> Option<RawGamepad> {
                 buttons,
                 left_x: centered_axis(state.x),
                 left_y: centered_axis(65_535_u32.saturating_sub(state.y)),
+                motion_x: centered_axis(state.r),
+                motion_y: centered_axis(65_535_u32.saturating_sub(state.u)),
                 left_trigger: 0,
                 right_trigger: 0,
             },
@@ -394,6 +418,8 @@ mod tests {
             buttons: 0,
             left_x: 0,
             left_y: 0,
+            motion_x: 0,
+            motion_y: 0,
             left_trigger: 0,
             right_trigger: 0,
         });
@@ -403,6 +429,8 @@ mod tests {
                 buttons: Gamepad::X,
                 left_x: 22_000,
                 left_y: -18_000,
+                motion_x: 0,
+                motion_y: 0,
                 left_trigger: 0,
                 right_trigger: 200,
             },
@@ -412,5 +440,12 @@ mod tests {
         assert_eq!(combined.left_x, 22_000);
         assert_eq!(combined.left_y, -18_000);
         assert_eq!(combined.right_trigger, 200);
+    }
+
+    #[test]
+    fn motion_axis_takes_priority_when_receiver_exposes_gyro() {
+        assert_eq!(preferred_motion_axis(0.8, 0.0), 0.8);
+        assert_eq!(preferred_motion_axis(0.8, -0.6), -0.6);
+        assert_eq!(preferred_motion_axis(0.8, 0.1), 0.8);
     }
 }

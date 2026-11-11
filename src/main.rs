@@ -7559,6 +7559,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut black_hole_absorption_start = Vec3::default();
     let mut gamepad = crate::input::Gamepad::default();
     let mut gamepad_was_connected = false;
+    let mut motion_was_active = false;
 
     while window.is_open() {
         gamepad.update();
@@ -7570,6 +7571,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
             gamepad_was_connected = gamepad.connected;
         }
+        let motion_active = gamepad.motion_active();
+        if motion_active && !motion_was_active {
+            println!("Control de movimiento detectado");
+        }
+        motion_was_active = motion_active;
         let benchmark_frame_start = Instant::now();
         if game_mode == GameMode::HourglassRescue && !window.is_active() {
             // Do not let Alt+Tab or a transient Windows focus change eat the
