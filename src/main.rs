@@ -9,6 +9,7 @@ mod obj_loader;
 mod race_track;
 mod ship;
 mod space_decor;
+mod space_battle;
 mod tower_guard;
 mod triangle;
 
@@ -5316,6 +5317,8 @@ fn render_scene(
     vesper_orbit_rings: &Model,
     castle_planet: &VesperPlanet,
     race_planet: &Model,
+    ship_choices: &[(&Model, &'static ShipSpec)],
+    space_battle: &space_battle::SpaceBattle,
     planet_lods: [&PlanetLodModels; 3],
     planet_lod_states: &mut [PlanetLodState; 3],
     vesper_lod_states: &mut [PlanetLodState; 2],
@@ -5638,6 +5641,35 @@ fn render_scene(
             None,
             None,
         );
+    }
+
+    // Four background fighters are enough to sell a battle without crowding
+    // the view. Their ship indices are assigned from the non-player choices.
+    if matches!(galaxy, Galaxy::Home | Galaxy::Vesper) {
+        for fighter in &space_battle.fighters {
+            let Some((model, spec)) = ship_choices.get(fighter.ship_index) else {
+                continue;
+            };
+            let mut npc = Ship::new(spec);
+            npc.position = fighter.position;
+            npc.yaw = fighter.yaw;
+            npc.pitch = fighter.pitch;
+            render_ship_components(
+                model,
+                model_center(model),
+                turbo_plume,
+                laser_bolt,
+                &fighter.shots,
+                batch,
+                &camera,
+                &npc,
+                world_time,
+                0.18,
+                0.0,
+                true,
+                0.72,
+            );
+        }
     }
 
     if show_ship {
@@ -7471,6 +7503,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut hourglass_rescue = hourglass_rescue::HourglassRescue::new();
     let mut lava_castle = lava_castle::LavaCastle::new();
     let mut tower_game = tower_guard::TowerGame::new(&tower_sprites);
+    let mut ambient_battle = space_battle::SpaceBattle::new();
     let mut previous = Instant::now();
     let mut world_time = 0.0_f32;
     let mut distance = 0.0_f32;
@@ -8261,6 +8294,21 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         Galaxy::Nova => "Galaxia Nova | Planeta Castillo | Portal: Vesper",
                     });
                 }
+                if matches!(active_galaxy, Galaxy::Home | Galaxy::Vesper) {
+                    let battle_center = match active_galaxy {
+                        Galaxy::Home => Vec3::new(SUN_POSITION_X, 20.0, 0.0),
+                        Galaxy::Vesper => VESPER_SYSTEM_CENTER,
+                        Galaxy::Nova => unreachable!(),
+                    };
+                    ambient_battle.update(
+                        delta_time,
+                        world_time,
+                        battle_center,
+                        ship_controller.ship.position,
+                        selected_ship,
+                        &choices,
+                    );
+                }
                 render_scene(
                     active_model,
                     ship_center,
@@ -8284,6 +8332,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &vesper_orbit_rings,
                     &castle_planet,
                     &race_track.planet,
+                    &choices,
+                    &ambient_battle,
                     [&planet_lods[0], &planet_lods[1], &planet_lods[2]],
                     &mut planet_lod_states,
                     &mut vesper_lod_states,
