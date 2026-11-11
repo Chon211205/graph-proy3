@@ -1,9 +1,11 @@
 use crate::framebuffer::Framebuffer;
-use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
+use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use crate::ship::{Projectile, ShipController, ShipInput};
 use crate::{Camera, draw_selection_label, render_model};
 
 const BOSS_MAX_HEALTH: i32 = 160;
+const BOSS_BODY_RADIUS: f32 = 27.0;
+const BOSS_CORE_RADIUS: f32 = 7.0;
 const PLAYER_MAX_HEALTH: i32 = 6;
 const ARENA_HALF_WIDTH: f32 = 115.0;
 const ARENA_MIN_Y: f32 = 8.0;
@@ -71,6 +73,7 @@ pub struct LavaCastle {
     attack_target: Vec3,
     boss_health: i32,
     boss_position: Vec3,
+    boss_core_offset: Vec3,
     boss_hit_flash: f32,
     player_health: i32,
     player_invulnerability: f32,
@@ -89,6 +92,14 @@ pub struct LavaCastle {
 
 impl LavaCastle {
     pub fn new() -> Self {
+        let boss = load_obj("assets/bosses/lava_guardian/guardian_lava_gigante.obj")
+            .unwrap_or_else(|error| {
+                eprintln!("No se pudo cargar el Guardian de Lava Blender: {error}");
+                make_boss()
+            });
+        let boss_core_offset = model_group_center(&boss, "Guardian_Core_Inner")
+            .unwrap_or_else(|| boss.bounds().0)
+            .sub(boss.bounds().0);
         Self {
             phase: Phase::Waiting,
             attack: Attack::None,
@@ -97,6 +108,7 @@ impl LavaCastle {
             attack_target: Vec3::default(),
             boss_health: BOSS_MAX_HEALTH,
             boss_position: BOSS_POSITION,
+            boss_core_offset,
             boss_hit_flash: 0.0,
             player_health: PLAYER_MAX_HEALTH,
             player_invulnerability: 0.0,
@@ -107,9 +119,18 @@ impl LavaCastle {
             door_open: 0.0,
             message: "ACERCATE AL GUARDIAN DE LAVA",
             message_timer: 3.0,
-            environment: make_environment(),
-            boss: make_boss(),
-            door: make_door(),
+            environment: load_obj("assets/levels/lava_castle/lava_castle_environment.obj")
+                .unwrap_or_else(|error| {
+                    eprintln!("No se pudo cargar el escenario Blender del castillo: {error}");
+                    make_environment()
+                }),
+            boss,
+            door: load_obj("assets/levels/lava_castle/lava_castle_door.obj").unwrap_or_else(
+                |error| {
+                    eprintln!("No se pudo cargar la puerta Blender del castillo: {error}");
+                    make_door()
+                },
+            ),
             projectile: make_fireball(),
         }
     }
@@ -261,9 +282,13 @@ impl LavaCastle {
     fn resolve_player_shots(&mut self, shots: &mut [Projectile]) {
         for shot in shots.iter_mut().filter(|shot| shot.lifetime > 0.0) {
             let offset = shot.position.sub(self.boss_position);
-            let body_hit = offset.dot(offset) < (10.0 + shot.scale) * (10.0 + shot.scale);
+            let body_hit = offset.dot(offset)
+                < (BOSS_BODY_RADIUS + shot.scale) * (BOSS_BODY_RADIUS + shot.scale);
             if body_hit {
-                let core_hit = offset.dot(offset) < 4.2 * 4.2;
+                let core_offset = shot
+                    .position
+                    .sub(self.boss_position.add(self.boss_core_offset));
+                let core_hit = core_offset.dot(core_offset) < BOSS_CORE_RADIUS * BOSS_CORE_RADIUS;
                 let base = if shot.scale > 2.0 { 8 } else { 3 };
                 self.boss_health -= if core_hit { base * 2 } else { base };
                 self.boss_hit_flash = 0.13;
@@ -363,7 +388,7 @@ impl LavaCastle {
         }
         if self.attack == Attack::Eruption && self.attack_timer < 0.32 {
             let d = target.sub(self.boss_position);
-            if d.dot(d) < 34.0 * 34.0 {
+            if d.dot(d) < 52.0 * 52.0 {
                 self.damage_player();
             }
         }
@@ -383,7 +408,7 @@ impl LavaCastle {
         }
         self.enemy_shots.retain(|shot| shot.lifetime > 0.0);
         let boss_offset = player.sub(self.boss_position);
-        if boss_offset.dot(boss_offset) < 12.0 * 12.0 {
+        if boss_offset.dot(boss_offset) < 25.0 * 25.0 {
             self.damage_player();
             *player = player.add(boss_offset.normalize().mul(12.0));
         }
@@ -896,6 +921,19 @@ fn make_boss() -> Model {
     }
     b.finish()
 }
+
+fn model_group_center(model: &Model, group: &str) -> Option<Vec3> {
+    let mut sum = Vec3::default();
+    let mut count = 0usize;
+    for face in model.faces.iter().filter(|face| face.group == group) {
+        for &index in &face.indices {
+            sum = sum.add(model.vertices[index]);
+            count += 1;
+        }
+    }
+    (count > 0).then(|| sum.mul(1.0 / count as f32))
+}
+
 fn make_fireball() -> Model {
     let mut b = Builder::new();
     b.octa(Vec3::default(), 1.8, [255, 77, 12], "lava_projectile");
@@ -906,6 +944,55 @@ fn make_fireball() -> Model {
 mod tests {
     use super::*;
     use crate::ship::{ARWING_SPEC, ShipController};
+
+    #[test]
+    fn blender_boss_is_gigantic_and_has_a_real_weak_core() {
+        let boss = load_obj("assets/bosses/lava_guardian/guardian_lava_gigante.obj")
+            .expect("giant Blender boss should load");
+        for group in [
+            "Guardian_Torso",
+            "Guardian_Core_Inner",
+            "Guardian_Head",
+            "Guardian_Main_Horn_-1",
+            "Guardian_Wing_Blade_1_0",
+        ] {
+            assert!(boss.faces.iter().any(|face| face.group == group));
+        }
+        assert!(boss.bounds().1 > 28.0, "boss must dominate the arena");
+        let core = model_group_center(&boss, "Guardian_Core_Inner")
+            .expect("boss should expose its modeled weak point");
+        let (center, radius) = boss.bounds();
+        assert!(core.sub(center).dot(core.sub(center)) < radius * radius);
+    }
+
+    #[test]
+    fn blender_arena_contains_castle_lava_obstacles_and_animated_door() {
+        let environment = load_obj("assets/levels/lava_castle/lava_castle_environment.obj")
+            .expect("Blender castle environment should load");
+        let door = load_obj("assets/levels/lava_castle/lava_castle_door.obj")
+            .expect("Blender castle door should load");
+        for group in [
+            "Lava_Basin",
+            "Arena_Island_0",
+            "Castle_Main_Keep",
+            "Castle_Tower_0",
+            "Horizon_Volcano_0",
+            "Volcanic_Spire_0",
+        ] {
+            assert!(environment.faces.iter().any(|face| face.group == group));
+        }
+        assert!(
+            environment
+                .faces
+                .iter()
+                .any(|face| face.material == "Castle_Lava")
+        );
+        assert!(
+            door.faces
+                .iter()
+                .any(|face| face.group == "Animated_Castle_Door")
+        );
+    }
     #[test]
     fn boss_enters_second_phase_and_opens_door_only_after_defeat() {
         let mut level = LavaCastle::new();

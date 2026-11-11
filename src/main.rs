@@ -3535,6 +3535,8 @@ struct PlanetLodModels {
 
 struct VesperPlanet {
     model: Model,
+    medium: Option<Model>,
+    medium_center: Option<Vec3>,
     low: Model,
     source_center: Vec3,
     scale: f32,
@@ -3552,11 +3554,20 @@ impl VesperPlanet {
         low_visual: PlanetVisual,
     ) -> Result<Self, String> {
         let model = load_obj(path).map_err(|error| format!("Error al cargar {path}: {error}"))?;
+        let medium_path = path
+            .strip_suffix(".obj")
+            .map(|base| format!("{base}_medium.obj"));
+        let medium = medium_path
+            .as_deref()
+            .and_then(|candidate| load_obj(candidate).ok());
+        let medium_center = medium.as_ref().map(model_center);
         let source_center = model_center(&model);
         let scale = radius / model_radius(&model, source_center).max(0.001);
         let low = make_planet_lod(radius, 6, 10, low_visual);
         Ok(Self {
             model,
+            medium,
+            medium_center,
             low,
             source_center,
             scale,
@@ -5505,22 +5516,24 @@ fn render_scene(
     } else if galaxy == Galaxy::Nova {
         let body = castle_planet;
         let (sin, cos) = (body.rotation_y + world_time * 0.018).sin_cos();
-        let lod = castle_lod_state.update(projected_planet_radius(
-            &camera,
-            body.center,
-            body.radius,
-            batch.projection.focal,
-        ));
-        let use_low = lod != 0;
+        let lod = castle_lod_state.update_detailed(
+            projected_planet_radius(&camera, body.center, body.radius, batch.projection.focal),
+            false,
+        );
+        let (visible, authored_center) = match (lod, body.medium.as_ref()) {
+            (0, _) => (&body.model, Some(body.source_center)),
+            (1, Some(medium)) => (medium, body.medium_center),
+            _ => (&body.low, None),
+        };
         queue_model(
-            if use_low { &body.low } else { &body.model },
+            visible,
             batch,
             &camera,
             |vertex| {
-                let local = if use_low {
-                    vertex
+                let local = if let Some(center) = authored_center {
+                    vertex.sub(center).mul(body.scale)
                 } else {
-                    vertex.sub(body.source_center).mul(body.scale)
+                    vertex
                 };
                 Vec3::new(
                     local.x * cos - local.z * sin,
@@ -7314,7 +7327,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let vesper_black_hole = make_vesper_black_hole();
     let vesper_orbit_rings = make_vesper_orbit_rings();
     let castle_planet = VesperPlanet::load(
-        "assets/planets/planeta_castillo_lava.obj",
+        "assets/planets/planeta_castillo_lava_optimizado.obj",
         Vec3::new(260.0, 90.0, 230.0),
         58.0,
         0.0,
@@ -11863,6 +11876,28 @@ mod tests {
                 && face.color == MaterialColor::Fixed([255, 46, 255])
                 && face.shader == SurfaceShader::CastlePortalGlass
         }));
+    }
+
+    #[test]
+    fn optimized_castle_planet_uses_reduced_close_and_medium_lods() {
+        let original = load_obj("assets/planets/planeta_castillo_lava.obj").unwrap();
+        let optimized = load_obj("assets/planets/planeta_castillo_lava_optimizado.obj").unwrap();
+        let medium =
+            load_obj("assets/planets/planeta_castillo_lava_optimizado_medium.obj").unwrap();
+        assert!(optimized.faces.len() < original.faces.len());
+        assert!(medium.faces.len() < optimized.faces.len() / 2);
+        for material in ["Castle_Lava", "Castle_Bricks", "Castle_Portal_Core"] {
+            assert!(optimized.faces.iter().any(|face| face.material == material));
+        }
+        let planet = VesperPlanet::load(
+            "assets/planets/planeta_castillo_lava_optimizado.obj",
+            Vec3::default(),
+            58.0,
+            0.0,
+            PlanetVisual::Castle,
+        )
+        .unwrap();
+        assert!(planet.medium.is_some());
     }
 
     #[test]
