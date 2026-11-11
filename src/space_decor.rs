@@ -196,9 +196,9 @@ fn make_asteroids(palette: [[u8; 3]; 3], galaxy_seed: u32) -> Vec<Asteroid> {
             Asteroid {
                 model: make_asteroid(seed, palette, index, if outer { 1.30 } else { 1.0 }),
                 orbit_fraction: if outer {
-                    1.65 + unit(seed ^ 0xa511_e9b3) * 0.78
+                    1.98 + unit(seed ^ 0xa511_e9b3) * 0.10
                 } else {
-                    0.84 + unit(seed ^ 0xa511_e9b3) * 0.32
+                    0.93 + unit(seed ^ 0xa511_e9b3) * 0.14
                 },
                 orbit_phase: index as f32 * 2.399_963_1 + (unit(seed) - 0.5) * 0.28,
                 // Much slower than the planets; each rock has a slightly
