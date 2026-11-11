@@ -1,8 +1,8 @@
 use std::f32::consts::{FRAC_PI_2, TAU};
 
 use crate::framebuffer::Framebuffer;
-use crate::obj_loader::{Face, Model, Vec3};
-use crate::ship::{ShipController, ShipInput};
+use crate::obj_loader::{Face, Model, Vec3, load_obj};
+use crate::ship::{Projectile, ShipController, ShipInput};
 use crate::{Camera, draw_projectile_glow, draw_selection_label, render_model};
 
 const START_Z: f32 = 24.0;
@@ -14,6 +14,13 @@ const CHAMBER_Z: f32 = -470.0;
 const PLAYER_HEALTH: i32 = 6;
 const REWARD_DURATION: f32 = 5.5;
 const REWARD_COLLECT_TIME: f32 = 2.8;
+const CONTROL_SPEED_FACTOR: f32 = 0.55;
+const CONTROL_HALF_WIDTH: f32 = 14.5;
+const CONTROL_SOFT_BORDER: f32 = 12.2;
+const CONTROL_BORDER_STRENGTH: f32 = 26.0;
+const CONTROL_MIN_HEIGHT: f32 = 2.4;
+const CONTROL_MAX_HEIGHT: f32 = 11.5;
+const CONTROL_HEIGHT_OFFSET: f32 = 26.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
@@ -43,6 +50,13 @@ struct Hazard {
     phase: f32,
 }
 
+struct InteriorEnemy {
+    position: Vec3,
+    anchor: Vec3,
+    health: i32,
+    phase: f32,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum HazardKind {
     FireJet,
@@ -58,6 +72,9 @@ pub struct LavaCastleInterior {
     elapsed: f32,
     health: i32,
     invulnerability: f32,
+    progress: f32,
+    lateral: f32,
+    height: f32,
     fragments: [Fragment; 3],
     seal_open: f32,
     checkpoint: Vec3,
@@ -66,10 +83,17 @@ pub struct LavaCastleInterior {
     message: &'static str,
     message_timer: f32,
     zones: [Model; 5],
+    zone_lods: [Model; 5],
     hazards: Vec<Hazard>,
+    enemies: Vec<InteriorEnemy>,
+    enemy_shots: Vec<Projectile>,
+    enemy_fire_timer: f32,
+    enemy_fire_serial: usize,
     crystals: [Model; 3],
     hazard_bar: Model,
     moving_platform: Model,
+    enemy_model: Model,
+    enemy_bolt: Model,
     seal: Model,
 }
 
@@ -82,26 +106,34 @@ impl LavaCastleInterior {
             invulnerability: 0.0,
             fragments: [
                 Fragment {
-                    position: Vec3::new(-36.0, 34.0, SANCTUM_Z - 3.0),
+                    position: Vec3::new(-11.5, 30.0, SANCTUM_Z),
                     collected: false,
                 },
                 Fragment {
-                    position: Vec3::new(0.0, 48.0, SANCTUM_Z - 28.0),
+                    position: Vec3::new(0.0, 37.0, SANCTUM_Z),
                     collected: false,
                 },
                 Fragment {
-                    position: Vec3::new(36.0, 27.0, SANCTUM_Z - 3.0),
+                    position: Vec3::new(11.5, 33.5, SANCTUM_Z),
                     collected: false,
                 },
             ],
             seal_open: 0.0,
+            progress: 0.0,
+            lateral: 0.0,
+            height: 5.0,
             checkpoint: Vec3::new(0.0, 31.0, START_Z),
             reward_elapsed: 0.0,
             reward_position: Vec3::default(),
             message: "EXPLORA EL CASTILLO  //  REUNE 3 FRAGMENTOS",
             message_timer: 5.0,
             zones: build_zones(),
+            zone_lods: build_zone_lods(),
             hazards: build_hazards(),
+            enemies: build_enemies(),
+            enemy_shots: Vec::with_capacity(32),
+            enemy_fire_timer: 0.8,
+            enemy_fire_serial: 0,
             crystals: [
                 make_crystal([35, 155, 255], "race_rgb_35_155_255"),
                 make_crystal([255, 116, 18], "race_rgb_255_116_18"),
@@ -109,6 +141,8 @@ impl LavaCastleInterior {
             ],
             hazard_bar: make_hazard_bar(),
             moving_platform: make_moving_platform(),
+            enemy_model: make_interior_enemy(),
+            enemy_bolt: make_enemy_bolt(),
             seal: make_seal(),
         }
     }
@@ -160,20 +194,56 @@ impl LavaCastleInterior {
             Phase::Exploring => {}
         }
 
-        let previous = controller.ship.position;
         controller.update(input, dt);
-        let forward = controller.ship.movement_basis().0;
-        let speed = controller.ship.speed * if input.accelerating { 1.12 } else { 1.0 };
-        controller.ship.position = controller.ship.position.add(forward.mul(speed * dt));
+        self.progress += controller.ship.speed * CONTROL_SPEED_FACTOR * dt;
+        let sanctum_progress = START_Z - SANCTUM_Z;
+        if self.fragment_count() < 3 {
+            self.progress = self.progress.min(sanctum_progress);
+        }
+        self.lateral += input.yaw as f32 * 17.0 * dt;
+        let border_distance = self.lateral.abs();
+        if border_distance > CONTROL_SOFT_BORDER {
+            let border_zone = CONTROL_HALF_WIDTH - CONTROL_SOFT_BORDER;
+            let border_force =
+                ((border_distance - CONTROL_SOFT_BORDER) / border_zone).clamp(0.0, 1.0);
+            self.lateral -= self.lateral.signum() * CONTROL_BORDER_STRENGTH * border_force * dt;
+        }
+        self.lateral = self.lateral.clamp(-CONTROL_HALF_WIDTH, CONTROL_HALF_WIDTH);
+        self.height = (self.height + input.pitch as f32 * 15.0 * dt)
+            .clamp(CONTROL_MIN_HEIGHT, CONTROL_MAX_HEIGHT);
+
+        let seal_progress = START_Z - (SEAL_Z + 8.0);
+        if self.seal_open < 0.92 {
+            self.progress = self.progress.min(seal_progress);
+        }
+        let previous = controller.ship.position;
+        controller.ship.position = Vec3::new(
+            self.lateral,
+            CONTROL_HEIGHT_OFFSET + self.height,
+            START_Z - self.progress,
+        );
+        controller.ship.yaw = FRAC_PI_2;
+        controller.ship.pitch = 0.0;
+        controller.ship.orbit_plane_normal = None;
+        controller.ship.orbit_center = None;
+        controller.ship.orbit_camera_blend = 0.0;
+        controller.ship.planet_locked = false;
+        controller.ship.orbit_release_active = false;
         self.resolve_bounds(&mut controller.ship.position, previous);
+        self.lateral = controller.ship.position.x;
+        self.height = controller.ship.position.y - CONTROL_HEIGHT_OFFSET;
+        self.progress = START_Z - controller.ship.position.z;
         self.update_checkpoint(controller.ship.position);
         self.collect_fragments(controller.ship.position);
+        self.update_enemies(controller, dt);
+        self.resolve_player_fire(&mut controller.projectiles);
 
         if self.fragment_count() == 3 {
             self.seal_open = (self.seal_open + dt / 2.4).min(1.0);
         }
         if self.seal_open < 0.92 && controller.ship.position.z < SEAL_Z + 8.0 {
             controller.ship.position.z = SEAL_Z + 8.0;
+            self.progress = START_Z - controller.ship.position.z;
             controller.ship.speed = controller.ship.speed.min(controller.ship.spec.cruise_speed);
             self.message = if self.fragment_count() == 3 {
                 "SELLO ABRIENDOSE"
@@ -214,24 +284,13 @@ impl LavaCastleInterior {
         Action::Continue
     }
 
-    fn resolve_bounds(&mut self, position: &mut Vec3, previous: Vec3) {
+    fn resolve_bounds(&mut self, position: &mut Vec3, _previous: Vec3) {
         position.x = position.x.clamp(-51.0, 51.0);
         position.y = position.y.clamp(9.0, 73.0);
         position.z = position.z.clamp(CHAMBER_Z - 28.0, START_Z + 18.0);
         // The sanctum side chambers open only around their shared hub.
         if position.z > SANCTUM_Z + 42.0 || position.z < SANCTUM_Z - 55.0 {
             position.x = position.x.clamp(-34.0, 34.0);
-        }
-        // Solid furnace machinery creates a readable slalom route.
-        for center in [
-            Vec3::new(-18.0, 28.0, FURNACE_Z + 24.0),
-            Vec3::new(18.0, 42.0, FURNACE_Z - 10.0),
-            Vec3::new(-18.0, 26.0, FURNACE_Z - 42.0),
-        ] {
-            let offset = position.sub(center);
-            if offset.x.abs() < 9.0 && offset.y.abs() < 15.0 && offset.z.abs() < 8.0 {
-                *position = previous;
-            }
         }
         if position.y <= 9.1 {
             self.damage_player(position);
@@ -273,6 +332,86 @@ impl LavaCastleInterior {
             .iter()
             .filter(|fragment| fragment.collected)
             .count()
+    }
+
+    fn update_enemies(&mut self, controller: &mut ShipController, dt: f32) {
+        let player = controller.ship.position;
+        for enemy in self.enemies.iter_mut().filter(|enemy| enemy.health > 0) {
+            if (player.z - enemy.anchor.z).abs() < 105.0 {
+                let follow = Vec3::new(player.x, player.y, enemy.anchor.z).sub(enemy.position);
+                enemy.position = enemy.position.add(Vec3::new(
+                    follow.x.clamp(-6.5 * dt, 6.5 * dt),
+                    follow.y.clamp(-5.0 * dt, 5.0 * dt),
+                    (self.elapsed * 1.4 + enemy.phase).sin() * 1.6 * dt,
+                ));
+            } else {
+                enemy.position = enemy
+                    .position
+                    .add(enemy.anchor.sub(enemy.position).mul((dt * 1.8).min(1.0)));
+            }
+        }
+        self.enemy_fire_timer -= dt;
+        if self.enemy_fire_timer <= 0.0 {
+            let active = self
+                .enemies
+                .iter()
+                .enumerate()
+                .filter(|(_, enemy)| enemy.health > 0 && (player.z - enemy.position.z).abs() < 95.0)
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>();
+            if let Some(&index) = active.get(self.enemy_fire_serial % active.len().max(1)) {
+                let enemy = &self.enemies[index];
+                self.enemy_shots.push(Projectile {
+                    position: enemy.position,
+                    direction: player.sub(enemy.position).normalize(),
+                    lifetime: 4.0,
+                    scale: 0.8,
+                });
+                self.enemy_fire_serial += 1;
+                self.enemy_fire_timer = 0.72;
+            } else {
+                self.enemy_fire_timer = 0.25;
+            }
+        }
+        let mut hit = false;
+        for shot in &mut self.enemy_shots {
+            shot.position = shot.position.add(shot.direction.mul(34.0 * dt));
+            shot.lifetime -= dt;
+            let offset = shot.position.sub(player);
+            if offset.dot(offset) < 4.2 * 4.2 {
+                shot.lifetime = 0.0;
+                hit = true;
+            }
+        }
+        self.enemy_shots.retain(|shot| shot.lifetime > 0.0);
+        hit |= self
+            .enemies
+            .iter()
+            .filter(|enemy| enemy.health > 0)
+            .any(|enemy| {
+                let offset = enemy.position.sub(player);
+                offset.dot(offset) < 6.0 * 6.0
+            });
+        if hit {
+            self.damage_player(&mut controller.ship.position);
+        }
+    }
+
+    fn resolve_player_fire(&mut self, projectiles: &mut [Projectile]) {
+        for projectile in projectiles.iter_mut().filter(|shot| shot.lifetime > 0.0) {
+            for enemy in self.enemies.iter_mut().filter(|enemy| enemy.health > 0) {
+                let offset = projectile.position.sub(enemy.position);
+                if offset.dot(offset) < (5.2 + projectile.scale).powi(2) {
+                    enemy.health -= if projectile.scale > 1.35 { 2 } else { 1 };
+                    projectile.lifetime = 0.0;
+                    if enemy.health <= 0 {
+                        self.message = "ENEMIGO DE LAVA DESTRUIDO";
+                        self.message_timer = 1.2;
+                    }
+                    break;
+                }
+            }
+        }
     }
 
     fn hazard_active(&self, hazard: Hazard) -> bool {
@@ -335,6 +474,9 @@ impl LavaCastleInterior {
             self.health -= 1;
             self.invulnerability = 1.15;
             *position = self.checkpoint;
+            self.progress = START_Z - self.checkpoint.z;
+            self.lateral = self.checkpoint.x;
+            self.height = self.checkpoint.y - CONTROL_HEIGHT_OFFSET;
             self.message = "IMPACTO  //  REGRESO AL CHECKPOINT";
             self.message_timer = 1.5;
         }
@@ -352,13 +494,20 @@ impl LavaCastleInterior {
         frame.buffers_mut().1.fill(f32::NEG_INFINITY);
         let camera = interior_camera(controller);
         let centers = [START_Z, FURNACE_Z, SANCTUM_Z, CORRIDOR_Z, CHAMBER_Z];
-        for (zone, center) in self.zones.iter().zip(centers) {
-            if (controller.ship.position.z - center).abs() < 175.0 {
+        for (index, center) in centers.into_iter().enumerate() {
+            let distance = (controller.ship.position.z - center).abs();
+            if distance < 150.0 {
+                let zone = if distance < 82.0 {
+                    &self.zones[index]
+                } else {
+                    &self.zone_lods[index]
+                };
                 render_model(zone, frame, &camera, |v| v, Some(self.elapsed), None);
             }
         }
         self.render_fragments(frame, &camera);
         self.render_hazards(frame, &camera);
+        self.render_enemies(frame, &camera);
         self.render_seal(frame, &camera);
         self.render_reward(frame, &camera, dragon_ball);
         render_player_and_weapon(
@@ -464,6 +613,40 @@ impl LavaCastleInterior {
                     };
                     local.add(self.hazard_position(hazard))
                 },
+                Some(self.elapsed),
+                None,
+            );
+        }
+    }
+
+    fn render_enemies(&self, frame: &mut Framebuffer, camera: &Camera) {
+        let center = self.enemy_model.bounds().0;
+        for enemy in self.enemies.iter().filter(|enemy| enemy.health > 0) {
+            let (sin, cos) = (self.elapsed * 1.8 + enemy.phase).sin_cos();
+            render_model(
+                &self.enemy_model,
+                frame,
+                camera,
+                |v| {
+                    let local = v.sub(center);
+                    Vec3::new(
+                        local.x * cos - local.z * sin,
+                        local.y,
+                        local.x * sin + local.z * cos,
+                    )
+                    .add(enemy.position)
+                },
+                Some(self.elapsed),
+                None,
+            );
+        }
+        let center = self.enemy_bolt.bounds().0;
+        for shot in &self.enemy_shots {
+            render_model(
+                &self.enemy_bolt,
+                frame,
+                camera,
+                |v| v.sub(center).mul(shot.scale).add(shot.position),
                 Some(self.elapsed),
                 None,
             );
@@ -611,6 +794,9 @@ impl LavaCastleInterior {
     #[cfg(test)]
     fn force_position(&mut self, controller: &mut ShipController, position: Vec3) {
         controller.ship.position = position;
+        self.progress = START_Z - position.z;
+        self.lateral = position.x;
+        self.height = position.y - CONTROL_HEIGHT_OFFSET;
     }
 }
 
@@ -760,13 +946,52 @@ fn build_hazards() -> Vec<Hazard> {
     ]
 }
 
+fn build_enemies() -> Vec<InteriorEnemy> {
+    [
+        Vec3::new(-9.0, 31.0, -68.0),
+        Vec3::new(9.0, 35.0, -91.0),
+        Vec3::new(-7.0, 37.0, -116.0),
+        Vec3::new(8.0, 30.0, -141.0),
+        Vec3::new(0.0, 34.0, -166.0),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, position)| InteriorEnemy {
+        position,
+        anchor: position,
+        health: 3,
+        phase: index as f32 * 1.37,
+    })
+    .collect()
+}
+
 fn build_zones() -> [Model; 5] {
     [
-        build_start_hall(),
-        build_furnace(),
-        build_sanctums(),
-        build_corridor(),
-        build_chamber(),
+        load_obj("assets/levels/lava_castle_interior/start_hall.obj")
+            .unwrap_or_else(|_| build_start_hall()),
+        load_obj("assets/levels/lava_castle_interior/molten_furnace.obj")
+            .unwrap_or_else(|_| build_furnace()),
+        load_obj("assets/levels/lava_castle_interior/fragment_sanctums.obj")
+            .unwrap_or_else(|_| build_sanctums()),
+        load_obj("assets/levels/lava_castle_interior/seal_gate_corridor.obj")
+            .unwrap_or_else(|_| build_corridor()),
+        load_obj("assets/levels/lava_castle_interior/dragon_ball_chamber.obj")
+            .unwrap_or_else(|_| build_chamber()),
+    ]
+}
+
+fn build_zone_lods() -> [Model; 5] {
+    [
+        load_obj("assets/levels/lava_castle_interior/start_hall_lod.obj")
+            .unwrap_or_else(|_| build_start_hall()),
+        load_obj("assets/levels/lava_castle_interior/molten_furnace_lod.obj")
+            .unwrap_or_else(|_| build_furnace()),
+        load_obj("assets/levels/lava_castle_interior/fragment_sanctums_lod.obj")
+            .unwrap_or_else(|_| build_sanctums()),
+        load_obj("assets/levels/lava_castle_interior/seal_gate_corridor_lod.obj")
+            .unwrap_or_else(|_| build_corridor()),
+        load_obj("assets/levels/lava_castle_interior/dragon_ball_chamber_lod.obj")
+            .unwrap_or_else(|_| build_chamber()),
     ]
 }
 
@@ -799,22 +1024,6 @@ fn shell(builder: &mut Builder, z: f32, length: f32, width: f32, height: f32, na
         "Castle_Bricks_Dark",
         name,
     );
-    for offset in (-2..=2).map(|i| i as f32 * length * 0.4) {
-        builder.cube(
-            Vec3::new(-width + 5.0, height * 0.55, z + offset),
-            Vec3::new(2.2, height * 0.48, 2.2),
-            [91, 67, 65],
-            "Castle_Bricks",
-            "gothic_column",
-        );
-        builder.cube(
-            Vec3::new(width - 5.0, height * 0.55, z + offset),
-            Vec3::new(2.2, height * 0.48, 2.2),
-            [91, 67, 65],
-            "Castle_Bricks",
-            "gothic_column",
-        );
-    }
 }
 
 fn build_start_hall() -> Model {
@@ -846,26 +1055,6 @@ fn build_start_hall() -> Model {
 fn build_furnace() -> Model {
     let mut b = Builder::new();
     shell(&mut b, FURNACE_Z, 58.0, 48.0, 78.0, "molten_furnace");
-    for (i, x) in [-24.0, 0.0, 24.0].iter().enumerate() {
-        b.cylinder(
-            Vec3::new(*x, 29.0, FURNACE_Z - 8.0 + i as f32 * 18.0),
-            9.0,
-            42.0,
-            16,
-            [69, 48, 55],
-            "Castle_Bricks_Dark",
-            "furnace_reactor",
-        );
-        b.cylinder(
-            Vec3::new(*x, 29.0, FURNACE_Z - 10.0 + i as f32 * 18.0),
-            6.0,
-            44.0,
-            12,
-            [255, 70, 8],
-            "Castle_Lava",
-            "furnace_core",
-        );
-    }
     for z in [-158.0, -132.0, -106.0, -80.0, -54.0] {
         b.cube(
             Vec3::new(0.0, 8.0, z),
@@ -974,17 +1163,8 @@ fn build_chamber() -> Model {
         "altar_rune",
     );
     for side in [-1.0, 1.0] {
-        b.cylinder(
-            Vec3::new(side * 34.0, 35.0, CHAMBER_Z - 4.0),
-            4.0,
-            58.0,
-            12,
-            [75, 49, 55],
-            "Castle_Rock",
-            "dragon_pillar",
-        );
         b.cone(
-            Vec3::new(side * 34.0, 68.0, CHAMBER_Z - 4.0),
+            Vec3::new(side * 45.0, 50.0, CHAMBER_Z - 4.0),
             8.0,
             15.0,
             10,
@@ -1017,6 +1197,46 @@ fn make_moving_platform() -> Model {
         [255, 116, 12],
         "Castle_Lava_Hot",
         "platform_rune",
+    );
+    b.finish()
+}
+
+fn make_interior_enemy() -> Model {
+    let mut b = Builder::new();
+    b.octa(
+        Vec3::default(),
+        3.8,
+        [72, 49, 55],
+        "Castle_Rock_Dark",
+        "lava_sentinel_body",
+    );
+    for side in [-1.0, 1.0] {
+        b.cube(
+            Vec3::new(side * 4.2, 0.0, 0.0),
+            Vec3::new(3.8, 0.6, 1.5),
+            [92, 60, 62],
+            "Castle_Bricks",
+            "lava_sentinel_wing",
+        );
+    }
+    b.octa(
+        Vec3::new(0.0, 0.0, -3.2),
+        1.35,
+        [255, 96, 8],
+        "Castle_Lava_Hot",
+        "lava_sentinel_core",
+    );
+    b.finish()
+}
+
+fn make_enemy_bolt() -> Model {
+    let mut b = Builder::new();
+    b.octa(
+        Vec3::default(),
+        1.5,
+        [255, 58, 8],
+        "Castle_Lava_Hot",
+        "enemy_lava_bolt",
     );
     b.finish()
 }
@@ -1209,15 +1429,66 @@ mod tests {
     fn interior_contains_five_distinct_volumetric_zones() {
         let level = LavaCastleInterior::new();
         assert_eq!(level.zones.len(), 5);
-        for (zone, group) in level.zones.iter().zip([
-            "start_hall",
-            "molten_furnace",
-            "fragment_sanctums",
-            "seal_gate_corridor",
-            "dragon_ball_chamber",
-        ]) {
+        for ((zone, group), expected_z) in level
+            .zones
+            .iter()
+            .zip([
+                "StartHall_Floor",
+                "Furnace_LavaChannel_0",
+                "Sanctum_Blue_Pedestal",
+                "SealCorridor_MechanicalRing_0",
+                "DragonBallChamber_Altar",
+            ])
+            .zip([0.0, FURNACE_Z, SANCTUM_Z, -333.0, -452.0])
+        {
             assert!(zone.faces.iter().any(|face| face.group == group));
-            assert!(zone.faces.len() > 80);
+            assert!(zone.faces.len() > 1_000);
+            assert!(zone.faces.len() < 8_000);
+            let center = zone.bounds().0;
+            assert!((center.z - expected_z).abs() < 70.0);
+            assert!(center.y > 10.0 && center.y < 70.0);
+        }
+    }
+
+    #[test]
+    fn blender_interior_preserves_lava_stone_and_gothic_details() {
+        let level = LavaCastleInterior::new();
+        let faces = level.zones.iter().flat_map(|zone| &zone.faces);
+        let materials = faces.map(|face| face.material.as_str()).collect::<Vec<_>>();
+        for material in [
+            "Castle_Rock",
+            "Castle_Bricks",
+            "Castle_Lava",
+            "Castle_Lava_Hot",
+        ] {
+            assert!(materials.contains(&material));
+        }
+        assert!(
+            level.zones[0]
+                .faces
+                .iter()
+                .any(|face| face.group.starts_with("StartHall_Chain"))
+        );
+        assert!(
+            level.zones[1]
+                .faces
+                .iter()
+                .any(|face| face.group.starts_with("Furnace_Gear"))
+        );
+        assert!(
+            level.zones[4]
+                .faces
+                .iter()
+                .any(|face| face.group.starts_with("DragonBallChamber_Dragon"))
+        );
+    }
+
+    #[test]
+    fn distant_zone_lods_reduce_geometry_substantially() {
+        let level = LavaCastleInterior::new();
+        for (detailed, lod) in level.zones.iter().zip(&level.zone_lods) {
+            assert!(lod.faces.len() < detailed.faces.len());
+            assert!(lod.faces.len() * 100 < detailed.faces.len() * 55);
         }
     }
 
@@ -1240,7 +1511,7 @@ mod tests {
         let mut level = LavaCastleInterior::new();
         let mut controller = ShipController::new(&ARWING_SPEC);
         level.enter(&mut controller);
-        controller.ship.position = Vec3::new(0.0, 36.0, SEAL_Z - 5.0);
+        level.force_position(&mut controller, Vec3::new(0.0, 36.0, SEAL_Z - 5.0));
         level.update(&mut controller, &ShipInput::default(), false, false, 0.05);
         assert_eq!(level.seal_open, 0.0);
         assert!(controller.ship.position.z >= SEAL_Z + 8.0);
@@ -1258,7 +1529,7 @@ mod tests {
             level.update(&mut controller, &ShipInput::default(), false, false, 0.05);
         }
         assert_eq!(level.seal_open, 1.0);
-        controller.ship.position = Vec3::new(0.0, 36.0, CHAMBER_Z);
+        level.force_position(&mut controller, Vec3::new(0.0, 36.0, CHAMBER_Z));
         level.update(&mut controller, &ShipInput::default(), false, false, 0.01);
         assert_eq!(level.phase, Phase::Reward);
         for _ in 0..112 {
@@ -1277,5 +1548,46 @@ mod tests {
         level.damage_player(&mut position);
         level.damage_player(&mut position);
         assert_eq!(level.health, PLAYER_HEALTH - 1);
+    }
+
+    #[test]
+    fn interior_uses_water_level_lateral_and_vertical_response() {
+        let mut level = LavaCastleInterior::new();
+        let mut controller = ShipController::new(&ARWING_SPEC);
+        level.enter(&mut controller);
+        let input = ShipInput {
+            yaw: 1,
+            pitch: 1,
+            ..ShipInput::default()
+        };
+        for _ in 0..4 {
+            level.update(&mut controller, &input, false, false, 0.05);
+        }
+        assert!((level.lateral - 3.4).abs() < 0.001);
+        assert!((level.height - 8.0).abs() < 0.001);
+        assert_eq!(controller.ship.yaw, FRAC_PI_2);
+        assert_eq!(controller.ship.pitch, 0.0);
+    }
+
+    #[test]
+    fn enemies_return_and_blender_pillars_are_completely_removed() {
+        let mut level = LavaCastleInterior::new();
+        assert_eq!(level.enemies.len(), 5);
+        assert!(
+            level
+                .zones
+                .iter()
+                .flat_map(|zone| &zone.faces)
+                .all(|face| { !face.group.to_ascii_lowercase().contains("pillar") })
+        );
+        let target = level.enemies[0].position;
+        let mut shots = vec![Projectile {
+            position: target,
+            direction: Vec3::new(0.0, 0.0, -1.0),
+            lifetime: 1.0,
+            scale: 2.0,
+        }];
+        level.resolve_player_fire(&mut shots);
+        assert_eq!(level.enemies[0].health, 1);
     }
 }
