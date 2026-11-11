@@ -233,7 +233,7 @@ fn classify_surface(name: &str) -> SurfaceShader {
         "tower_stone" | "tower_stone_dark" | "castle_bricks" | "castle_bricks_dark"
     ) {
         SurfaceShader::RaceBricksTexture
-    } else if name == "castle_rock" {
+    } else if matches!(name, "castle_rock" | "castle_rock_dark") {
         SurfaceShader::CastleRockTexture
     } else if matches!(name, "underwater_rock" | "blue_stone" | "deep_cave_rock") {
         SurfaceShader::WaterLevelRockTexture
@@ -387,6 +387,7 @@ fn classify_color(name: &str) -> MaterialColor {
     let fixed = if name.starts_with("castle_") {
         match name {
             "castle_rock" => [97, 79, 74],
+            "castle_rock_dark" => [52, 39, 43],
             "castle_lava" => [255, 46, 4],
             "castle_lava_hot" => [255, 168, 10],
             "castle_bricks" => [117, 110, 117],
@@ -420,11 +421,7 @@ fn classify_color(name: &str) -> MaterialColor {
         [153, 207, 226]
     } else if matches!(
         name,
-        "oro_brillante"
-            | "oro_oscuro"
-            | "cristal_celeste"
-            | "energia_cian"
-            | "luz_temporal"
+        "oro_brillante" | "oro_oscuro" | "cristal_celeste" | "energia_cian" | "luz_temporal"
     ) {
         match name {
             "oro_brillante" => [242, 133, 15],

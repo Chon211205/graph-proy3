@@ -3,6 +3,7 @@ mod framebuffer;
 mod galaxy;
 mod hourglass_rescue;
 mod input;
+mod lava_castle;
 mod menu;
 mod obj_loader;
 mod race_track;
@@ -21,19 +22,19 @@ use std::time::Instant;
 use core_guardian::{CoreGuardian, GuardianAction, GuardianInput};
 use framebuffer::Framebuffer;
 use galaxy::{
-    crossed_wormhole, draw_hyperspace_transition, nova_portal_position, wormhole_position, Galaxy,
-    GalaxyTransit,
+    Galaxy, GalaxyTransit, crossed_wormhole, draw_hyperspace_transition, nova_portal_position,
+    wormhole_position,
 };
 use minifb::{Key, ScaleMode, Window, WindowOptions};
-use obj_loader::{load_obj, Face, MaterialColor, Model, SurfaceShader, Vec3};
+use obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 use ship::{
-    Projectile, Ship, ShipController, ShipInput, ShipSpec, ARWING_CAR_SPEC, ARWING_SPEC,
-    ARWING_SUBMARINE_SPEC, ASTRA_CAR_SPEC, ASTRA_SPEC, ASTRA_SUBMARINE_SPEC, BUZZ_CAR_SPEC,
-    BUZZ_SPEC, BUZZ_SUBMARINE_SPEC, COWBOYB_CAR_SPEC, COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC,
-    KIRBY_CAR_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC, MCQUEEN_CAR_SPEC, MCQUEEN_SPEC,
-    MCQUEEN_SUBMARINE_SPEC,
+    ARWING_CAR_SPEC, ARWING_SPEC, ARWING_SUBMARINE_SPEC, ASTRA_CAR_SPEC, ASTRA_SPEC,
+    ASTRA_SUBMARINE_SPEC, BUZZ_CAR_SPEC, BUZZ_SPEC, BUZZ_SUBMARINE_SPEC, COWBOYB_CAR_SPEC,
+    COWBOYB_SPEC, COWBOYB_SUBMARINE_SPEC, KIRBY_CAR_SPEC, KIRBY_SPEC, KIRBY_SUBMARINE_SPEC,
+    MCQUEEN_CAR_SPEC, MCQUEEN_SPEC, MCQUEEN_SUBMARINE_SPEC, Projectile, Ship, ShipController,
+    ShipInput, ShipSpec,
 };
-use triangle::{draw_triangle_shaded_region, ScreenVertex};
+use triangle::{ScreenVertex, draw_triangle_shaded_region};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
@@ -708,6 +709,7 @@ enum GameMode {
     HourglassRescue,
     Racing,
     TowerGuard,
+    LavaCastle,
 }
 
 struct WaterLevelState {
@@ -2403,10 +2405,7 @@ fn procedural_surface_color(
             let animated_point = point.add(drift);
             let color = textures.color.sample_triplanar(animated_point, scale);
             let normal = textures.normal.sample_triplanar(animated_point, scale);
-            let roughness = textures
-                .roughness
-                .sample_triplanar(animated_point, scale)[0]
-                / 255.0;
+            let roughness = textures.roughness.sample_triplanar(animated_point, scale)[0] / 255.0;
             let emission = textures.emission.sample_triplanar(animated_point, scale);
             let height = textures
                 .displacement
@@ -2420,8 +2419,7 @@ fn procedural_surface_color(
                 * (1.0 + fresnel * (1.0 - roughness) * 0.10);
             let rgb: [u32; 3] = std::array::from_fn(|channel| {
                 let glow = [1.12, 0.72, 0.34][channel];
-                (color[channel] * surface_light
-                    + emission[channel] * pulse * glow * 0.72)
+                (color[channel] * surface_light + emission[channel] * pulse * glow * 0.72)
                     .clamp(0.0, 255.0) as u32
             });
             return (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
@@ -3314,6 +3312,17 @@ fn make_five_star_dragon_ball() -> Model {
     ])
 }
 
+fn make_six_star_dragon_ball() -> Model {
+    make_dragon_ball(&[
+        (-0.62, -0.70),
+        (0.62, -0.70),
+        (-0.62, 0.0),
+        (0.62, 0.0),
+        (-0.62, 0.70),
+        (0.62, 0.70),
+    ])
+}
+
 fn make_one_star_dragon_ball() -> Model {
     make_dragon_ball(&[(0.0, 0.0)])
 }
@@ -3533,6 +3542,8 @@ struct PlanetLodModels {
 
 struct VesperPlanet {
     model: Model,
+    medium: Option<Model>,
+    medium_center: Option<Vec3>,
     low: Model,
     source_center: Vec3,
     scale: f32,
@@ -3550,11 +3561,20 @@ impl VesperPlanet {
         low_visual: PlanetVisual,
     ) -> Result<Self, String> {
         let model = load_obj(path).map_err(|error| format!("Error al cargar {path}: {error}"))?;
+        let medium_path = path
+            .strip_suffix(".obj")
+            .map(|base| format!("{base}_medium.obj"));
+        let medium = medium_path
+            .as_deref()
+            .and_then(|candidate| load_obj(candidate).ok());
+        let medium_center = medium.as_ref().map(model_center);
         let source_center = model_center(&model);
         let scale = radius / model_radius(&model, source_center).max(0.001);
         let low = make_planet_lod(radius, 6, 10, low_visual);
         Ok(Self {
             model,
+            medium,
+            medium_center,
             low,
             source_center,
             scale,
@@ -3850,9 +3870,7 @@ fn vesper_planet_position(index: usize, world_time: f32) -> Vec3 {
 fn apply_vesper_black_hole_gravity(position: Vec3, delta_time: f32) -> Vec3 {
     let offset = position.sub(VESPER_SYSTEM_CENTER);
     let distance = offset.dot(offset).sqrt();
-    if distance <= VESPER_BLACK_HOLE_EVENT_HORIZON
-        || distance >= VESPER_BLACK_HOLE_GRAVITY_RADIUS
-    {
+    if distance <= VESPER_BLACK_HOLE_EVENT_HORIZON || distance >= VESPER_BLACK_HOLE_GRAVITY_RADIUS {
         return position;
     }
     let influence = 1.0
@@ -4237,12 +4255,7 @@ fn race_planet_position(world_time: f32) -> Vec3 {
     ))
 }
 
-fn ship_touches_sun(
-    previous: Vec3,
-    current: Vec3,
-    ship_radius: f32,
-    sun_radius: f32,
-) -> bool {
+fn ship_touches_sun(previous: Vec3, current: Vec3, ship_radius: f32, sun_radius: f32) -> bool {
     crossed_wormhole(
         previous,
         current,
@@ -5503,22 +5516,24 @@ fn render_scene(
     } else if galaxy == Galaxy::Nova {
         let body = castle_planet;
         let (sin, cos) = (body.rotation_y + world_time * 0.018).sin_cos();
-        let lod = castle_lod_state.update(projected_planet_radius(
-            &camera,
-            body.center,
-            body.radius,
-            batch.projection.focal,
-        ));
-        let use_low = lod != 0;
+        let lod = castle_lod_state.update_detailed(
+            projected_planet_radius(&camera, body.center, body.radius, batch.projection.focal),
+            false,
+        );
+        let (visible, authored_center) = match (lod, body.medium.as_ref()) {
+            (0, _) => (&body.model, Some(body.source_center)),
+            (1, Some(medium)) => (medium, body.medium_center),
+            _ => (&body.low, None),
+        };
         queue_model(
-            if use_low { &body.low } else { &body.model },
+            visible,
             batch,
             &camera,
             |vertex| {
-                let local = if use_low {
-                    vertex
+                let local = if let Some(center) = authored_center {
+                    vertex.sub(center).mul(body.scale)
                 } else {
-                    vertex.sub(body.source_center).mul(body.scale)
+                    vertex
                 };
                 Vec3::new(
                     local.x * cos - local.z * sin,
@@ -7312,8 +7327,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let vesper_black_hole = make_vesper_black_hole();
     let vesper_orbit_rings = make_vesper_orbit_rings();
     let castle_planet = VesperPlanet::load(
-        "assets/planets/planeta_castillo_lava.obj",
-        Vec3::new(0.0, 55.0, -80.0),
+        "assets/planets/planeta_castillo_lava_optimizado.obj",
+        Vec3::new(260.0, 90.0, 230.0),
         58.0,
         0.0,
         PlanetVisual::Castle,
@@ -7338,6 +7353,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let one_star_dragon_ball = make_one_star_dragon_ball();
     let two_star_dragon_ball = make_two_star_dragon_ball();
     let three_star_dragon_ball = make_three_star_dragon_ball();
+    let six_star_dragon_ball = make_six_star_dragon_ball();
     let reward_pedestal = make_reward_pedestal();
     let reward_chamber = make_reward_chamber();
     let reward_door = make_reward_door();
@@ -7379,6 +7395,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut bubble_emitter = BubbleEmitter::new();
     let mut guardian_fight = CoreGuardian::new();
     let mut hourglass_rescue = hourglass_rescue::HourglassRescue::new();
+    let mut lava_castle = lava_castle::LavaCastle::new();
     let mut tower_game = tower_guard::TowerGame::new(&tower_sprites);
     let mut previous = Instant::now();
     let mut world_time = 0.0_f32;
@@ -7583,8 +7600,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             ship_controller.reset();
             let ship = &mut ship_controller.ship;
             ship.position = wormhole_position(Galaxy::Vesper).add(Vec3::new(-90.0, 22.0, -125.0));
-            (ship.yaw, ship.pitch) =
-                direction_to_angles(VESPER_SYSTEM_CENTER.sub(ship.position));
+            (ship.yaw, ship.pitch) = direction_to_angles(VESPER_SYSTEM_CENTER.sub(ship.position));
             ship.speed = ship.spec.cruise_speed;
             window.set_title("Galaxia Vesper | La nave escapo del agujero negro");
         }
@@ -7742,9 +7758,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 hourglass_rescue.place_ship_at_start(&mut ship_controller.ship);
                 game_mode = GameMode::HourglassRescue;
                 entered_level = true;
-                window.set_title(
-                    "Planeta del Reloj | controles de vuelo libre | Enter dispara",
-                );
+                window.set_title("Planeta del Reloj | controles de vuelo libre | Enter dispara");
             } else if active_galaxy == Galaxy::Vesper && vesper_orbit_index == Some(1) {
                 window.set_cursor_visibility(true);
                 let resident_directory = std::env::current_dir()?.join("resident_level1");
@@ -7791,8 +7805,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 // Vesper's other bodies have no minigame; keep the player in
                 // orbit instead of accidentally launching the water level.
             } else if active_galaxy == Galaxy::Nova {
-                // The castle currently acts as a free-flight destination. Keep
-                // Enter from accidentally launching the aquatic level here.
+                lava_castle.enter(&mut ship_controller);
+                game_mode = GameMode::LavaCastle;
+                entered_level = true;
+                window.set_title("Castillo de Lava | Guardian de Lava | Enter: disparar");
             } else if ship_controller.ship.spiky_planet_locked {
                 guardian_fight = CoreGuardian::new();
                 game_mode = GameMode::CoreGuardian;
@@ -7932,9 +7948,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 }
 
                 if black_hole_absorption_active {
-                    let progress = 1.0
-                        - black_hole_absorption_timer / VESPER_BLACK_HOLE_ABSORPTION_DURATION;
-                    ship.position = vesper_absorption_position(black_hole_absorption_start, progress);
+                    let progress =
+                        1.0 - black_hole_absorption_timer / VESPER_BLACK_HOLE_ABSORPTION_DURATION;
+                    ship.position =
+                        vesper_absorption_position(black_hole_absorption_start, progress);
                     (ship.yaw, ship.pitch) =
                         direction_to_angles(VESPER_SYSTEM_CENTER.sub(ship.position));
                     ship.speed = 0.0;
@@ -8037,8 +8054,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             if black_hole_offset.dot(black_hole_offset).sqrt()
                                 <= VESPER_BLACK_HOLE_EVENT_HORIZON
                             {
-                                black_hole_absorption_timer =
-                                    VESPER_BLACK_HOLE_ABSORPTION_DURATION;
+                                black_hole_absorption_timer = VESPER_BLACK_HOLE_ABSORPTION_DURATION;
                                 black_hole_absorption_start = ship.position;
                                 ship.speed = 0.0;
                                 window.set_title("Agujero negro | La nave esta siendo absorbida");
@@ -8157,9 +8173,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             ));
                         }
                     } else if active_galaxy == Galaxy::Nova {
-                        window.set_title(
-                            "Planeta Castillo | En orbita | Backspace: salir de orbita",
-                        );
+                        window
+                            .set_title("Planeta Castillo | En orbita | Backspace: salir de orbita");
                     } else {
                         window.set_title(
                             "Planeta acuatico | Enter: iniciar nivel | Backspace: salir",
@@ -8443,8 +8458,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 let restart_pressed = crate::input::pressed(Key::R);
                 let rescue_input = hourglass_rescue::Input {
                     forward: window.is_key_down(Key::Space),
-                    brake: window.is_key_down(Key::LeftCtrl)
-                        || window.is_key_down(Key::RightCtrl),
+                    brake: window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl),
                     left: window.is_key_down(Key::A) || window.is_key_down(Key::Left),
                     right: window.is_key_down(Key::D) || window.is_key_down(Key::Right),
                     rise: window.is_key_down(Key::W) || window.is_key_down(Key::Up),
@@ -8471,8 +8485,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     window.set_title("Galaxia Vesper | Vuelo libre | Reloj de Arena");
                     continue;
                 }
-                ship_controller
-                    .update_weapon_and_projectiles(rescue_input.firing, delta_time);
+                ship_controller.update_weapon_and_projectiles(rescue_input.firing, delta_time);
                 hourglass_rescue.update_enemies(
                     &mut ship_controller.ship,
                     &mut ship_controller.projectiles,
@@ -8489,6 +8502,47 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &ship_controller.projectiles,
                     &ship_controller.ship,
                     ship_controller.charge_ratio(),
+                );
+            }
+            GameMode::LavaCastle => {
+                let castle_input = lava_castle::Input {
+                    pitch: pitch_input,
+                    yaw: active_yaw_input,
+                    roll: roll_input,
+                    accelerate: window.is_key_down(Key::Space),
+                    brake: window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl),
+                    boost: window.is_key_down(Key::LeftShift)
+                        || window.is_key_down(Key::RightShift),
+                    fire: window.is_key_down(Key::Enter),
+                    restart: crate::input::pressed(Key::R),
+                    exit: crate::input::pressed(Key::Backspace),
+                };
+                let castle_action =
+                    lava_castle.update(&mut ship_controller, castle_input, delta_time);
+                match castle_action {
+                    lava_castle::Action::Continue => {}
+                    lava_castle::Action::Exit | lava_castle::Action::InteriorTransition => {
+                        game_mode = GameMode::FreeWorld;
+                        launch_ship_from_planet(
+                            &mut ship_controller,
+                            castle_planet.center,
+                            castle_planet.radius,
+                        );
+                        window.set_title(match castle_action {
+                            lava_castle::Action::InteriorTransition => {
+                                "Castillo de Lava | Entrada interior preparada (Parte 2)"
+                            }
+                            _ => "Galaxia Nova | Planeta Castillo",
+                        });
+                        continue;
+                    }
+                }
+                lava_castle.render(
+                    &mut scene_framebuffer,
+                    active_model,
+                    &laser_bolt,
+                    &six_star_dragon_ball,
+                    &ship_controller,
                 );
             }
         }
@@ -8706,6 +8760,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::CoreGuardian => "SOBREVIVE Y ABRE EL NUCLEO",
             GameMode::TowerGuard => "DEFIENDE LA TORRE",
             GameMode::HourglassRescue => "REUNE FRAGMENTOS Y CONSIGUE LA ESFERA",
+            GameMode::LavaCastle => "DERROTA AL GUARDIAN Y ABRE EL CASTILLO",
         };
         let shield_ratio = match game_mode {
             GameMode::WaterLevel => {
@@ -8719,6 +8774,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::CoreGuardian => ((1.0 - guardian_fight.health_ratio()) * 100_000.0) as u32,
             GameMode::TowerGuard => tower_game.score(),
             GameMode::HourglassRescue => hourglass_rescue.rescued_count() as u32 * 1_000,
+            GameMode::LavaCastle => 0,
             GameMode::Racing => {
                 (ship_controller.ship.position.x.abs() + ship_controller.ship.position.z.abs())
                     as u32
@@ -8800,11 +8856,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         if performance_hud {
             let stats = triangle_batch.stats();
             let displayed_lods = if active_galaxy == Galaxy::Vesper {
-                [
-                    vesper_lod_states[0].level,
-                    vesper_lod_states[1].level,
-                    0,
-                ]
+                [vesper_lod_states[0].level, vesper_lod_states[1].level, 0]
             } else {
                 [
                     planet_lod_states[0].level,
@@ -8867,7 +8919,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 &format!(
                     "DRS {} LOD {}/{}/{}",
                     dynamic_resolution.status,
-                    displayed_lods[0], displayed_lods[1], displayed_lods[2],
+                    displayed_lods[0],
+                    displayed_lods[1],
+                    displayed_lods[2],
                 ),
                 center,
                 PANEL_TOP as i32 + 96,
@@ -8980,7 +9034,10 @@ mod tests {
     #[test]
     fn home_planets_use_vesper_orbital_speeds_and_have_three_visible_rings() {
         assert_eq!(PLANET_ORBIT_SPEED, VESPER_SYSTEM_ORBIT_SPEEDS[0].abs());
-        assert_eq!(SPIKY_PLANET_ORBIT_SPEED.abs(), VESPER_SYSTEM_ORBIT_SPEEDS[1].abs());
+        assert_eq!(
+            SPIKY_PLANET_ORBIT_SPEED.abs(),
+            VESPER_SYSTEM_ORBIT_SPEEDS[1].abs()
+        );
         assert_eq!(RACE_PLANET_ORBIT_SPEED, VESPER_SYSTEM_ORBIT_SPEEDS[0].abs());
 
         let rings = make_home_orbit_rings();
@@ -9053,10 +9110,12 @@ mod tests {
     #[test]
     fn vesper_black_hole_has_a_dark_core_and_layered_accretion_disk() {
         let model = make_vesper_black_hole();
-        assert!(model
-            .faces
-            .iter()
-            .any(|face| face.group == "vesper_black_hole_core"));
+        assert!(
+            model
+                .faces
+                .iter()
+                .any(|face| face.group == "vesper_black_hole_core")
+        );
         let disk_faces = model
             .faces
             .iter()
@@ -9079,11 +9138,8 @@ mod tests {
         let pulled_offset = pulled.sub(VESPER_SYSTEM_CENTER);
         assert!(pulled_offset.dot(pulled_offset) < start_offset.dot(start_offset));
 
-        let outside = VESPER_SYSTEM_CENTER.add(Vec3::new(
-            VESPER_BLACK_HOLE_GRAVITY_RADIUS + 10.0,
-            0.0,
-            0.0,
-        ));
+        let outside =
+            VESPER_SYSTEM_CENTER.add(Vec3::new(VESPER_BLACK_HOLE_GRAVITY_RADIUS + 10.0, 0.0, 0.0));
         let unchanged = apply_vesper_black_hole_gravity(outside, 1.0);
         assert!(unchanged.sub(outside).dot(unchanged.sub(outside)) < 0.0001);
     }
@@ -9093,12 +9149,18 @@ mod tests {
         let start = VESPER_SYSTEM_CENTER.add(Vec3::new(24.0, 5.0, 0.0));
         let halfway = vesper_absorption_position(start, 0.5);
         let end = vesper_absorption_position(start, 1.0);
-        let start_distance = start.sub(VESPER_SYSTEM_CENTER).dot(start.sub(VESPER_SYSTEM_CENTER));
+        let start_distance = start
+            .sub(VESPER_SYSTEM_CENTER)
+            .dot(start.sub(VESPER_SYSTEM_CENTER));
         let halfway_distance = halfway
             .sub(VESPER_SYSTEM_CENTER)
             .dot(halfway.sub(VESPER_SYSTEM_CENTER));
         assert!(halfway_distance < start_distance);
-        assert!(end.sub(VESPER_SYSTEM_CENTER).dot(end.sub(VESPER_SYSTEM_CENTER)) < 0.0001);
+        assert!(
+            end.sub(VESPER_SYSTEM_CENTER)
+                .dot(end.sub(VESPER_SYSTEM_CENTER))
+                < 0.0001
+        );
     }
 
     #[test]
@@ -9182,7 +9244,7 @@ mod tests {
 
     #[test]
     fn nova_castle_captures_the_ship_in_a_horizontal_orbit() {
-        let center = Vec3::new(0.0, 55.0, -80.0);
+        let center = Vec3::new(260.0, 90.0, 230.0);
         let mut ship = Ship::new(&ASTRA_SPEC);
         ship.position = center.add(Vec3::new(49.0, 0.0, 0.0));
 
@@ -9200,7 +9262,11 @@ mod tests {
 
         assert!(ship.planet_locked);
         assert!((ship.position.y - center.y).abs() < 0.001);
-        let distance = ship.position.sub(center).dot(ship.position.sub(center)).sqrt();
+        let distance = ship
+            .position
+            .sub(center)
+            .dot(ship.position.sub(center))
+            .sqrt();
         let minimum = NOVA_CASTLE_ORBIT_RADIUS
             + ship.spec.collision_radius
             + COLLISION_MARGIN
@@ -9210,6 +9276,18 @@ mod tests {
         assert!(plane.x.abs() < 0.001);
         assert!((plane.y - 1.0).abs() < 0.001);
         assert!(plane.z.abs() < 0.001);
+    }
+
+    #[test]
+    fn nova_castle_is_directly_ahead_of_the_portal_exit() {
+        let exit = wormhole_position(Galaxy::Nova).add(Vec3::new(0.0, 20.0, -150.0));
+        let castle = Vec3::new(260.0, 90.0, 230.0);
+        let mut ship = Ship::new(&ASTRA_SPEC);
+        ship.position = exit;
+        ship.yaw = std::f32::consts::PI;
+        let forward = ship.movement_basis().0;
+        let direction = castle.sub(exit).normalize();
+        assert!(forward.dot(direction) > 0.999);
     }
 
     #[test]
@@ -9256,10 +9334,12 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let model =
             load_obj(root.join("assets/vehicles/mcqueen/mcqueen_submarino_detallado.obj")).unwrap();
-        assert!(model
-            .vertices
-            .iter()
-            .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
+        assert!(
+            model
+                .vertices
+                .iter()
+                .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
+        );
         assert!(model.faces.iter().all(|face| {
             face.indices
                 .iter()
@@ -9282,14 +9362,16 @@ mod tests {
         }
         assert!(!model.faces.iter().any(|face| face.group == "Neumatico"));
         for side in [-1.0_f32, 1.0] {
-            assert!(model
-                .faces
-                .iter()
-                .filter(|face| face.group == "Aro_helice")
-                .any(|face| face
-                    .indices
+            assert!(
+                model
+                    .faces
                     .iter()
-                    .all(|&i| model.vertices[i].x * side > 1.0)));
+                    .filter(|face| face.group == "Aro_helice")
+                    .any(|face| face
+                        .indices
+                        .iter()
+                        .all(|&i| model.vertices[i].x * side > 1.0))
+            );
         }
         for (material, rgb) in [
             ("mcqueen_red", [225, 26, 35]),
@@ -9297,14 +9379,17 @@ mod tests {
             ("mcqueen_blue", [32, 105, 220]),
             ("mcqueen_white", [247, 249, 252]),
         ] {
-            assert!(model
-                .faces
-                .iter()
-                .any(|face| face.material == material && face.color == MaterialColor::Fixed(rgb)));
+            assert!(
+                model.faces.iter().any(
+                    |face| face.material == material && face.color == MaterialColor::Fixed(rgb)
+                )
+            );
         }
         let center = model_center(&model);
-        assert!((1.4..2.5)
-            .contains(&(model_radius(&model, center) * MCQUEEN_SUBMARINE_SPEC.model_scale)));
+        assert!(
+            (1.4..2.5)
+                .contains(&(model_radius(&model, center) * MCQUEEN_SUBMARINE_SPEC.model_scale))
+        );
         let mut frame = Framebuffer::new(WIDTH, HEIGHT);
         frame.clear(0x080e1d);
         for (index, angle) in [0.35_f32, 1.57, 3.5].into_iter().enumerate() {
@@ -9346,16 +9431,19 @@ mod tests {
         let spaceship =
             load_obj(root.join("assets/vehicles/mcqueen/mcqueen_nave_detallada.obj")).unwrap();
         assert_ne!(model.faces.len(), spaceship.faces.len());
-        assert!(model
-            .vertices
-            .iter()
-            .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
+        assert!(
+            model
+                .vertices
+                .iter()
+                .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
+        );
         let mut wheel_vertices = HashSet::new();
         for face in &model.faces {
-            assert!(face
-                .indices
-                .iter()
-                .all(|&index| index < model.vertices.len()));
+            assert!(
+                face.indices
+                    .iter()
+                    .all(|&index| index < model.vertices.len())
+            );
             if face.group == "Neumatico" {
                 wheel_vertices.extend(face.indices);
             }
@@ -9378,13 +9466,17 @@ mod tests {
             ("Iris", [32, 105, 220]),
             ("Neumatico", [26, 29, 38]),
         ] {
-            assert!(model
-                .faces
-                .iter()
-                .any(|face| face.group == group && face.color == MaterialColor::Fixed(color)));
+            assert!(
+                model
+                    .faces
+                    .iter()
+                    .any(|face| face.group == group && face.color == MaterialColor::Fixed(color))
+            );
         }
         let center = model_center(&model);
-        assert!((1.5..2.5).contains(&(model_radius(&model, center) * MCQUEEN_CAR_SPEC.model_scale)));
+        assert!(
+            (1.5..2.5).contains(&(model_radius(&model, center) * MCQUEEN_CAR_SPEC.model_scale))
+        );
         let mut frame = Framebuffer::new(WIDTH, HEIGHT);
         frame.clear(0x080e1d);
         for (index, angle) in [0.35_f32, 1.57, 3.5].into_iter().enumerate() {
@@ -9423,24 +9515,29 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let model =
             load_obj(root.join("assets/vehicles/mcqueen/mcqueen_nave_detallada.obj")).unwrap();
-        assert!(model
-            .vertices
-            .iter()
-            .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
-        assert!(model
-            .faces
-            .iter()
-            .all(|face| face.indices.iter().all(|&i| i < model.vertices.len())));
+        assert!(
+            model
+                .vertices
+                .iter()
+                .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
+        );
+        assert!(
+            model
+                .faces
+                .iter()
+                .all(|face| face.indices.iter().all(|&i| i < model.vertices.len()))
+        );
         for (material, rgb) in [
             ("mcqueen_red", [225, 26, 35]),
             ("mcqueen_yellow", [255, 211, 36]),
             ("mcqueen_blue", [32, 105, 220]),
             ("mcqueen_white", [247, 249, 252]),
         ] {
-            assert!(model
-                .faces
-                .iter()
-                .any(|face| face.material == material && face.color == MaterialColor::Fixed(rgb)));
+            assert!(
+                model.faces.iter().any(
+                    |face| face.material == material && face.color == MaterialColor::Fixed(rgb)
+                )
+            );
         }
         for group in [
             "Numero_95",
@@ -9530,19 +9627,24 @@ mod tests {
                     && face.shader == SurfaceShader::McQueenEmission
                     && face.color == MaterialColor::Fixed([255, 82, 14])
             }));
-            assert!(model
-                .faces
-                .iter()
-                .any(|face| { face.group.contains("Ojo") || face.group.contains("Iris") }));
-            assert!(model
-                .faces
-                .iter()
-                .any(|face| { face.group == "Pupila" && face.material == "mcqueen_dark" }));
-            for glass_group in ["Cabina_azul", "Parabrisas", "Cupula"] {
-                assert!(!model
+            assert!(
+                model
                     .faces
                     .iter()
-                    .any(|face| { face.group == glass_group && face.material == "mcqueen_glass" }));
+                    .any(|face| { face.group.contains("Ojo") || face.group.contains("Iris") })
+            );
+            assert!(
+                model
+                    .faces
+                    .iter()
+                    .any(|face| { face.group == "Pupila" && face.material == "mcqueen_dark" })
+            );
+            for glass_group in ["Cabina_azul", "Parabrisas", "Cupula"] {
+                assert!(
+                    !model.faces.iter().any(|face| {
+                        face.group == glass_group && face.material == "mcqueen_glass"
+                    })
+                );
             }
 
             let mut points = model
@@ -10252,28 +10354,34 @@ mod tests {
 
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let detailed = load_obj(root.join("assets/planets/water_planet.obj")).unwrap();
-        assert!(detailed
-            .faces
-            .iter()
-            .any(|face| face.shader == SurfaceShader::WaterPlanetSandTexture));
-        assert!(detailed
-            .faces
-            .iter()
-            .any(|face| face.shader == SurfaceShader::WaterPlanetGrassTexture));
+        assert!(
+            detailed
+                .faces
+                .iter()
+                .any(|face| face.shader == SurfaceShader::WaterPlanetSandTexture)
+        );
+        assert!(
+            detailed
+                .faces
+                .iter()
+                .any(|face| face.shader == SurfaceShader::WaterPlanetGrassTexture)
+        );
         assert!(detailed.faces.iter().any(|face| {
             face.material.to_ascii_lowercase().contains("oceano")
                 && face.shader == SurfaceShader::Ocean
         }));
 
         let lod = make_planet_lod(WATER_PLANET_RADIUS, 6, 10, PlanetVisual::Water);
-        assert!(lod
-            .faces
-            .iter()
-            .any(|face| face.shader == SurfaceShader::WaterPlanetSandTexture));
-        assert!(lod
-            .faces
-            .iter()
-            .any(|face| face.shader == SurfaceShader::WaterPlanetGrassTexture));
+        assert!(
+            lod.faces
+                .iter()
+                .any(|face| face.shader == SurfaceShader::WaterPlanetSandTexture)
+        );
+        assert!(
+            lod.faces
+                .iter()
+                .any(|face| face.shader == SurfaceShader::WaterPlanetGrassTexture)
+        );
     }
 
     #[test]
@@ -10300,9 +10408,11 @@ mod tests {
             })
             .collect();
         assert!(!pillars.is_empty());
-        assert!(pillars
-            .iter()
-            .all(|face| face.shader == SurfaceShader::WaterPlanetPillarTexture));
+        assert!(
+            pillars
+                .iter()
+                .all(|face| face.shader == SurfaceShader::WaterPlanetPillarTexture)
+        );
         assert!(planet.faces.iter().any(|face| {
             face.group.to_ascii_lowercase().starts_with("roca_")
                 && face.group.to_ascii_lowercase().contains("_cesped_")
@@ -10331,14 +10441,18 @@ mod tests {
             .filter(|face| face.material.to_ascii_lowercase() == "03_|_tierra.002")
             .collect();
         assert!(!earth_faces.is_empty());
-        assert!(earth_faces
-            .iter()
-            .all(|face| face.shader == SurfaceShader::WaterPlanetEarthTexture));
-        assert!(planet
-            .faces
-            .iter()
-            .filter(|face| face.material.to_ascii_lowercase() == "04_|_cesped.002")
-            .all(|face| face.shader == SurfaceShader::WaterPlanetGrassTexture));
+        assert!(
+            earth_faces
+                .iter()
+                .all(|face| face.shader == SurfaceShader::WaterPlanetEarthTexture)
+        );
+        assert!(
+            planet
+                .faces
+                .iter()
+                .filter(|face| face.material.to_ascii_lowercase() == "04_|_cesped.002")
+                .all(|face| face.shader == SurfaceShader::WaterPlanetGrassTexture)
+        );
     }
 
     #[test]
@@ -10355,9 +10469,11 @@ mod tests {
                 .filter(|face| face.material.to_ascii_lowercase() == material)
                 .collect();
             assert!(!faces.is_empty(), "missing stone material {material}");
-            assert!(faces
-                .iter()
-                .all(|face| face.shader == SurfaceShader::WaterLevelRockTexture));
+            assert!(
+                faces
+                    .iter()
+                    .all(|face| face.shader == SurfaceShader::WaterLevelRockTexture)
+            );
         }
         let sand: Vec<_> = level
             .faces
@@ -10365,9 +10481,10 @@ mod tests {
             .filter(|face| face.material.to_ascii_lowercase() == "underwater_sand")
             .collect();
         assert!(!sand.is_empty());
-        assert!(sand
-            .iter()
-            .all(|face| face.shader == SurfaceShader::WaterLevelSandTexture));
+        assert!(
+            sand.iter()
+                .all(|face| face.shader == SurfaceShader::WaterLevelSandTexture)
+        );
     }
 
     #[test]
@@ -10408,9 +10525,11 @@ mod tests {
             .filter(|face| face.material.eq_ignore_ascii_case("Rosa_cuerpo"))
             .collect();
         assert!(!sphere.is_empty());
-        assert!(sphere
-            .iter()
-            .all(|face| { face.shader == SurfaceShader::CoreGuardianEnvironmentTexture }));
+        assert!(
+            sphere
+                .iter()
+                .all(|face| { face.shader == SurfaceShader::CoreGuardianEnvironmentTexture })
+        );
 
         let tentacle_materials = [
             "Fucsia",
@@ -10429,15 +10548,18 @@ mod tests {
             })
             .collect();
         assert!(!tentacles.is_empty());
-        assert!(tentacles
-            .iter()
-            .all(|face| { face.shader == SurfaceShader::WaterMonsterTissueTexture }));
+        assert!(
+            tentacles
+                .iter()
+                .all(|face| { face.shader == SurfaceShader::WaterMonsterTissueTexture })
+        );
 
         let lod = make_planet_lod(SPIKY_PLANET_RADIUS, 6, 10, PlanetVisual::Spiky);
-        assert!(lod
-            .faces
-            .iter()
-            .all(|face| { face.shader == SurfaceShader::CoreGuardianEnvironmentTexture }));
+        assert!(
+            lod.faces
+                .iter()
+                .all(|face| { face.shader == SurfaceShader::CoreGuardianEnvironmentTexture })
+        );
     }
 
     #[test]
@@ -10449,17 +10571,22 @@ mod tests {
             face.group == "Race_Planet_Terrain"
                 && face.shader == SurfaceShader::RacePlanetGrassTexture
         }));
-        assert!(detailed
-            .faces
-            .iter()
-            .filter(|face| { face.group.contains("Track") || face.group.contains("Boost_Light") })
-            .all(|face| face.shader != SurfaceShader::RacePlanetGrassTexture));
+        assert!(
+            detailed
+                .faces
+                .iter()
+                .filter(|face| {
+                    face.group.contains("Track") || face.group.contains("Boost_Light")
+                })
+                .all(|face| face.shader != SurfaceShader::RacePlanetGrassTexture)
+        );
 
         let lod = make_planet_lod(race_track::PLANET_RADIUS, 6, 10, PlanetVisual::Racing);
-        assert!(lod
-            .faces
-            .iter()
-            .any(|face| { face.shader == SurfaceShader::RacePlanetGrassTexture }));
+        assert!(
+            lod.faces
+                .iter()
+                .any(|face| { face.shader == SurfaceShader::RacePlanetGrassTexture })
+        );
         assert!(lod.faces.iter().any(|face| {
             face.material == "race_rgb_245_208_42"
                 && face.shader != SurfaceShader::RacePlanetGrassTexture
@@ -10568,10 +10695,12 @@ mod tests {
                 || face.group.starts_with("obstacle_arch_top")
         }));
         for sector in 1..=3 {
-            assert!(level
-                .faces
-                .iter()
-                .any(|face| { face.group == format!("TERRAIN_MAIN_SECTOR_{sector}") }));
+            assert!(
+                level
+                    .faces
+                    .iter()
+                    .any(|face| { face.group == format!("TERRAIN_MAIN_SECTOR_{sector}") })
+            );
         }
         assert!(level.faces.iter().any(|face| {
             face.group.starts_with("LONG_LEVEL_CRYSTAL_") && face.material == "Crystal_Cyan"
@@ -10701,10 +10830,12 @@ mod tests {
         ship.position = Vec3::new(-20.0, 6.5, 0.0);
         state.update_enemy_attacks(&ship, 0.1);
         assert!(!state.enemy_projectiles.is_empty());
-        assert!(state
-            .enemy_projectiles
-            .iter()
-            .all(|shot| shot.direction.dot(shot.direction) > 0.99));
+        assert!(
+            state
+                .enemy_projectiles
+                .iter()
+                .all(|shot| shot.direction.dot(shot.direction) > 0.99)
+        );
     }
 
     #[test]
@@ -10841,14 +10972,18 @@ mod tests {
                 .count(),
             10
         );
-        assert!(reward
-            .faces
-            .iter()
-            .any(|face| face.group == "dragon_star_0"));
-        assert!(!reward
-            .faces
-            .iter()
-            .any(|face| face.group == "dragon_star_1"));
+        assert!(
+            reward
+                .faces
+                .iter()
+                .any(|face| face.group == "dragon_star_0")
+        );
+        assert!(
+            !reward
+                .faces
+                .iter()
+                .any(|face| face.group == "dragon_star_1")
+        );
     }
 
     #[test]
@@ -10863,15 +10998,19 @@ mod tests {
             30
         );
         for star in 0..3 {
-            assert!(reward
+            assert!(
+                reward
+                    .faces
+                    .iter()
+                    .any(|face| face.group == format!("dragon_star_{star}"))
+            );
+        }
+        assert!(
+            !reward
                 .faces
                 .iter()
-                .any(|face| face.group == format!("dragon_star_{star}")));
-        }
-        assert!(!reward
-            .faces
-            .iter()
-            .any(|face| face.group == "dragon_star_3"));
+                .any(|face| face.group == "dragon_star_3")
+        );
     }
 
     #[test]
@@ -10885,18 +11024,24 @@ mod tests {
                 .count(),
             20
         );
-        assert!(reward
-            .faces
-            .iter()
-            .any(|face| face.group == "dragon_star_0"));
-        assert!(reward
-            .faces
-            .iter()
-            .any(|face| face.group == "dragon_star_1"));
-        assert!(!reward
-            .faces
-            .iter()
-            .any(|face| face.group == "dragon_star_2"));
+        assert!(
+            reward
+                .faces
+                .iter()
+                .any(|face| face.group == "dragon_star_0")
+        );
+        assert!(
+            reward
+                .faces
+                .iter()
+                .any(|face| face.group == "dragon_star_1")
+        );
+        assert!(
+            !reward
+                .faces
+                .iter()
+                .any(|face| face.group == "dragon_star_2")
+        );
     }
 
     #[test]
@@ -10906,6 +11051,7 @@ mod tests {
             make_two_star_dragon_ball(),
             make_three_star_dragon_ball(),
             make_four_star_dragon_ball(),
+            make_six_star_dragon_ball(),
         ] {
             let shell: Vec<_> = ball
                 .faces
@@ -10913,14 +11059,17 @@ mod tests {
                 .filter(|face| face.group == "dragon_ball")
                 .collect();
             assert!(!shell.is_empty());
-            assert!(shell
-                .iter()
-                .all(|face| face.shader == SurfaceShader::DragonBallGlass && face.smooth));
-            assert!(ball
-                .faces
-                .iter()
-                .filter(|face| face.group.starts_with("dragon_star_"))
-                .all(|face| face.shader != SurfaceShader::DragonBallGlass));
+            assert!(
+                shell
+                    .iter()
+                    .all(|face| face.shader == SurfaceShader::DragonBallGlass && face.smooth)
+            );
+            assert!(
+                ball.faces
+                    .iter()
+                    .filter(|face| face.group.starts_with("dragon_star_"))
+                    .all(|face| face.shader != SurfaceShader::DragonBallGlass)
+            );
         }
 
         let background = vec![0x204060; 16 * 16];
@@ -11086,14 +11235,18 @@ mod tests {
         ] {
             let model = load_obj(root.join("assets/vehicles/buzz").join(filename)).unwrap();
             assert!(model.vertices.len() > minimum.0 && model.faces.len() > minimum.1);
-            assert!(model
-                .vertices
-                .iter()
-                .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
-            assert!(model
-                .faces
-                .iter()
-                .all(|face| face.indices.iter().all(|&i| i < model.vertices.len())));
+            assert!(
+                model
+                    .vertices
+                    .iter()
+                    .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
+            );
+            assert!(
+                model
+                    .faces
+                    .iter()
+                    .all(|face| face.indices.iter().all(|&i| i < model.vertices.len()))
+            );
             for material in [
                 "buzz_white",
                 "buzz_green",
@@ -11181,10 +11334,12 @@ mod tests {
             (1.5..2.5).contains(&submarine_radius),
             "unexpected submarine radius {submarine_radius}"
         );
-        assert!(submarine
-            .faces
-            .iter()
-            .any(|face| { face.group.contains("aro_helice") && face.material == "fin_blue" }));
+        assert!(
+            submarine
+                .faces
+                .iter()
+                .any(|face| { face.group.contains("aro_helice") && face.material == "fin_blue" })
+        );
         for candidate in [&model, &submarine] {
             for material in [
                 "hull_white",
@@ -11433,10 +11588,11 @@ mod tests {
             "sun_dark_cells",
             "sun_corona_flare",
         ] {
-            assert!(sun
-                .faces
-                .iter()
-                .any(|face| { face.material == material && face.shader == SurfaceShader::Sun }));
+            assert!(
+                sun.faces
+                    .iter()
+                    .any(|face| { face.material == material && face.shader == SurfaceShader::Sun })
+            );
         }
     }
 
@@ -11447,10 +11603,12 @@ mod tests {
         assert!(model.vertices.len() > 14_000);
         assert!(model.faces.len() > 29_000);
         assert!(model.faces.iter().any(|face| face.smooth));
-        assert!(model
-            .vertex_normals
-            .iter()
-            .any(|normal| normal.dot(*normal) > 0.9));
+        assert!(
+            model
+                .vertex_normals
+                .iter()
+                .any(|normal| normal.dot(*normal) > 0.9)
+        );
         let radius = model_radius(&model, model_center(&model)) * KIRBY_SPEC.model_scale;
         assert!((1.5..2.0).contains(&radius), "unexpected radius {radius}");
 
@@ -11472,28 +11630,36 @@ mod tests {
                 .contains("kirby_smooth_pink")
                 && face.color == MaterialColor::Fixed([255, 158, 198])
         }));
-        assert!(model
-            .faces
-            .iter()
-            .any(|face| face.group == "Kirby_Star_Emblem"));
-        assert!(model
-            .faces
-            .iter()
-            .any(|face| face.group == "Thruster_Guard_L"));
+        assert!(
+            model
+                .faces
+                .iter()
+                .any(|face| face.group == "Kirby_Star_Emblem")
+        );
+        assert!(
+            model
+                .faces
+                .iter()
+                .any(|face| face.group == "Thruster_Guard_L")
+        );
 
         let submarine =
             load_obj(root.join("assets/vehicles/kirby/kirbysub_detallado.obj")).unwrap();
         assert!(submarine.vertices.len() > 10_000);
         assert!(submarine.faces.len() > 21_000);
         assert!(submarine.faces.iter().any(|face| face.smooth));
-        assert!(submarine
-            .faces
-            .iter()
-            .any(|face| face.group == "Submarine_Star_Emblem"));
-        assert!(submarine
-            .faces
-            .iter()
-            .any(|face| face.group == "Sub_Propeller_Guard_L"));
+        assert!(
+            submarine
+                .faces
+                .iter()
+                .any(|face| face.group == "Submarine_Star_Emblem")
+        );
+        assert!(
+            submarine
+                .faces
+                .iter()
+                .any(|face| face.group == "Sub_Propeller_Guard_L")
+        );
 
         let emitter_offset = |candidate: &Model, group: &str, scale: f32| {
             let mut points = candidate
@@ -11791,18 +11957,38 @@ mod tests {
                 && face.color == MaterialColor::Fixed([117, 110, 117])
         }));
         assert!(model.faces.iter().any(|face| {
-            face.material == "Castle_Rock"
-                && face.shader == SurfaceShader::CastleRockTexture
+            face.material == "Castle_Rock" && face.shader == SurfaceShader::CastleRockTexture
         }));
         assert!(model.faces.iter().any(|face| {
-            face.material == "Castle_Lava"
-                && face.shader == SurfaceShader::CastleLavaTexture
+            face.material == "Castle_Lava" && face.shader == SurfaceShader::CastleLavaTexture
         }));
         assert!(model.faces.iter().any(|face| {
             face.material == "Castle_Portal_Core"
                 && face.color == MaterialColor::Fixed([255, 46, 255])
                 && face.shader == SurfaceShader::CastlePortalGlass
         }));
+    }
+
+    #[test]
+    fn optimized_castle_planet_uses_reduced_close_and_medium_lods() {
+        let original = load_obj("assets/planets/planeta_castillo_lava.obj").unwrap();
+        let optimized = load_obj("assets/planets/planeta_castillo_lava_optimizado.obj").unwrap();
+        let medium =
+            load_obj("assets/planets/planeta_castillo_lava_optimizado_medium.obj").unwrap();
+        assert!(optimized.faces.len() < original.faces.len());
+        assert!(medium.faces.len() < optimized.faces.len() / 2);
+        for material in ["Castle_Lava", "Castle_Bricks", "Castle_Portal_Core"] {
+            assert!(optimized.faces.iter().any(|face| face.material == material));
+        }
+        let planet = VesperPlanet::load(
+            "assets/planets/planeta_castillo_lava_optimizado.obj",
+            Vec3::default(),
+            58.0,
+            0.0,
+            PlanetVisual::Castle,
+        )
+        .unwrap();
+        assert!(planet.medium.is_some());
     }
 
     #[test]
