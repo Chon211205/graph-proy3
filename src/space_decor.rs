@@ -4,8 +4,10 @@ use crate::framebuffer::Framebuffer;
 use crate::galaxy::Galaxy;
 use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
 
-const ASTEROID_COUNT: usize = 34;
+// A belt is mostly fine debris; keep large rocks sparse and add many tiny chips.
+const ASTEROID_COUNT: usize = 56;
 const ASTEROID_RING_SEGMENTS: usize = 6;
+const BELT_DUST_COUNT: usize = 144;
 const DUST_COUNT: u32 = 420;
 
 pub(crate) fn asteroid_belt(galaxy: Galaxy) -> &'static Model {
@@ -25,19 +27,25 @@ pub(crate) fn asteroid_belt(galaxy: Galaxy) -> &'static Model {
 }
 
 fn make_asteroid_belt(palette: [[u8; 3]; 3]) -> Model {
-    let mut vertices = Vec::with_capacity(ASTEROID_COUNT * (ASTEROID_RING_SEGMENTS + 2));
-    let mut faces = Vec::with_capacity(ASTEROID_COUNT * ASTEROID_RING_SEGMENTS * 2);
+    let mut vertices = Vec::with_capacity(
+        ASTEROID_COUNT * (ASTEROID_RING_SEGMENTS + 2) + BELT_DUST_COUNT * 3,
+    );
+    let mut faces = Vec::with_capacity(ASTEROID_COUNT * ASTEROID_RING_SEGMENTS * 2 + BELT_DUST_COUNT);
 
     for asteroid in 0..ASTEROID_COUNT {
         let seed = asteroid as u32 * 7919 + 53;
-        let angle = unit(seed) * std::f32::consts::TAU;
-        let belt_radius = 0.91 + unit(seed ^ 0xa511_e9b3) * 0.18;
+        // A jittered golden-angle layout avoids obvious clumps while keeping
+        // the belt distributed around the star instead of scattering in space.
+        let angle = asteroid as f32 * 2.399_963_1
+            + (unit(seed) - 0.5) * 0.28;
+        let belt_radius = 0.84 + unit(seed ^ 0xa511_e9b3) * 0.32;
         let center = Vec3::new(
             angle.cos() * belt_radius,
-            (unit(seed ^ 0x63d8_3595) - 0.5) * 0.035,
+            angle.sin() * belt_radius * 0.055
+                + (unit(seed ^ 0x63d8_3595) - 0.5) * 0.025,
             angle.sin() * belt_radius,
         );
-        let size = 0.014 + unit(seed ^ 0x9e37_79b9) * 0.021;
+        let size = 0.008 + unit(seed ^ 0x9e37_79b9) * 0.014;
         let rotation = unit(seed ^ 0x7f4a_7c15) * std::f32::consts::TAU;
         let base = vertices.len();
 
@@ -76,6 +84,36 @@ fn make_asteroid_belt(palette: [[u8; 3]; 3]) -> Model {
                 faces.push(face);
             }
         }
+    }
+
+    // Small flat rock chips fill the orbital lane and read as a dusty band at
+    // a distance, while keeping the number of rendered triangles modest.
+    for chip in 0..BELT_DUST_COUNT {
+        let seed = chip as u32 * 65_537 + 0x51ed_270b;
+        let angle = unit(seed) * std::f32::consts::TAU;
+        let radius = 0.82 + unit(seed ^ 0x9e37_79b9) * 0.36;
+        let center = Vec3::new(
+            angle.cos() * radius,
+            angle.sin() * radius * 0.055
+                + (unit(seed ^ 0x63d8_3595) - 0.5) * 0.035,
+            angle.sin() * radius,
+        );
+        let size = 0.0015 + unit(seed ^ 0xa511_e9b3) * 0.003;
+        let spin = unit(seed ^ 0x7f4a_7c15) * std::f32::consts::TAU;
+        let base = vertices.len();
+        for corner in 0..3 {
+            let a = spin + corner as f32 * std::f32::consts::TAU / 3.0;
+            vertices.push(center.add(Vec3::new(a.cos() * size, 0.0, a.sin() * size)));
+        }
+        let color = palette[(chip / 3 + (hash(seed) as usize % palette.len())) % palette.len()];
+        let mut face = Face::new([base, base + 1, base + 2], "space_dust", "asteroid_belt");
+        face.shader = SurfaceShader::Flat;
+        face.color = MaterialColor::Fixed([
+            (color[0] as f32 * 0.58) as u8,
+            (color[1] as f32 * 0.58) as u8,
+            (color[2] as f32 * 0.58) as u8,
+        ]);
+        faces.push(face);
     }
 
     Model::new(vertices, faces)
