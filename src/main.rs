@@ -8,6 +8,7 @@ mod menu;
 mod obj_loader;
 mod race_track;
 mod ship;
+mod space_decor;
 mod tower_guard;
 mod triangle;
 
@@ -3165,6 +3166,7 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
             }
         }
     }
+    space_decor::draw_dust(framebuffer, travel, galaxy);
 }
 
 fn draw_water_planet_atmosphere(
