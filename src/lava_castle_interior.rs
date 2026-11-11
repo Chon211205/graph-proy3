@@ -11,6 +11,10 @@ const SANCTUM_Z: f32 = -215.0;
 const CORRIDOR_Z: f32 = -325.0;
 const SEAL_Z: f32 = -382.0;
 const CHAMBER_Z: f32 = -470.0;
+// Keep the adjacent room fully resolved before it enters the camera view.  More
+// distant rooms remain present through their inexpensive Blender LOD instead of
+// being created abruptly at a hard draw-distance boundary.
+const DETAILED_ZONE_DISTANCE: f32 = 190.0;
 const PLAYER_HEALTH: i32 = 6;
 const REWARD_DURATION: f32 = 5.5;
 const REWARD_COLLECT_TIME: f32 = 2.8;
@@ -141,7 +145,8 @@ impl LavaCastleInterior {
             ],
             hazard_bar: make_hazard_bar(),
             moving_platform: make_moving_platform(),
-            enemy_model: make_interior_enemy(),
+            enemy_model: load_obj("assets/levels/lava_castle_interior/lava_sentinel.obj")
+                .unwrap_or_else(|_| make_interior_enemy()),
             enemy_bolt: make_enemy_bolt(),
             seal: make_seal(),
         }
@@ -496,14 +501,12 @@ impl LavaCastleInterior {
         let centers = [START_Z, FURNACE_Z, SANCTUM_Z, CORRIDOR_Z, CHAMBER_Z];
         for (index, center) in centers.into_iter().enumerate() {
             let distance = (controller.ship.position.z - center).abs();
-            if distance < 150.0 {
-                let zone = if distance < 82.0 {
-                    &self.zones[index]
-                } else {
-                    &self.zone_lods[index]
-                };
-                render_model(zone, frame, &camera, |v| v, Some(self.elapsed), None);
-            }
+            let zone = if distance < DETAILED_ZONE_DISTANCE {
+                &self.zones[index]
+            } else {
+                &self.zone_lods[index]
+            };
+            render_model(zone, frame, &camera, |v| v, Some(self.elapsed), None);
         }
         self.render_fragments(frame, &camera);
         self.render_hazards(frame, &camera);
@@ -1573,6 +1576,21 @@ mod tests {
     fn enemies_return_and_blender_pillars_are_completely_removed() {
         let mut level = LavaCastleInterior::new();
         assert_eq!(level.enemies.len(), 5);
+        for group in [
+            "LavaSentinel_CoreCage",
+            "LavaSentinel_EnergyCore",
+            "LavaSentinel_WingBlade_1",
+            "LavaSentinel_Horn_-1",
+            "LavaSentinel_ThrusterFlame_1",
+        ] {
+            assert!(
+                level
+                    .enemy_model
+                    .faces
+                    .iter()
+                    .any(|face| face.group == group)
+            );
+        }
         assert!(
             level
                 .zones

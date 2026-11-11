@@ -173,6 +173,25 @@ def build_chamber(collection, mats):
         torus(collection, f"DragonBallChamber_EnergyRing_{ring}", (0, 36, -470), 9 + ring * 5, .35, lava_hot, (ring * .45, ring * .2, 0))
 
 
+def build_lava_sentinel(collection, mats):
+    rock, rock_dark, brick, brick_dark, lava, lava_hot, metal, rune = mats
+    # Compact demonic drone designed to remain readable at gameplay distance.
+    cylinder(collection, "LavaSentinel_CoreCage", (0, 0, 0), 3.5, 5.5, metal, 12, (math.pi / 2, 0, 0))
+    torus(collection, "LavaSentinel_CoreRing", (0, 0, -3.0), 2.8, .55, lava_hot)
+    cylinder(collection, "LavaSentinel_EnergyCore", (0, 0, -3.5), 2.0, 2.0, lava, 14, (math.pi / 2, 0, 0))
+    cube(collection, "LavaSentinel_ArmorTop", (0, 2.4, 0), (3.8, 1.2, 3.5), rock_dark, .7)
+    cube(collection, "LavaSentinel_ArmorBottom", (0, -2.4, .4), (3.3, 1.0, 3.0), rock, .6)
+    for side in (-1, 1):
+        cube(collection, f"LavaSentinel_WingRoot_{side}", (side * 4.2, 0, .5), (2.2, .65, 1.5), metal, .35, (0, 0, side * .2))
+        cone(collection, f"LavaSentinel_WingBlade_{side}", (side * 7.0, .2, 1.0), 2.2, 7.5, rock_dark, 7, (0, side * math.pi / 2, side * .25))
+        cone(collection, f"LavaSentinel_Horn_{side}", (side * 2.7, 4.2, .4), 1.0, 4.8, metal, 7, (0, 0, side * .55))
+        cone(collection, f"LavaSentinel_Claw_{side}", (side * 4.5, -3.0, -1.0), .8, 4.0, lava_hot, 6, (0, side * .4, side * .25))
+        cylinder(collection, f"LavaSentinel_Thruster_{side}", (side * 2.3, 0, 3.2), 1.1, 2.6, metal, 10, (math.pi / 2, 0, 0))
+        cone(collection, f"LavaSentinel_ThrusterFlame_{side}", (side * 2.3, 0, 5.2), 1.0, 3.5, lava_hot, 8, (math.pi / 2, 0, 0))
+    for eye in (-1, 1):
+        cylinder(collection, f"LavaSentinel_Eye_{eye}", (eye * 1.35, 1.1, -3.75), .5, .45, lava_hot, 8, (math.pi / 2, 0, 0))
+
+
 def export_collection(collection, path):
     bpy.ops.object.select_all(action="DESELECT")
     for obj in collection.objects:
@@ -218,12 +237,17 @@ def main():
         builder(collection, mats)
         optimize_collection(collection)
         collections.append(collection)
+    enemy_collection = bpy.data.collections.new("lava_sentinel")
+    bpy.context.scene.collection.children.link(enemy_collection)
+    build_lava_sentinel(enemy_collection, mats)
+    optimize_collection(enemy_collection, 0.55)
     bpy.ops.wm.save_as_mainfile(filepath=str(OUTPUT / "lava_castle_interior.blend"))
     for collection, name in zip(collections, names):
         export_collection(collection, OUTPUT / f"{name}.obj")
     for collection, name in zip(collections, names):
         optimize_collection(collection, 0.38)
         export_collection(collection, OUTPUT / f"{name}_lod.obj")
+    export_collection(enemy_collection, OUTPUT / "lava_sentinel.obj")
     print("Created Lava Castle Interior Blender assets in", OUTPUT)
 
 
