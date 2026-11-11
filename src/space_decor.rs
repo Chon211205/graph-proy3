@@ -1,3 +1,4 @@
+use std::fs::File;
 use std::sync::OnceLock;
 
 use crate::framebuffer::Framebuffer;
@@ -5,11 +6,14 @@ use crate::galaxy::Galaxy;
 use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
 
 // A belt is mostly fine debris; keep large rocks sparse and add many tiny chips.
-const ASTEROID_COUNT: usize = 40;
+const INNER_ASTEROID_COUNT: usize = 40;
+const OUTER_ASTEROID_COUNT: usize = 28;
 const ASTEROID_RING_SEGMENTS: usize = 7;
 const ASTEROID_SHAPE_RINGS: usize = 3;
 const BELT_DUST_COUNT: usize = 144;
 const DUST_COUNT: u32 = 420;
+const NEBULA_WIDTH: usize = 640;
+const NEBULA_HEIGHT: usize = 360;
 
 pub(crate) struct Asteroid {
     pub model: Model,
@@ -19,6 +23,64 @@ pub(crate) struct Asteroid {
     pub spin_phase: f32,
     pub spin_speed: f32,
     pub vertical_offset: f32,
+}
+
+struct NebulaTexture {
+    pixels: Vec<[u8; 4]>,
+}
+
+impl NebulaTexture {
+    fn load(path: &str) -> Option<Self> {
+        let file = File::open(path).ok()?;
+        let mut decoder = png::Decoder::new(file);
+        decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+        let mut reader = decoder.read_info().ok()?;
+        let mut source = vec![0; reader.output_buffer_size()];
+        let info = reader.next_frame(&mut source).ok()?;
+        let channels = match info.color_type {
+            png::ColorType::Rgba => 4,
+            png::ColorType::Rgb => 3,
+            png::ColorType::GrayscaleAlpha => 2,
+            png::ColorType::Grayscale => 1,
+            png::ColorType::Indexed => return None,
+        };
+        let source_width = info.width as usize;
+        let source_height = info.height as usize;
+        let mut pixels = Vec::with_capacity(NEBULA_WIDTH * NEBULA_HEIGHT);
+        for y in 0..NEBULA_HEIGHT {
+            let source_y = y * source_height / NEBULA_HEIGHT;
+            for x in 0..NEBULA_WIDTH {
+                let source_x = x * source_width / NEBULA_WIDTH;
+                let offset = (source_y * source_width + source_x) * channels;
+                let pixel = match info.color_type {
+                    png::ColorType::Rgba => [
+                        source[offset],
+                        source[offset + 1],
+                        source[offset + 2],
+                        source[offset + 3],
+                    ],
+                    png::ColorType::Rgb => [
+                        source[offset],
+                        source[offset + 1],
+                        source[offset + 2],
+                        255,
+                    ],
+                    png::ColorType::GrayscaleAlpha => [
+                        source[offset],
+                        source[offset],
+                        source[offset],
+                        source[offset + 1],
+                    ],
+                    png::ColorType::Grayscale => {
+                        [source[offset], source[offset], source[offset], 255]
+                    }
+                    png::ColorType::Indexed => unreachable!(),
+                };
+                pixels.push(pixel);
+            }
+        }
+        Some(Self { pixels })
+    }
 }
 
 pub(crate) fn asteroid_belt(galaxy: Galaxy) -> &'static Model {
@@ -53,27 +115,87 @@ pub(crate) fn asteroids(galaxy: Galaxy) -> &'static [Asteroid] {
     }]
 }
 
+pub(crate) fn draw_nebula(framebuffer: &mut Framebuffer, galaxy: Galaxy) {
+    let nebula_index = match galaxy {
+        Galaxy::Home => 0,
+        Galaxy::Vesper => 1,
+        Galaxy::Nova => return,
+    };
+    static NEBULAS: OnceLock<[Option<NebulaTexture>; 2]> = OnceLock::new();
+    let nebulae = NEBULAS.get_or_init(|| {
+        [
+            NebulaTexture::load("assets/space/nebula_home.png"),
+            NebulaTexture::load("assets/space/nebula_vesper.png"),
+        ]
+    });
+    let Some(nebula) = nebulae[nebula_index].as_ref() else {
+        return;
+    };
+
+    // Render at a capped resolution and enlarge in small blocks; this keeps
+    // the detailed cloud inexpensive on the software framebuffer renderer.
+    let block = (framebuffer.width.div_ceil(NEBULA_WIDTH))
+        .max(framebuffer.height.div_ceil(NEBULA_HEIGHT))
+        .max(1);
+    let opacity = if galaxy == Galaxy::Home { 0.50 } else { 0.47 };
+    for y in (0..framebuffer.height).step_by(block) {
+        let source_y = (y * NEBULA_HEIGHT / framebuffer.height).min(NEBULA_HEIGHT - 1);
+        for x in (0..framebuffer.width).step_by(block) {
+            let source_x = (x * NEBULA_WIDTH / framebuffer.width).min(NEBULA_WIDTH - 1);
+            let [red, green, blue, alpha] = nebula.pixels[source_y * NEBULA_WIDTH + source_x];
+            let alpha = alpha as f32 / 255.0 * opacity;
+            if alpha < 0.008 {
+                continue;
+            }
+            let old = framebuffer.pixels[y * framebuffer.width + x];
+            let blend = |shift: u32, source: u8| {
+                let background = ((old >> shift) & 255) as f32;
+                (background + (source as f32 - background) * alpha).clamp(0.0, 255.0) as u32
+            };
+            let color = (blend(16, red) << 16) | (blend(8, green) << 8) | blend(0, blue);
+            for block_y in y..(y + block).min(framebuffer.height) {
+                let start = block_y * framebuffer.width + x;
+                let end = (x + block).min(framebuffer.width) + block_y * framebuffer.width;
+                framebuffer.pixels[start..end].fill(color);
+            }
+        }
+    }
+}
+
 fn make_asteroids(palette: [[u8; 3]; 3], galaxy_seed: u32) -> Vec<Asteroid> {
-    (0..ASTEROID_COUNT)
+    (0..INNER_ASTEROID_COUNT + OUTER_ASTEROID_COUNT)
         .map(|index| {
             let seed = (index as u32).wrapping_mul(7919).wrapping_add(galaxy_seed);
+            let outer = index >= INNER_ASTEROID_COUNT;
             Asteroid {
-                model: make_asteroid(seed, palette, index),
-                orbit_fraction: 0.84 + unit(seed ^ 0xa511_e9b3) * 0.32,
+                model: make_asteroid(seed, palette, index, if outer { 1.30 } else { 1.0 }),
+                orbit_fraction: if outer {
+                    1.65 + unit(seed ^ 0xa511_e9b3) * 0.78
+                } else {
+                    0.84 + unit(seed ^ 0xa511_e9b3) * 0.32
+                },
                 orbit_phase: index as f32 * 2.399_963_1 + (unit(seed) - 0.5) * 0.28,
                 // Much slower than the planets; each rock has a slightly
                 // different period so the belt does not rotate as one object.
-                orbit_speed: 0.010 + unit(seed ^ 0x63d8_3595) * 0.014,
+                orbit_speed: if outer {
+                    0.0038 + unit(seed ^ 0x63d8_3595) * 0.006
+                } else {
+                    0.010 + unit(seed ^ 0x63d8_3595) * 0.014
+                },
                 spin_phase: unit(seed ^ 0x7f4a_7c15) * std::f32::consts::TAU,
-                spin_speed: 0.055 + unit(seed ^ 0x243f_6a88) * 0.105,
+                spin_speed: if outer {
+                    0.035 + unit(seed ^ 0x243f_6a88) * 0.075
+                } else {
+                    0.055 + unit(seed ^ 0x243f_6a88) * 0.105
+                },
                 vertical_offset: (unit(seed ^ 0x369d_ea0f) - 0.5) * 6.0,
             }
         })
         .collect()
 }
 
-fn make_asteroid(seed: u32, palette: [[u8; 3]; 3], asteroid: usize) -> Model {
-    let size = 2.8 + unit(seed ^ 0x9e37_79b9) * 4.7;
+fn make_asteroid(seed: u32, palette: [[u8; 3]; 3], asteroid: usize, size_scale: f32) -> Model {
+    let size = (2.8 + unit(seed ^ 0x9e37_79b9) * 4.7) * size_scale;
     let rotation = unit(seed ^ 0x7f4a_7c15) * std::f32::consts::TAU;
     let mut vertices = Vec::with_capacity(ASTEROID_RING_SEGMENTS * ASTEROID_SHAPE_RINGS + 2);
     let mut faces = Vec::with_capacity(ASTEROID_RING_SEGMENTS * (ASTEROID_SHAPE_RINGS + 1));

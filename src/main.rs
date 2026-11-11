@@ -3100,7 +3100,7 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
         framebuffer.pixels[start..start + framebuffer.width].fill(color);
     }
 
-    if matches!(galaxy, Galaxy::Vesper | Galaxy::Nova) {
+    if galaxy == Galaxy::Nova {
         let cx = framebuffer.width as f32 * 0.58;
         let cy = framebuffer.height as f32 * 0.44;
         let scale = framebuffer.width.min(framebuffer.height) as f32;
@@ -3126,6 +3126,9 @@ fn draw_skybox(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
             }
         }
     }
+
+    // Use the supplied transparent nebula art as a low-resolution sky overlay.
+    space_decor::draw_nebula(framebuffer, galaxy);
 
     let center_x = framebuffer.width as f32 * 0.5;
     let center_y = framebuffer.height as f32 * 0.48;
