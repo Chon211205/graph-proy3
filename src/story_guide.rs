@@ -26,21 +26,22 @@ impl Planet {
     pub(crate) const fn briefing(self) -> Briefing {
         match self {
             Self::GardenRust => Briefing {
-                name: "JARDIN RUST",
+                name: "JARDINES DE OXIDO",
                 signal: "La carrera oculta una esfera. Gana para recuperar su señal.",
                 objective: "GANA EL GRAN PREMIO ORBITAL",
                 reward_bit: 0b0000001,
             },
             Self::PinkCore => Briefing {
-                name: "PLANETA ROSADO",
+                name: "NOVA ROSA",
                 signal: "El guardian protege una esfera y mantiene abierta la grieta.",
                 objective: "DERROTA AL GUARDIAN DEL NUCLEO",
                 reward_bit: 0b0000100,
             },
             Self::AquaticRuins => Briefing {
-                name: "RUINAS ACUATICAS",
+                name: "ABISMO AZUL",
                 signal: "Las ruinas registraron la primera onda del agujero negro.",
-                objective: "DERROTA AL TIBURON Y RECUPERA LA ESFERA",
+                objective:
+                    "SOBREVIVE A LA PERSECUCION Y DERROTA AL MEGALODON PARA RECUPERAR LA ESFERA",
                 reward_bit: 0b0001000,
             },
             Self::Hourglass => Briefing {
@@ -94,14 +95,10 @@ pub(crate) fn collected(planet: Planet, mask: u8) -> bool {
     mask & planet.briefing().reward_bit != 0
 }
 
-pub(crate) fn sphere_count(mask: u8) -> u32 {
-    (mask & 0b0111_1111).count_ones()
-}
-
 struct Sprite {
     width: usize,
-    height: usize,
     rgba: Vec<[u8; 4]>,
+    visible: (usize, usize, usize, usize),
 }
 
 pub(crate) struct Guide {
@@ -122,91 +119,108 @@ impl Guide {
             planet
         };
         let briefing = phase_planet.briefing();
-        let count = sphere_count(collected_mask);
         let width = frame.width;
         let height = frame.height;
-        let scale = ((height as f32 / 800.0).round() as i32).clamp(1, 2);
-        let left = (width as f32 * 0.018) as usize;
-        let top = (height as f32 * 0.755) as usize;
-        let panel_w = (width as f32 * 0.37) as usize;
-        let panel_h = (height as f32 * 0.225) as usize;
-
-        panel(frame, left, top, panel_w, panel_h);
-        if let Some(robot) = &self.robot {
-            draw_sprite(
-                robot,
-                frame,
-                left + 10,
-                top + panel_h.saturating_sub(98) / 2,
-                72,
-                86,
-            );
-        } else {
-            robot_fallback(frame, left + 18, top + 34, 55);
-        }
-
-        let text_x = left + (panel_w * 25 / 100);
-        let text_center = left + panel_w * 63 / 100;
-        draw_selection_label(
-            frame,
-            "NEXO // GUIA DE VUELO",
-            text_center as i32,
-            (top + 15) as i32,
-            scale,
-            0x68e8ff,
-        );
-        draw_selection_label(
-            frame,
-            briefing.name,
-            text_center as i32,
-            (top + 42) as i32,
-            scale + 1,
-            0xffd27b,
-        );
-
+        let scale = 1;
+        let panel_w = (width as f32 * 0.38)
+            .min(500.0)
+            .min(width.saturating_sub(36) as f32) as usize;
+        let left = ((width as f32 * 0.018) as usize).min(width.saturating_sub(panel_w));
+        let robot_column_w = panel_w / 4;
+        let text_x = left + robot_column_w + 14;
+        let text_w = left + panel_w - text_x - 14;
         let completed = collected(phase_planet, collected_mask);
-        let line = if completed {
+        let description = if completed {
             "Frecuencia asegurada. La red responde con mas fuerza."
         } else {
             briefing.signal
         };
-        draw_wrapped(
-            frame,
-            line,
-            text_x + 4,
-            top + 73,
-            (panel_w * 70 / 100) as i32,
-            scale,
-            0xd7efff,
-        );
-
-        let status = if completed {
+        let objective = if completed {
             "ESFERA RECUPERADA"
         } else {
             briefing.objective
         };
-        draw_selection_label(
-            frame,
-            status,
-            text_center as i32,
-            (top + panel_h - 42) as i32,
-            scale,
-            if completed { 0x7dffc4 } else { 0x9deaff },
-        );
-        let chapter = if count == 7 {
-            "NEXO COMPLETO // VUELVE A VESPER"
+        let description_lines = wrap_text(description, text_w, scale);
+        let objective_lines = wrap_text(objective, text_w, scale);
+
+        // Build the vertical layout from measured text blocks, then place the
+        // separated control strip after the mission objective.
+        let mut cursor = 11usize;
+        let header_y = cursor;
+        cursor += 7 + 5;
+        let title_y = cursor;
+        let title_scale = 2;
+        cursor += 7 * title_scale as usize + 6;
+        let description_y = cursor;
+        cursor += description_lines.len() * 11 + 7;
+        let separator_y = cursor;
+        cursor += 1 + 6;
+        let mission_y = cursor;
+        cursor += 7 + 4;
+        let objective_y = cursor;
+        cursor += objective_lines.len() * 11 + 8;
+        let controls_y = cursor;
+        const CONTROLS_H: usize = 30;
+        let panel_h = controls_y + CONTROLS_H + 1;
+        let bottom_margin = (height as f32 * 0.025).max(18.0) as usize;
+        let top = height.saturating_sub(panel_h + bottom_margin);
+
+        panel(frame, left, top, panel_w, panel_h, controls_y);
+        let divider_x = left + robot_column_w;
+        vertical_rule(frame, divider_x, top + 10, top + controls_y - 1, 0x31536c);
+
+        let robot_box_w = robot_column_w.saturating_sub(22);
+        let robot_box_h = controls_y.saturating_sub(18);
+        if let Some(robot) = &self.robot {
+            draw_sprite_fit(robot, frame, left + 11, top + 8, robot_box_w, robot_box_h);
         } else {
-            "FRECUENCIAS DEL NEXO"
-        };
-        let footer = format!("{chapter} // {count}/7");
-        draw_selection_label(
+            let size = robot_box_w.min(robot_box_h).min(68);
+            robot_fallback(
+                frame,
+                left + (robot_column_w.saturating_sub(size)) / 2,
+                top + (controls_y.saturating_sub(size)) / 2,
+                size,
+            );
+        }
+
+        draw_left(
             frame,
-            &footer,
-            text_center as i32,
-            (top + panel_h - 19) as i32,
-            scale,
-            0xb6cce0,
+            "NEXO // TRANSMISION RECIBIDA",
+            text_x,
+            top + header_y,
+            1,
+            0x68e8ff,
         );
+        draw_left(
+            frame,
+            briefing.name,
+            text_x,
+            top + title_y,
+            title_scale,
+            0xf4efdf,
+        );
+        draw_lines_left(
+            frame,
+            &description_lines,
+            text_x,
+            top + description_y,
+            1,
+            11,
+            0xd7e5ed,
+        );
+        horizontal_rule(frame, text_x, top + separator_y, text_w, 0x31536c);
+        draw_left(frame, "MISION", text_x, top + mission_y, 1, 0xffbd62);
+        draw_lines_left(
+            frame,
+            &objective_lines,
+            text_x,
+            top + objective_y,
+            1,
+            11,
+            if completed { 0x7dffc4 } else { 0xe6edf0 },
+        );
+
+        draw_controls(frame, left, top + controls_y, panel_w, CONTROLS_H);
     }
 }
 
@@ -224,7 +238,7 @@ fn load_sprite(path: &str) -> Option<Sprite> {
         png::ColorType::Grayscale => 1,
         png::ColorType::Indexed => return None,
     };
-    let pixels = data[..info.buffer_size()]
+    let pixels: Vec<[u8; 4]> = data[..info.buffer_size()]
         .chunks_exact(channels)
         .map(|p| match info.color_type {
             png::ColorType::Rgba => [p[0], p[1], p[2], p[3]],
@@ -234,45 +248,121 @@ fn load_sprite(path: &str) -> Option<Sprite> {
             png::ColorType::Indexed => unreachable!(),
         })
         .collect();
+    let mut min_x = info.width as usize;
+    let mut min_y = info.height as usize;
+    let mut max_x = 0usize;
+    let mut max_y = 0usize;
+    for y in 0..info.height as usize {
+        for x in 0..info.width as usize {
+            if pixels[y * info.width as usize + x][3] > 8 {
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x + 1);
+                max_y = max_y.max(y + 1);
+            }
+        }
+    }
+    let visible = if min_x < max_x && min_y < max_y {
+        (min_x, min_y, max_x, max_y)
+    } else {
+        (0, 0, info.width as usize, info.height as usize)
+    };
     Some(Sprite {
         width: info.width as usize,
-        height: info.height as usize,
         rgba: pixels,
+        visible,
     })
 }
 
-fn panel(frame: &mut Framebuffer, left: usize, top: usize, width: usize, height: usize) {
+fn panel(
+    frame: &mut Framebuffer,
+    left: usize,
+    top: usize,
+    width: usize,
+    height: usize,
+    controls_y: usize,
+) {
     let right = left.saturating_add(width).min(frame.width);
     let bottom = top.saturating_add(height).min(frame.height);
     for y in top..bottom {
         for x in left..right {
-            let edge = x < left + 2 || x + 2 >= right || y < top + 2 || y + 2 >= bottom;
+            let edge = x < left + 1 || x + 1 >= right || y < top + 1 || y + 1 >= bottom;
             let i = y * frame.width + x;
-            frame.pixels[i] = if edge {
-                0x46e6ff
-            } else {
-                blend(frame.pixels[i], 0x06172c, 225)
-            };
+            frame.pixels[i] = if edge { 0x49677f } else { 0x061321 };
         }
+    }
+    horizontal_rule(
+        frame,
+        left + 1,
+        top + 1,
+        width.saturating_sub(2).min(88),
+        0x46e6ff,
+    );
+    let controls_top = top.saturating_add(controls_y).min(bottom);
+    for y in controls_top..bottom.saturating_sub(1) {
+        for x in left.saturating_add(1)..right.saturating_sub(1) {
+            frame.pixels[y * frame.width + x] = 0x0a1b2a;
+        }
+    }
+    horizontal_rule(
+        frame,
+        left + 1,
+        controls_top,
+        width.saturating_sub(2),
+        0x31536c,
+    );
+}
+
+fn vertical_rule(frame: &mut Framebuffer, x: usize, top: usize, bottom: usize, color: u32) {
+    if x >= frame.width {
+        return;
+    }
+    for y in top.min(frame.height)..bottom.min(frame.height) {
+        frame.pixels[y * frame.width + x] = color;
     }
 }
 
-fn draw_sprite(sprite: &Sprite, frame: &mut Framebuffer, x: usize, y: usize, w: usize, h: usize) {
-    if sprite.width == 0 || sprite.height == 0 || w == 0 || h == 0 {
+fn horizontal_rule(frame: &mut Framebuffer, x: usize, y: usize, width: usize, color: u32) {
+    if y >= frame.height || x >= frame.width {
         return;
     }
-    for dy in 0..h {
-        let py = y + dy;
+    let end = x.saturating_add(width).min(frame.width);
+    for px in x..end {
+        frame.pixels[y * frame.width + px] = color;
+    }
+}
+
+fn draw_sprite_fit(
+    sprite: &Sprite,
+    frame: &mut Framebuffer,
+    x: usize,
+    y: usize,
+    w: usize,
+    h: usize,
+) {
+    let (min_x, min_y, max_x, max_y) = sprite.visible;
+    let source_w = max_x.saturating_sub(min_x);
+    let source_h = max_y.saturating_sub(min_y);
+    if source_w == 0 || source_h == 0 || w == 0 || h == 0 {
+        return;
+    }
+    let fit = (w as f32 / source_w as f32).min(h as f32 / source_h as f32);
+    let draw_w = ((source_w as f32 * fit).round() as usize).max(1).min(w);
+    let draw_h = ((source_h as f32 * fit).round() as usize).max(1).min(h);
+    let draw_x = x + (w - draw_w) / 2;
+    let draw_y = y + (h - draw_h) / 2;
+    for dy in 0..draw_h {
+        let py = draw_y + dy;
         if py >= frame.height {
             break;
         }
-        let sy = (dy * sprite.height / h).min(sprite.height - 1);
-        for dx in 0..w {
-            let px = x + dx;
+        let sy = min_y + (dy * source_h / draw_h).min(source_h - 1);
+        for dx in 0..draw_w {
+            let px = draw_x + dx;
             if px >= frame.width {
                 break;
             }
-            let sx = (dx * sprite.width / w).min(sprite.width - 1);
+            let sx = min_x + (dx * source_w / draw_w).min(source_w - 1);
             let [r, g, b, a] = sprite.rgba[sy * sprite.width + sx];
             if a == 0 {
                 continue;
@@ -287,6 +377,78 @@ fn draw_sprite(sprite: &Sprite, frame: &mut Framebuffer, x: usize, y: usize, w: 
     }
 }
 
+fn measure_text(text: &str, scale: i32) -> usize {
+    if text.is_empty() {
+        0
+    } else {
+        (text.chars().count() * 6 - 1) * scale.max(1) as usize
+    }
+}
+
+fn draw_left(frame: &mut Framebuffer, text: &str, x: usize, y: usize, scale: i32, color: u32) {
+    let width = measure_text(text, scale);
+    draw_selection_label(frame, text, (x + width / 2) as i32, y as i32, scale, color);
+}
+
+fn draw_lines_left(
+    frame: &mut Framebuffer,
+    lines: &[String],
+    x: usize,
+    y: usize,
+    scale: i32,
+    line_height: usize,
+    color: u32,
+) {
+    for (index, line) in lines.iter().enumerate() {
+        draw_left(frame, line, x, y + index * line_height, scale, color);
+    }
+}
+
+/// Word wrapping measured in the same 6-pixel glyph advance used by the HUD
+/// font. A small raggedness cost balances lines and discourages orphan words.
+fn wrap_text(text: &str, max_width: usize, scale: i32) -> Vec<String> {
+    let normalized = text.to_ascii_uppercase();
+    let words: Vec<&str> = normalized.split_whitespace().collect();
+    if words.is_empty() {
+        return Vec::new();
+    }
+    let max_width = max_width.max(1);
+    let n = words.len();
+    let mut costs = vec![u64::MAX; n + 1];
+    let mut next_word = vec![n; n];
+    costs[n] = 0;
+    for start in (0..n).rev() {
+        let mut line = String::new();
+        for end in start..n {
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            line.push_str(words[end]);
+            let measured = measure_text(&line, scale);
+            if measured > max_width && end > start {
+                break;
+            }
+            let slack = max_width.saturating_sub(measured) as u64;
+            let is_single_word_orphan = end == start && (start > 0 || end + 1 < n);
+            let orphan_penalty = if is_single_word_orphan { 220_000 } else { 0 };
+            let line_cost = 1_000_000 + slack * slack + orphan_penalty;
+            let candidate = line_cost.saturating_add(costs[end + 1]);
+            if candidate < costs[start] {
+                costs[start] = candidate;
+                next_word[start] = end + 1;
+            }
+        }
+    }
+    let mut lines = Vec::new();
+    let mut start = 0;
+    while start < n {
+        let end = next_word[start].max(start + 1).min(n);
+        lines.push(words[start..end].join(" "));
+        start = end;
+    }
+    lines
+}
+
 fn blend(under: u32, over: u32, alpha: u8) -> u32 {
     let a = alpha as u32;
     let inv = 255 - a;
@@ -294,52 +456,6 @@ fn blend(under: u32, over: u32, alpha: u8) -> u32 {
     let g = ((((under >> 8) & 255) * inv + ((over >> 8) & 255) * a) / 255) & 255;
     let b = (((under & 255) * inv + (over & 255) * a) / 255) & 255;
     (r << 16) | (g << 8) | b
-}
-
-fn draw_wrapped(
-    frame: &mut Framebuffer,
-    text: &str,
-    x: usize,
-    y: usize,
-    max_width: i32,
-    scale: i32,
-    color: u32,
-) {
-    let text = text.to_ascii_uppercase();
-    let max_chars = (max_width / (6 * scale.max(1))).max(1) as usize;
-    let mut line = String::new();
-    let mut row = 0;
-    for word in text.split_whitespace() {
-        if !line.is_empty() && line.len() + 1 + word.len() > max_chars {
-            draw_selection_label(
-                frame,
-                &line,
-                (x + max_width as usize / 2) as i32,
-                (y + row * 20 * scale as usize) as i32,
-                scale,
-                color,
-            );
-            line.clear();
-            row += 1;
-            if row >= 2 {
-                break;
-            }
-        }
-        if !line.is_empty() {
-            line.push(' ');
-        }
-        line.push_str(word);
-    }
-    if !line.is_empty() && row < 2 {
-        draw_selection_label(
-            frame,
-            &line,
-            (x + max_width as usize / 2) as i32,
-            (y + row * 20 * scale as usize) as i32,
-            scale,
-            color,
-        );
-    }
 }
 
 fn robot_fallback(frame: &mut Framebuffer, x: usize, y: usize, size: usize) {
@@ -350,6 +466,52 @@ fn robot_fallback(frame: &mut Framebuffer, x: usize, y: usize, size: usize) {
             }
             let i = (y + dy).min(frame.height - 1) * frame.width + (x + dx).min(frame.width - 1);
             frame.pixels[i] = if dy < size / 2 { 0xbbefff } else { 0x38dff4 };
+        }
+    }
+}
+
+fn draw_controls(frame: &mut Framebuffer, left: usize, top: usize, panel_w: usize, height: usize) {
+    let key_x = left + 12;
+    let key_w = 43usize;
+    let key_h = 17usize.min(height.saturating_sub(8));
+    let key_y = top + (height.saturating_sub(key_h)) / 2;
+    fill_rect(frame, key_x, key_y, key_w, key_h, 0xffbd62);
+    draw_left(
+        frame,
+        "ENTER",
+        key_x + 7,
+        key_y + (key_h.saturating_sub(7)) / 2,
+        1,
+        0x1a1b22,
+    );
+    draw_left(
+        frame,
+        "INICIAR MISION",
+        key_x + key_w + 9,
+        key_y + (key_h.saturating_sub(7)) / 2,
+        1,
+        0xf4efdf,
+    );
+
+    let secondary = "BACKSPACE · VOLVER";
+    let secondary_w = measure_text(secondary, 1);
+    let right = left + panel_w - 13;
+    draw_left(
+        frame,
+        secondary,
+        right.saturating_sub(secondary_w),
+        key_y + (key_h.saturating_sub(7)) / 2,
+        1,
+        0x9aabba,
+    );
+}
+
+fn fill_rect(frame: &mut Framebuffer, x: usize, y: usize, width: usize, height: usize, color: u32) {
+    let right = x.saturating_add(width).min(frame.width);
+    let bottom = y.saturating_add(height).min(frame.height);
+    for py in y.min(frame.height)..bottom {
+        for px in x.min(frame.width)..right {
+            frame.pixels[py * frame.width + px] = color;
         }
     }
 }
