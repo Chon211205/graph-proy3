@@ -6788,6 +6788,7 @@ fn draw_split_coop_hud(
     framebuffer: &mut Framebuffer,
     first: &ShipController,
     second: &ShipController,
+    dragon_balls: u8,
 ) {
     let half = framebuffer.width / 2;
     let scale = ((framebuffer.height as f32 / 900.0).round() as i32).clamp(1, 2);
@@ -6813,6 +6814,14 @@ fn draw_split_coop_hud(
             49,
             scale,
             0xffffff,
+        );
+        draw_selection_label(
+            framebuffer,
+            &format!("ESFERAS {}/7", dragon_balls.count_ones()),
+            (left + 105.min(half / 2)) as i32,
+            72,
+            scale,
+            0xffc95c,
         );
         hud_rect(
             framebuffer,
@@ -7767,6 +7776,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut last_tower_cursor = (0.5_f32, 0.52_f32);
     let mut tower_mouse_down = false;
     let mut tower_dragon_ball_collected = false;
+    // One bit per Dragon Ball. Both local players read and write this shared
+    // progression, so a completed planet cannot be farmed twice.
+    let mut collected_dragon_balls: u8 = 0;
     let mut tower_reward_timer = 0.0_f32;
     let mut tower_reward_position = Vec3::default();
     let mut solar_explosion_timer = 0.0_f32;
@@ -8288,7 +8300,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             && coop_controller.ship.planet_locked
             && gamepad_two.pressed(crate::input::Gamepad::A)
         {
-            if coop_active_galaxy == Galaxy::Home && coop_controller.ship.race_planet_locked {
+            if coop_active_galaxy == Galaxy::Home
+                && coop_controller.ship.race_planet_locked
+                && collected_dragon_balls & 0b0000001 == 0
+            {
                 if let Some((_, car_spec)) = race_vehicles[coop_selected_ship] {
                     coop_controller = ShipController::new(car_spec);
                     if coop_race_track.enter(
@@ -8299,11 +8314,15 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         coop_game_mode = GameMode::Racing;
                     }
                 }
-            } else if coop_active_galaxy == Galaxy::Home && coop_controller.ship.spiky_planet_locked
+            } else if coop_active_galaxy == Galaxy::Home
+                && coop_controller.ship.spiky_planet_locked
+                && collected_dragon_balls & 0b0000100 == 0
             {
                 coop_guardian_fight = CoreGuardian::new();
                 coop_game_mode = GameMode::CoreGuardian;
-            } else if coop_active_galaxy == Galaxy::Home && !coop_controller.ship.race_planet_locked
+            } else if coop_active_galaxy == Galaxy::Home
+                && !coop_controller.ship.race_planet_locked
+                && collected_dragon_balls & 0b0001000 == 0
             {
                 let coop_level_spec = match coop_selected_ship {
                     0 => &ARWING_SUBMARINE_SPEC,
@@ -8322,7 +8341,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 coop_hourglass_rescue = hourglass_rescue::HourglassRescue::new();
                 coop_hourglass_rescue.place_ship_at_start(&mut coop_controller.ship);
                 coop_game_mode = GameMode::HourglassRescue;
-            } else if coop_active_galaxy == Galaxy::Vesper && coop_vesper_orbit_index == Some(1) {
+            } else if coop_active_galaxy == Galaxy::Vesper
+                && coop_vesper_orbit_index == Some(1)
+                && collected_dragon_balls & 0b0000010 == 0
+            {
                 coop_tower_game = tower_guard::TowerGame::new(&tower_sprites);
                 coop_game_mode = GameMode::TowerGuard;
             } else if coop_active_galaxy == Galaxy::Nova {
@@ -8335,7 +8357,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             && ship_controller.ship.planet_locked
             && (crate::input::pressed(Key::Enter) || gamepad.pressed(crate::input::Gamepad::A))
         {
-            if ship_controller.ship.race_planet_locked {
+            if ship_controller.ship.race_planet_locked && collected_dragon_balls & 0b0000001 == 0 {
                 if let Some((_, car_spec)) = race_vehicles[selected_ship] {
                     ship_controller = ShipController::new(car_spec);
                     if race_track.enter(&mut ship_controller, selected_ship, &race_vehicles) {
@@ -8472,6 +8494,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         };
         if coop_enabled && coop_game_mode == GameMode::Racing {
             if gamepad_two.pressed(crate::input::Gamepad::B) || coop_race_track.reward_complete() {
+                if coop_race_track.reward_complete() {
+                    collected_dragon_balls |= 0b0000001;
+                }
                 coop_game_mode = GameMode::FreeWorld;
                 coop_controller = ShipController::new(ship_spec);
                 coop_race_track.leave(&mut coop_controller, race_planet_position(world_time));
@@ -8559,6 +8584,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &mut coop_controller.projectiles,
                 );
                 coop_bubble_emitter.update(&coop_controller.ship, delta_time);
+                if coop_water_level_state.dragon_ball_collected {
+                    collected_dragon_balls |= 0b0001000;
+                }
             }
         } else if coop_enabled && coop_game_mode == GameMode::CoreGuardian {
             let action = coop_guardian_fight.update(
@@ -8684,6 +8712,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             if run.scene == "free" && !ship_controller.ship.planet_locked {
                 place_ship_near_race_planet(&mut ship_controller, world_time);
             }
+        }
+        if guardian_fight.reward_received() || coop_guardian_fight.reward_received() {
+            collected_dragon_balls |= 0b0000100;
+        }
+        if tower_dragon_ball_collected {
+            collected_dragon_balls |= 0b0000010;
         }
 
         let update_scene_start = Instant::now();
@@ -9523,6 +9557,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         || gamepad.pressed(crate::input::Gamepad::A),
                 };
                 if race_track.reward_complete() {
+                    collected_dragon_balls |= 0b0000001;
                     game_mode = GameMode::FreeWorld;
                     ship_controller = ShipController::new(ship_spec);
                     race_track.leave(&mut ship_controller, race_planet_position(world_time));
@@ -9586,6 +9621,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 if water_level_state.dragon_ball_collected
                     && water_level_state.mission_complete_timer <= 0.0
                 {
+                    collected_dragon_balls |= 0b0001000;
                     game_mode = GameMode::FreeWorld;
                     bubble_emitter.clear();
                     ship_controller = ShipController::new(ship_spec);
@@ -10465,7 +10501,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             _ => None,
         };
         if coop_enabled {
-            draw_split_coop_hud(&mut framebuffer, &ship_controller, &coop_controller);
+            draw_split_coop_hud(
+                &mut framebuffer,
+                &ship_controller,
+                &coop_controller,
+                collected_dragon_balls,
+            );
         } else {
             draw_unified_combat_hud(
                 &mut framebuffer,
