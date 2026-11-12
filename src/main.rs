@@ -8801,7 +8801,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 let ship = &mut ship_controller.ship;
                 let previous_ship_position = ship.position;
 
-                if crate::input::pressed(Key::Backspace) && ship.planet_locked {
+                if (crate::input::pressed(Key::Backspace)
+                    || gamepad.pressed(crate::input::Gamepad::B))
+                    && ship.planet_locked
+                {
                     ship.planet_locked = false;
                     ship.spiky_planet_locked = false;
                     ship.race_planet_locked = false;
@@ -9004,6 +9007,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     let coop_movement = coop_ship.speed * delta_time;
                     if window.is_key_down(Key::G)
                         || gamepad_two.pressed(crate::input::Gamepad::SELECT)
+                        || gamepad_two.pressed(crate::input::Gamepad::B)
                     {
                         coop_ship.planet_locked = false;
                         coop_ship.spiky_planet_locked = false;
@@ -9892,7 +9896,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     let coop_ship = &mut coop_controller.ship;
                     let previous_position = coop_ship.position;
                     let movement = coop_ship.speed * delta_time;
-                    if gamepad_two.pressed(crate::input::Gamepad::SELECT) {
+                    if gamepad_two.pressed(crate::input::Gamepad::SELECT)
+                        || gamepad_two.pressed(crate::input::Gamepad::B)
+                    {
                         coop_ship.planet_locked = false;
                         coop_ship.spiky_planet_locked = false;
                         coop_ship.race_planet_locked = false;
