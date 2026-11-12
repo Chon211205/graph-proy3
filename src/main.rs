@@ -5592,15 +5592,16 @@ fn render_scene(
         );
     }
 
-    // Place natural, thin debris belts between the planetary orbits in the
-    // two star systems. Nova is a standalone world and has no orbital belt.
+    // Keep fine debris and collectible-size rocks in the same orbital lanes.
     let asteroid_orbit = match galaxy {
         Galaxy::Home => Some((sun_position, 350.0)),
         Galaxy::Vesper => Some((VESPER_SYSTEM_CENTER, 350.0)),
-        Galaxy::Nova => None,
+        // Nova has no star system center; its three belts circle the region
+        // between the return portal and the castle world.
+        Galaxy::Nova => Some((Vec3::new(0.0, 70.0, 0.0), 300.0)),
     };
     if let Some((asteroid_center, asteroid_radius)) = asteroid_orbit {
-        let dust_rotation = world_time * 0.006;
+        let dust_rotation = world_time * if galaxy == Galaxy::Nova { 0.0035 } else { 0.006 };
         let (dust_sin, dust_cos) = dust_rotation.sin_cos();
         queue_model(
             space_decor::asteroid_belt(galaxy),
@@ -5620,14 +5621,12 @@ fn render_scene(
         );
 
         for asteroid in space_decor::asteroids(galaxy) {
-            let orbit_angle = asteroid.orbit_phase + world_time * asteroid.orbit_speed;
-            let (orbit_sin, orbit_cos) = orbit_angle.sin_cos();
-            let radius = asteroid.orbit_fraction * asteroid_radius;
-            let position = asteroid_center.add(Vec3::new(
-                orbit_cos * radius,
-                orbit_sin * radius * 0.055 + asteroid.vertical_offset,
-                orbit_sin * radius,
-            ));
+            let position = space_decor::asteroid_position(
+                asteroid,
+                asteroid_center,
+                asteroid_radius,
+                world_time,
+            );
             let spin = asteroid.spin_phase + world_time * asteroid.spin_speed;
             let (spin_sin, spin_cos) = spin.sin_cos();
             queue_model(
@@ -8287,6 +8286,27 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     ship.orbit_plane_normal = None;
                     ship.orbit_camera_blend = 0.0;
                     window.set_title("La nave fue destruida por el Sol");
+                }
+                if !portal_approach_active && !black_hole_absorption_active && !ship.planet_locked {
+                    let asteroid_field = match active_galaxy {
+                        Galaxy::Home => Some((Vec3::new(SUN_POSITION_X, 20.0, 0.0), 350.0)),
+                        Galaxy::Vesper => Some((VESPER_SYSTEM_CENTER, 350.0)),
+                        Galaxy::Nova => Some((Vec3::new(0.0, 70.0, 0.0), 300.0)),
+                    };
+                    if let Some((center, radius)) = asteroid_field {
+                        if let Some(safe_position) = space_decor::asteroid_collision_position(
+                            previous_ship_position,
+                            ship.position,
+                            ship.spec.collision_radius,
+                            active_galaxy,
+                            center,
+                            radius,
+                            world_time,
+                        ) {
+                            ship.position = safe_position;
+                            ship.speed = ship.speed.min(ship.spec.cruise_speed * 0.38);
+                        }
+                    }
                 }
                 let camera_target = if ship.orbit_plane_normal.is_some() {
                     1.0
