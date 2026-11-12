@@ -6823,7 +6823,11 @@ fn draw_split_coop_hud(
         );
         draw_selection_label(
             framebuffer,
-            "EXPLORA Y COOPERA  //  C: SALIR",
+            if index == 1 {
+                "SELECT: HANGAR  //  C: SALIR"
+            } else {
+                "CRUCETA: NAVE  //  C: SALIR"
+            },
             center as i32,
             framebuffer.height as i32 - 49,
             scale,
@@ -7244,6 +7248,7 @@ fn select_ship(
     choices: &[(&Model, &ShipSpec)],
     ship_forms: &[Vec<(&Model, &ShipSpec, &str)>],
     initial_selection: usize,
+    gamepad_index: u32,
 ) -> Result<Option<(usize, usize)>, minifb::Error> {
     crate::input::clear();
     window.update();
@@ -7267,7 +7272,7 @@ fn select_ship(
         (428, 385),
     ];
     let mut thumbnails = Vec::with_capacity(choices.len());
-    let mut gamepad = crate::input::Gamepad::default();
+    let mut gamepad = crate::input::Gamepad::new(gamepad_index);
     for (index, forms) in ship_forms.iter().enumerate() {
         let (model, spec, _) = forms[0];
         let (left, top) = card_positions[index];
@@ -7548,7 +7553,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 return Ok(false);
             }
             if let Some(index) =
-                select_ship(&mut window, &mut framebuffer, &choices, &ship_forms, 0)?
+                select_ship(&mut window, &mut framebuffer, &choices, &ship_forms, 0, 0)?
             {
                 break index;
             }
@@ -7557,6 +7562,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
         }
     };
+    // Selection is local to each player. P2 starts with P1's choice but can
+    // change it at any time while flying freely.
+    let mut coop_selected_ship = selected_ship;
     let (mut ship_model, mut ship_spec) = choices[selected_ship];
     if selected_ship == 5 && initial_form == 1 {
         ship_spec = &MCQUEEN_CAR_SPEC;
@@ -7843,6 +7851,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         &choices,
                         &ship_forms,
                         selected_ship,
+                        0,
                     )? {
                         if let Some((_, car_spec)) = race_vehicles[new_selection] {
                             selected_ship = new_selection;
@@ -7902,6 +7911,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         &choices,
                         &ship_forms,
                         selected_ship,
+                        0,
                     )? {
                         selected_ship = new_selection;
                         (ship_model, ship_spec) = choices[selected_ship];
@@ -7970,6 +7980,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         &choices,
                         &ship_forms,
                         selected_ship,
+                        0,
                     )? {
                         selected_ship = new_selection;
                         (ship_model, ship_spec) = choices[selected_ship];
@@ -8026,7 +8037,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         {
             coop_enabled = !coop_enabled;
             if coop_enabled {
-                coop_controller = ShipController::new(ship_spec);
+                coop_controller = ShipController::new(choices[coop_selected_ship].1);
                 coop_controller.ship.position =
                     ship_controller.ship.position.add(Vec3::new(8.0, 0.0, 0.0));
                 coop_controller.ship.yaw = ship_controller.ship.yaw;
@@ -8034,6 +8045,66 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             } else {
                 window.set_title("Sistema solar | Vuelo libre 3D | C: cooperativo");
             }
+        }
+        if coop_enabled
+            && coop_game_mode == GameMode::FreeWorld
+            && !coop_controller.ship.planet_locked
+            && gamepad_two.pressed(crate::input::Gamepad::SELECT)
+        {
+            if let Some((new_selection, _)) = select_ship(
+                &mut window,
+                &mut framebuffer,
+                &choices,
+                &ship_forms,
+                coop_selected_ship,
+                1,
+            )? {
+                coop_selected_ship = new_selection;
+                coop_controller.ship.spec = choices[coop_selected_ship].1;
+            }
+            previous = Instant::now();
+            crate::input::clear();
+            continue;
+        }
+        if game_mode == GameMode::FreeWorld
+            && !ship_controller.ship.planet_locked
+            && (gamepad.pressed(crate::input::Gamepad::DPAD_LEFT)
+                || gamepad.pressed(crate::input::Gamepad::DPAD_RIGHT))
+        {
+            let direction = if gamepad.pressed(crate::input::Gamepad::DPAD_LEFT) {
+                choices.len() - 1
+            } else {
+                1
+            };
+            selected_ship = (selected_ship + direction) % choices.len();
+            (ship_model, ship_spec) = choices[selected_ship];
+            car_mode = false;
+            base_center = model_center(ship_model);
+            ship_controller.ship.spec = ship_spec;
+            (level_ship_model, level_ship_spec) = match selected_ship {
+                0 => (&arwing_submarine_model, &ARWING_SUBMARINE_SPEC),
+                1 => (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC),
+                2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
+                3 => (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC),
+                4 => (&buzz_variants[2], &BUZZ_SUBMARINE_SPEC),
+                5 => (&mcqueen_submarine_model, &MCQUEEN_SUBMARINE_SPEC),
+                _ => unreachable!(),
+            };
+            level_ship_center = model_center(level_ship_model);
+        }
+        if coop_enabled
+            && coop_game_mode == GameMode::FreeWorld
+            && !coop_controller.ship.planet_locked
+            && (gamepad_two.pressed(crate::input::Gamepad::DPAD_LEFT)
+                || gamepad_two.pressed(crate::input::Gamepad::DPAD_RIGHT))
+        {
+            let direction = if gamepad_two.pressed(crate::input::Gamepad::DPAD_LEFT) {
+                choices.len() - 1
+            } else {
+                1
+            };
+            coop_selected_ship = (coop_selected_ship + direction) % choices.len();
+            coop_controller.ship.spec = choices[coop_selected_ship].1;
         }
         if matches!(selected_ship, 4 | 5)
             && game_mode == GameMode::FreeWorld
@@ -8218,9 +8289,13 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             && gamepad_two.pressed(crate::input::Gamepad::A)
         {
             if coop_active_galaxy == Galaxy::Home && coop_controller.ship.race_planet_locked {
-                if let Some((_, car_spec)) = race_vehicles[selected_ship] {
+                if let Some((_, car_spec)) = race_vehicles[coop_selected_ship] {
                     coop_controller = ShipController::new(car_spec);
-                    if coop_race_track.enter(&mut coop_controller, selected_ship, &race_vehicles) {
+                    if coop_race_track.enter(
+                        &mut coop_controller,
+                        coop_selected_ship,
+                        &race_vehicles,
+                    ) {
                         coop_game_mode = GameMode::Racing;
                     }
                 }
@@ -8230,7 +8305,16 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 coop_game_mode = GameMode::CoreGuardian;
             } else if coop_active_galaxy == Galaxy::Home && !coop_controller.ship.race_planet_locked
             {
-                coop_controller = ShipController::new(level_ship_spec);
+                let coop_level_spec = match coop_selected_ship {
+                    0 => &ARWING_SUBMARINE_SPEC,
+                    1 => &KIRBY_SUBMARINE_SPEC,
+                    2 => &ASTRA_SUBMARINE_SPEC,
+                    3 => &COWBOYB_SUBMARINE_SPEC,
+                    4 => &BUZZ_SUBMARINE_SPEC,
+                    5 => &MCQUEEN_SUBMARINE_SPEC,
+                    _ => unreachable!(),
+                };
+                coop_controller = ShipController::new(coop_level_spec);
                 coop_water_level_state = WaterLevelState::new();
                 coop_bubble_emitter.clear();
                 coop_game_mode = GameMode::WaterLevel;
@@ -8455,7 +8539,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             if gamepad_two.pressed(crate::input::Gamepad::B) {
                 coop_game_mode = GameMode::FreeWorld;
                 coop_bubble_emitter.clear();
-                coop_controller = ShipController::new(ship_spec);
+                coop_controller = ShipController::new(choices[coop_selected_ship].1);
                 launch_ship_from_planet(
                     &mut coop_controller,
                     water_planet_position(world_time),
@@ -8625,6 +8709,52 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         } else {
             base_center
         };
+        let coop_active_model = match coop_selected_ship {
+            0 => {
+                if coop_game_mode == GameMode::WaterLevel {
+                    &arwing_submarine_model
+                } else {
+                    choices[0].0
+                }
+            }
+            1 => {
+                if coop_game_mode == GameMode::WaterLevel {
+                    &kirby_submarine_model
+                } else {
+                    choices[1].0
+                }
+            }
+            2 => {
+                if coop_game_mode == GameMode::WaterLevel {
+                    &astra_submarine_model
+                } else {
+                    choices[2].0
+                }
+            }
+            3 => {
+                if coop_game_mode == GameMode::WaterLevel {
+                    &cowboyb_submarine_model
+                } else {
+                    choices[3].0
+                }
+            }
+            4 => {
+                &buzz_variants[if coop_game_mode == GameMode::WaterLevel {
+                    2
+                } else {
+                    0
+                }]
+            }
+            5 => {
+                if coop_game_mode == GameMode::WaterLevel {
+                    &mcqueen_submarine_model
+                } else {
+                    &mcqueen_model
+                }
+            }
+            _ => unreachable!(),
+        };
+        let coop_ship_center = model_center(coop_active_model);
         triangle_batch.begin_frame();
         match game_mode {
             GameMode::FreeWorld => {
@@ -9238,8 +9368,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     let coop_turbo = coop_controller.turbo_power(coop_controller.ship.speed);
                     if coop_game_mode == GameMode::FreeWorld {
                         render_scene(
-                            active_model,
-                            ship_center,
+                            coop_active_model,
+                            coop_ship_center,
                             &turbo_plume,
                             &laser_bolt,
                             &coop_controller.projectiles,
@@ -9291,8 +9421,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             &reward_chamber,
                             &reward_door,
                             &coop_bubble_emitter.particles,
-                            level_ship_model,
-                            level_ship_center,
+                            coop_active_model,
+                            coop_ship_center,
                             &turbo_plume,
                             &laser_bolt,
                             &enemy_laser_bolt,
@@ -9307,15 +9437,15 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     } else if coop_game_mode == GameMode::CoreGuardian {
                         coop_guardian_fight.render_scene(
                             &mut coop_framebuffer,
-                            active_model,
-                            ship_center,
+                            coop_active_model,
+                            coop_ship_center,
                             coop_controller.ship.spec,
                             &three_star_dragon_ball,
                         );
                     } else if coop_game_mode == GameMode::HourglassRescue {
                         coop_hourglass_rescue.render(
                             &mut coop_framebuffer,
-                            active_model,
+                            coop_active_model,
                             &coop_controller.ship,
                         );
                         coop_hourglass_rescue.render_weapon(
@@ -9328,7 +9458,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     } else if coop_game_mode == GameMode::LavaCastle {
                         coop_lava_castle.render(
                             &mut coop_framebuffer,
-                            active_model,
+                            coop_active_model,
                             &laser_bolt,
                             &six_star_dragon_ball,
                             &coop_controller,
@@ -9336,7 +9466,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     } else if coop_game_mode == GameMode::LavaCastleInterior {
                         coop_lava_castle_interior.render(
                             &mut coop_framebuffer,
-                            active_model,
+                            coop_active_model,
                             &laser_bolt,
                             &seven_star_dragon_ball,
                             &coop_controller,
@@ -9993,8 +10123,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     &reward_chamber,
                     &reward_door,
                     &coop_bubble_emitter.particles,
-                    level_ship_model,
-                    level_ship_center,
+                    coop_active_model,
+                    coop_ship_center,
                     &turbo_plume,
                     &laser_bolt,
                     &enemy_laser_bolt,
@@ -10008,15 +10138,15 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 ),
                 GameMode::CoreGuardian => coop_guardian_fight.render_scene(
                     &mut coop_framebuffer,
-                    active_model,
-                    ship_center,
+                    coop_active_model,
+                    coop_ship_center,
                     coop_controller.ship.spec,
                     &three_star_dragon_ball,
                 ),
                 GameMode::HourglassRescue => {
                     coop_hourglass_rescue.render(
                         &mut coop_framebuffer,
-                        active_model,
+                        coop_active_model,
                         &coop_controller.ship,
                     );
                     coop_hourglass_rescue.render_weapon(
@@ -10029,14 +10159,14 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 }
                 GameMode::LavaCastle => coop_lava_castle.render(
                     &mut coop_framebuffer,
-                    active_model,
+                    coop_active_model,
                     &laser_bolt,
                     &six_star_dragon_ball,
                     &coop_controller,
                 ),
                 GameMode::LavaCastleInterior => coop_lava_castle_interior.render(
                     &mut coop_framebuffer,
-                    active_model,
+                    coop_active_model,
                     &laser_bolt,
                     &seven_star_dragon_ball,
                     &coop_controller,
