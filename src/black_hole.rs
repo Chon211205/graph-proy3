@@ -3,7 +3,9 @@ use std::f32::consts::{PI, TAU};
 
 pub(crate) const CORE_RADIUS: f32 = 22.0;
 pub(crate) const VISUAL_SCALE: f32 = 1.22;
-const DISK_INNER_RADIUS: f32 = 22.45;
+// Keep the accretion disk outside the event-horizon silhouette. The former
+// near-touching inner edge let the bright disk slice through the black core.
+const DISK_INNER_RADIUS: f32 = 25.6;
 const DISK_OUTER_RADIUS: f32 = 78.0;
 const DISK_ANGULAR_SEGMENTS: usize = 256;
 const DISK_RADIAL_ROWS: usize = 48;
@@ -20,7 +22,7 @@ pub(crate) struct BlackHole {
 pub(crate) fn build() -> BlackHole {
     let mut core_vertices = Vec::new();
     let mut core_faces = Vec::new();
-    append_sphere(&mut core_vertices, &mut core_faces, CORE_RADIUS, 24, 64);
+    append_sphere(&mut core_vertices, &mut core_faces, CORE_RADIUS, 32, 80);
 
     let mut disk_vertices = Vec::new();
     let mut disk_faces = Vec::new();
@@ -142,8 +144,8 @@ fn disk_point(radius: f32, angle: f32) -> Vec3 {
 
 fn disk_color(radius: f32, angle: f32) -> [u8; 3] {
     let stops = [
-        (DISK_INNER_RADIUS, [255.0, 239.0, 185.0]),
-        (27.0, [255.0, 203.0, 111.0]),
+        (DISK_INNER_RADIUS, [255.0, 244.0, 202.0]),
+        (30.0, [255.0, 203.0, 111.0]),
         (36.0, [255.0, 132.0, 56.0]),
         (51.0, [222.0, 76.0, 35.0]),
         (65.0, [139.0, 37.0, 35.0]),
@@ -204,6 +206,32 @@ fn append_filaments(vertices: &mut Vec<Vec3>, faces: &mut Vec<Face>) {
 /// top arc sits behind the event horizon and the lower, weaker arc in front;
 /// depth testing therefore produces the correct occultation naturally.
 fn append_lensing_arcs(vertices: &mut Vec<Vec3>, faces: &mut Vec<Face>) {
+    // A narrow photon rim gives the horizon a clean, luminous edge while
+    // leaving the central silhouette uninterrupted by the accretion band.
+    append_arc(
+        vertices,
+        faces,
+        0.025,
+        PI - 0.025,
+        23.4,
+        -1.65,
+        0.18,
+        0.96,
+        [255, 239, 193],
+        "lensing_arc_upper",
+    );
+    append_arc(
+        vertices,
+        faces,
+        PI + 0.025,
+        TAU - 0.025,
+        23.4,
+        2.15,
+        0.20,
+        0.78,
+        [255, 176, 99],
+        "lensing_arc_lower",
+    );
     append_arc(
         vertices,
         faces,
