@@ -6567,8 +6567,6 @@ fn draw_unified_combat_hud(
     score: u32,
     boost_ratio: f32,
     charge_ratio: f32,
-    altitude: f32,
-    contacts: usize,
     boss: Option<(&str, f32)>,
     aim_position: (f32, f32),
 ) {
@@ -6602,23 +6600,13 @@ fn draw_unified_combat_hud(
     bar(framebuffer, 0.032, 0.060, 0.211, 0.073, shield_ratio, 0x22e8f4);
     label(framebuffer, "VIDAS 3", 0.055, 0.081, 0xbfefff);
 
-    panel(framebuffer, 0.255, 0.020, 0.745, 0.091);
-    label(framebuffer, "OBJETIVO", 0.500, 0.034, 0xffffff);
-    label(framebuffer, objective, 0.500, 0.069, 0xcaf5ff);
+    panel(framebuffer, 0.018, 0.858, 0.318, 0.980);
+    label(framebuffer, "OBJETIVO", 0.168, 0.883, 0xffffff);
+    label(framebuffer, objective, 0.168, 0.936, 0xcaf5ff);
 
     panel(framebuffer, 0.774, 0.020, 0.982, 0.091);
     label(framebuffer, "PUNTAJE", 0.878, 0.034, 0xffffff);
     label(framebuffer, &format!("{:07}", score), 0.878, 0.068, 0xe9f8ff);
-
-    panel(framebuffer, 0.018, 0.858, 0.184, 0.980);
-    label(framebuffer, "ALTITUD", 0.101, 0.883, 0xffffff);
-    label(
-        framebuffer,
-        &format!("{:+05.0} M", altitude),
-        0.101,
-        0.936,
-        0xc8f5ff,
-    );
 
     panel(framebuffer, 0.797, 0.826, 0.982, 0.982);
     label(framebuffer, "IMPULSO", 0.889, 0.842, 0xffffff);
@@ -6633,37 +6621,6 @@ fn draw_unified_combat_hud(
     label(framebuffer, "BLASTER", 0.889, 0.914, 0xffffff);
     bar(framebuffer, 0.814, 0.934, 0.965, 0.944, charge_ratio, 0x26e7f2);
     label(framebuffer, "ENTER: DISPARAR", 0.889, 0.963, 0xcaf5ff);
-
-    panel(framebuffer, 0.405, 0.858, 0.595, 0.980);
-    label(framebuffer, "RADAR", 0.500, 0.875, 0xbff6ff);
-    let radar_x = (0.5 * width) as i32;
-    let radar_y = (0.931 * height) as i32;
-    let radar_radius = (unit * 0.047).clamp(16.0, 38.0) as i32;
-    for ring in [0.42_f32, 0.70, 1.0] {
-        let radius = radar_radius as f32 * ring;
-        for degree in (0..360).step_by(8) {
-            let angle = degree as f32 * PI / 180.0;
-            let rx = radar_x + (angle.cos() * radius) as i32;
-            let ry = radar_y + (angle.sin() * radius * 0.55) as i32;
-            if rx >= 0 && ry >= 0 && rx < framebuffer.width as i32 && ry < framebuffer.height as i32 {
-                framebuffer.pixels[ry as usize * framebuffer.width + rx as usize] = 0x258eb5;
-            }
-        }
-    }
-    for contact in 0..contacts.min(7) {
-        let angle = contact as f32 * 2.31 + 0.4;
-        let contact_x = radar_x + (angle.cos() * radar_radius as f32 * 0.68) as i32;
-        let contact_y = radar_y + (angle.sin() * radar_radius as f32 * 0.37) as i32;
-        for dy in -2..=2 {
-            for dx in -2..=2 {
-                let px = contact_x + dx;
-                let py = contact_y + dy;
-                if px >= 0 && py >= 0 && px < framebuffer.width as i32 && py < framebuffer.height as i32 {
-                    framebuffer.pixels[py as usize * framebuffer.width + px as usize] = 0xff554b;
-                }
-            }
-        }
-    }
 
     // Small, centered reticle scales with the viewport and remains inside it.
     let arm = (unit * 0.022).clamp(10.0, 22.0) as i32;
@@ -9109,17 +9066,6 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
             GameMode::FreeWorld => ship_controller.projectiles.len() as u32 * 100,
         };
-        let contacts = match game_mode {
-            GameMode::WaterLevel => water_level_state
-                .enemies
-                .iter()
-                .filter(|enemy| {
-                    enemy.alive && (enemy.progress - water_level_state.progress).abs() < 120.0
-                })
-                .count(),
-            GameMode::CoreGuardian => 5,
-            _ => 0,
-        };
         let boss_hud = match game_mode {
             GameMode::WaterLevel
                 if water_level_state.stage() == WaterStage::SharkBoss
@@ -9135,8 +9081,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
             _ => None,
         };
-        // Racing has its own purpose-built HUD. Do not layer the combat
-        // reticle, blaster charge, shields, contacts or combat objective over it.
+        // Racing and the shooting/rescue games have purpose-built HUDs.
         if game_mode != GameMode::Racing
             && game_mode != GameMode::TowerGuard
             && game_mode != GameMode::HourglassRescue
@@ -9152,8 +9097,6 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 } else {
                     ship_controller.charge_ratio()
                 },
-                ship_controller.ship.position.y,
-                contacts,
                 boss_hud,
                 if game_mode == GameMode::CoreGuardian {
                     guardian_fight.aim_screen_position()
@@ -9191,19 +9134,26 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     planet_lod_states[2].level,
                 ]
             };
-            // Keep diagnostics away from the top-center objective and draw
-            // them after gameplay HUDs so the opaque panel stays readable.
-            const PANEL_LEFT: usize = 16;
-            const PANEL_TOP: usize = 366;
-            const PANEL_WIDTH: usize = 450;
-            hud_rect(&mut framebuffer, PANEL_LEFT, PANEL_TOP, PANEL_WIDTH, 132);
-            let center = (PANEL_LEFT + PANEL_WIDTH / 2) as i32;
+            // F3 diagnostics stay compact in the upper-left corner.
+            let panel_left = (framebuffer.width as f32 * 0.018) as usize;
+            let panel_top = (framebuffer.height as f32 * 0.125) as usize;
+            let panel_width = (framebuffer.width as f32 * 0.21) as usize;
+            let panel_height = (framebuffer.height as f32 * 0.105) as usize;
+            hud_rect(
+                &mut framebuffer,
+                panel_left,
+                panel_top,
+                panel_width,
+                panel_height,
+            );
+            let center = (panel_left + panel_width / 2) as i32;
+            let row = (framebuffer.height as f32 * 0.0175) as i32;
             draw_selection_label(
                 &mut framebuffer,
                 "RENDIMIENTO",
                 center,
-                PANEL_TOP as i32 + 8,
-                2,
+                panel_top as i32 + 5,
+                1,
                 0x46e6ff,
             );
             draw_selection_label(
@@ -9213,8 +9163,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     dynamic_resolution.fps_average, dynamic_resolution.frame_ms_average
                 ),
                 center,
-                PANEL_TOP as i32 + 30,
-                2,
+                panel_top as i32 + 5 + row,
+                1,
                 0xffffff,
             );
             draw_selection_label(
@@ -9224,8 +9174,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     stats.geometry_ms, stats.sort_ms, stats.raster_ms
                 ),
                 center,
-                PANEL_TOP as i32 + 52,
-                2,
+                panel_top as i32 + 5 + row * 2,
+                1,
                 0xc6d8ff,
             );
             draw_selection_label(
@@ -9237,8 +9187,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     dynamic_resolution.percentage()
                 ),
                 center,
-                PANEL_TOP as i32 + 74,
-                2,
+                panel_top as i32 + 5 + row * 3,
+                1,
                 0x9fffd2,
             );
             draw_selection_label(
@@ -9251,8 +9201,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     displayed_lods[2],
                 ),
                 center,
-                PANEL_TOP as i32 + 96,
-                2,
+                panel_top as i32 + 5 + row * 4,
+                1,
                 0xffd78a,
             );
         }
@@ -10949,8 +10899,6 @@ mod tests {
             37_845,
             0.6,
             0.4,
-            280.0,
-            5,
             Some(("JEFE: DESTRUCTOR", 0.5)),
             (0.5, 0.5),
         );
