@@ -13,6 +13,7 @@ mod race_track;
 mod ship;
 mod space_battle;
 mod space_decor;
+mod story_guide;
 mod tower_guard;
 mod triangle;
 
@@ -6894,6 +6895,34 @@ fn draw_mission_complete_overlay(framebuffer: &mut Framebuffer, remaining: f32) 
     );
 }
 
+fn draw_story_epilogue(framebuffer: &mut Framebuffer, remaining: f32) {
+    let width = framebuffer.width;
+    let height = framebuffer.height;
+    let panel_width = (width as f32 * 0.58) as usize;
+    let panel_height = (height as f32 * 0.115) as usize;
+    let left = (width - panel_width) / 2;
+    let top = (height as f32 * 0.16) as usize;
+    hud_rect(framebuffer, left, top, panel_width, panel_height);
+    let pulse = (remaining * 2.0).sin().abs();
+    let accent = if pulse > 0.5 { 0xffd27b } else { 0x68e8ff };
+    draw_selection_label(
+        framebuffer,
+        "NEXO ESTABILIZADO // LAS GALAXIAS ESTAN A SALVO",
+        (width / 2) as i32,
+        (top + 10) as i32,
+        2,
+        accent,
+    );
+    draw_selection_label(
+        framebuffer,
+        "TU VUELO CONTINUA. NUEVOS HORIZONTES TE ESPERAN.",
+        (width / 2) as i32,
+        (top + 42) as i32,
+        1,
+        0xd7efff,
+    );
+}
+
 fn draw_guardian_reward_overlay(framebuffer: &mut Framebuffer, remaining: u32) {
     hud_rect(framebuffer, 250, 245, 700, 285);
     hud_rect(framebuffer, 275, 270, 650, 235);
@@ -7476,6 +7505,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             "No se pudieron cargar los sprites de Torre: {error}"
         ))
     })?;
+    let story_guide = story_guide::Guide::load();
     let tower_audio = tower_guard::TowerAudio::load();
     let mut minigame_music = minigame_audio::MusicPlayer::new();
     let buzz_variants = [
@@ -7779,6 +7809,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     // One bit per Dragon Ball. Both local players read and write this shared
     // progression, so a completed planet cannot be farmed twice.
     let mut collected_dragon_balls: u8 = 0;
+    let mut story_epilogue_timer = 0.0_f32;
     let mut tower_reward_timer = 0.0_f32;
     let mut tower_reward_position = Vec3::default();
     let mut solar_explosion_timer = 0.0_f32;
@@ -8162,6 +8193,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         }
         previous = now;
         world_time += delta_time;
+        story_epilogue_timer = (story_epilogue_timer - delta_time).max(0.0);
 
         if let Some(transit) = &mut galaxy_transition {
             transit.elapsed += delta_time;
@@ -8172,6 +8204,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 ship_controller.ship.position = transit.start_position.add(offset.mul(eased));
             }
             if !transit.switched && transit.elapsed >= 0.82 {
+                if transit.destination == Galaxy::Vesper
+                    && collected_dragon_balls & 0b0111_1111 == 0b0111_1111
+                {
+                    story_epilogue_timer = 7.0;
+                }
                 active_galaxy = transit.destination;
                 let portal = wormhole_position(active_galaxy);
                 let (exit_offset, exit_yaw) = match active_galaxy {
@@ -8625,6 +8662,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             if coop_hourglass_rescue.update(&mut coop_controller.ship, rescue_input, delta_time)
                 == hourglass_rescue::Action::Exit
             {
+                if coop_hourglass_rescue.mission_won() {
+                    collected_dragon_balls |= 0b0010000;
+                }
                 coop_game_mode = GameMode::FreeWorld;
                 launch_ship_from_planet(
                     &mut coop_controller,
@@ -8658,6 +8698,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             match action {
                 lava_castle::Action::Continue => {}
                 lava_castle::Action::InteriorTransition => {
+                    collected_dragon_balls |= 0b0100000;
                     coop_game_mode = GameMode::LavaCastleInterior;
                     coop_lava_castle_interior.enter(&mut coop_controller);
                 }
@@ -8682,6 +8723,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 action,
                 lava_castle_interior::Action::Exit | lava_castle_interior::Action::Victory
             ) {
+                if action == lava_castle_interior::Action::Victory {
+                    collected_dragon_balls |= 0b1000000;
+                }
                 coop_game_mode = GameMode::FreeWorld;
                 launch_ship_from_planet(
                     &mut coop_controller,
@@ -9809,6 +9853,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 if hourglass_rescue.update(&mut ship_controller.ship, rescue_input, delta_time)
                     == hourglass_rescue::Action::Exit
                 {
+                    if hourglass_rescue.mission_won() {
+                        collected_dragon_balls |= 0b0010000;
+                    }
                     game_mode = GameMode::FreeWorld;
                     launch_ship_from_planet(
                         &mut ship_controller,
@@ -9861,6 +9908,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     lava_castle::Action::Continue => {}
                     lava_castle::Action::Exit | lava_castle::Action::InteriorTransition => {
                         if castle_action == lava_castle::Action::InteriorTransition {
+                            collected_dragon_balls |= 0b0100000;
                             game_mode = GameMode::LavaCastleInterior;
                             lava_castle_interior.enter(&mut ship_controller);
                             window.set_title("Nivel Final | Castillo de Lava | Parte 2");
@@ -9896,6 +9944,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 match action {
                     lava_castle_interior::Action::Continue => {}
                     lava_castle_interior::Action::Exit | lava_castle_interior::Action::Victory => {
+                        if action == lava_castle_interior::Action::Victory {
+                            collected_dragon_balls |= 0b1000000;
+                        }
                         game_mode = GameMode::FreeWorld;
                         launch_ship_from_planet(
                             &mut ship_controller,
@@ -10438,10 +10489,19 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         }
 
         let objective = match game_mode {
-            GameMode::FreeWorld if active_galaxy == Galaxy::Home => {
-                "EXPLORA LOS PLANETAS Y ENTRA EN ORBITA"
+            GameMode::FreeWorld
+                if collected_dragon_balls & 0b0111_1111 == 0b0111_1111
+                    && active_galaxy == Galaxy::Vesper =>
+            {
+                "NEXO ESTABILIZADO: VUELA LIBRE"
             }
-            GameMode::FreeWorld => "ALCANZA EL PORTAL DE REGRESO",
+            GameMode::FreeWorld if collected_dragon_balls & 0b0111_1111 == 0b0111_1111 => {
+                "NEXO COMPLETO: REGRESA A VESPER"
+            }
+            GameMode::FreeWorld if active_galaxy == Galaxy::Home => {
+                "BUSCA LAS 7 ESFERAS DEL NEXO"
+            }
+            GameMode::FreeWorld => "RECUPERA LAS ESFERAS DEL NEXO",
             GameMode::WaterLevel if water_level_state.stage() == WaterStage::SharkBoss => {
                 "DESTRUYE AL TIBURON MECANICO"
             }
@@ -10526,6 +10586,19 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     (0.5, 0.5)
                 },
             );
+            if game_mode == GameMode::FreeWorld && ship_controller.ship.planet_locked {
+                if let Some(planet) = story_guide::planet_for_orbit(
+                    active_galaxy,
+                    vesper_orbit_index,
+                    ship_controller.ship.race_planet_locked,
+                    ship_controller.ship.spiky_planet_locked,
+                ) {
+                    story_guide.draw(&mut framebuffer, planet, collected_dragon_balls);
+                }
+            }
+        }
+        if story_epilogue_timer > 0.0 {
+            draw_story_epilogue(&mut framebuffer, story_epilogue_timer);
         }
         if performance_hud {
             let stats = triangle_batch.stats();
