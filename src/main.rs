@@ -1,11 +1,13 @@
 mod core_guardian;
 mod framebuffer;
 mod galaxy;
+mod black_hole;
 mod hourglass_rescue;
 mod input;
 mod lava_castle;
 mod lava_castle_interior;
 mod menu;
+mod minigame_audio;
 mod obj_loader;
 mod race_track;
 mod ship;
@@ -37,7 +39,7 @@ use ship::{
     MCQUEEN_CAR_SPEC, MCQUEEN_SPEC, MCQUEEN_SUBMARINE_SPEC, Projectile, Ship, ShipController,
     ShipInput, ShipSpec,
 };
-use triangle::{ScreenVertex, draw_triangle_shaded_region};
+use triangle::{ScreenVertex, draw_triangle_alpha_region, draw_triangle_shaded_region};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
@@ -714,6 +716,24 @@ enum GameMode {
     TowerGuard,
     LavaCastle,
     LavaCastleInterior,
+}
+
+impl GameMode {
+    fn music_track(self) -> Option<minigame_audio::Track> {
+        use minigame_audio::Track;
+        match self {
+            Self::CoreGuardian => Some(Track::CoreGuardian),
+            Self::WaterLevel => Some(Track::Aquatic),
+            Self::Racing => Some(Track::Racing),
+            Self::TowerGuard => Some(Track::TowerGuard),
+            Self::HourglassRescue => Some(Track::Hourglass),
+            _ => None,
+        }
+    }
+
+    fn is_planet_minigame(self) -> bool {
+        self.music_track().is_some()
+    }
 }
 
 struct WaterLevelState {
@@ -3097,7 +3117,7 @@ fn draw_skybox(
     let (base, horizon_glow, star_tint) = match galaxy {
         Galaxy::Home => ([4.0, 7.0, 20.0], [8.0, 11.0, 24.0], None),
         Galaxy::Vesper => ([7.0, 3.0, 25.0], [18.0, 11.0, 48.0], Some([130, 198, 255])),
-        Galaxy::Nova => ([2.0, 15.0, 18.0], [6.0, 48.0, 42.0], Some([105, 255, 205])),
+        Galaxy::Nova => ([12.0, 5.0, 13.0], [28.0, 10.0, 22.0], Some([255, 154, 178])),
     };
     for y in 0..framebuffer.height {
         let t = y as f32 / framebuffer.height as f32;
@@ -3129,9 +3149,14 @@ fn draw_skybox(
                 let red = ((old >> 16) & 255) as f32;
                 let green = ((old >> 8) & 255) as f32;
                 let blue = (old & 255) as f32;
-                framebuffer.pixels[index] = (((red + 80.0 * glow) as u32) << 16)
-                    | (((green + 30.0 * glow) as u32) << 8)
-                    | (blue + 130.0 * glow) as u32;
+                let (core_red, core_green, core_blue) = if galaxy == Galaxy::Nova {
+                    (150.0, 30.0, 54.0)
+                } else {
+                    (80.0, 30.0, 130.0)
+                };
+                framebuffer.pixels[index] = (((red + core_red * glow) as u32) << 16)
+                    | (((green + core_green * glow) as u32) << 8)
+                    | (blue + core_blue * glow) as u32;
             }
         }
     }
@@ -3757,52 +3782,8 @@ fn make_wormhole_sphere(radius: f32, stacks: usize, slices: usize) -> Model {
     model
 }
 
-fn make_vesper_black_hole() -> Model {
-    let mut core = make_sphere(22.0, 18, 32, false);
-    for face in &mut core.faces {
-        face.shader = SurfaceShader::Flat;
-        face.color = MaterialColor::Fixed([1, 0, 5]);
-        face.material = "vesper_black_hole_core".to_string();
-        face.group = "vesper_black_hole_core".to_string();
-    }
-
-    let mut vertices = core.vertices;
-    let mut faces = core.faces;
-    let segments = 96;
-    let bands = [
-        (24.0, 34.0, [255, 211, 150], [238, 83, 255]),
-        (34.0, 48.0, [238, 83, 255], [129, 37, 255]),
-        (48.0, 67.0, [129, 37, 255], [52, 76, 238]),
-        (67.0, 92.0, [52, 76, 238], [38, 13, 112]),
-    ];
-    for (band, (inner, outer, inner_color, outer_color)) in bands.into_iter().enumerate() {
-        let base = vertices.len();
-        for segment in 0..segments {
-            let angle = TAU * segment as f32 / segments as f32;
-            let (sin, cos) = angle.sin_cos();
-            let ripple = (angle * 5.0 + band as f32 * 1.7).sin() * (0.35 + band as f32 * 0.12);
-            vertices.push(Vec3::new(cos * inner, ripple, sin * inner));
-            vertices.push(Vec3::new(cos * outer, ripple * 1.35, sin * outer));
-        }
-        for segment in 0..segments {
-            let next = (segment + 1) % segments;
-            let a = base + segment * 2;
-            let b = base + next * 2;
-            let c = a + 1;
-            let d = b + 1;
-            let flare = (segment + band * 11) % 13 < 3;
-            for (indices, color) in [
-                ([a, b, c], if flare { inner_color } else { outer_color }),
-                ([c, b, d], if flare { outer_color } else { inner_color }),
-            ] {
-                let mut face = Face::new(indices, "vesper_accretion_disk", "accretion_disk");
-                face.shader = SurfaceShader::Flat;
-                face.color = MaterialColor::Fixed(color);
-                faces.push(face);
-            }
-        }
-    }
-    Model::new(vertices, faces)
+fn make_vesper_black_hole() -> black_hole::BlackHole {
+    black_hole::build()
 }
 
 fn make_home_orbit_rings() -> Model {
@@ -4625,6 +4606,7 @@ fn move_around_planet(
 
 enum TriangleStyle {
     Flat(u32),
+    BlackHolePlasma { color: u32, alpha: u8 },
     Smooth {
         color: [u8; 3],
         brightness: [f32; 3],
@@ -4965,6 +4947,12 @@ impl TriangleBatch {
                                 c,
                                 |_, _, _, _, _| *color,
                             ),
+                            TriangleStyle::BlackHolePlasma { color, alpha } => {
+                                draw_triangle_alpha_region(
+                                    tile_pixels, tile_depth, width, height, region_y, a, b, c,
+                                    *color, *alpha,
+                                )
+                            }
                             TriangleStyle::Smooth { color, brightness } => {
                                 draw_triangle_shaded_region(
                                     tile_pixels,
@@ -5245,6 +5233,42 @@ fn queue_model_with_scratch<F>(
         let c = project(v2);
         let shader = face.shader;
         let flat_color = color_for_material(face.color, effect_spec);
+        let is_black_hole_face = matches!(
+            face.group.as_str(),
+            "accretion_disk"
+                | "accretion_filament"
+                | "lensing_arc_upper"
+                | "lensing_arc_lower"
+                | "lensing_arc_upper_glow"
+                | "lensing_arc_lower_glow"
+        );
+        if is_black_hole_face {
+            let p0 = model.vertices[i0];
+            let p1 = model.vertices[i1];
+            let p2 = model.vertices[i2];
+            let center = p0.add(p1).add(p2).mul(1.0 / 3.0);
+            let radius = (center.x * center.x + center.z * center.z).sqrt();
+            let alpha = match face.group.as_str() {
+                "accretion_disk" => crate::black_hole::disk_alpha(radius),
+                "accretion_filament" => crate::black_hole::filament_alpha(radius),
+                _ => crate::black_hole::lensing_arc_alpha(&face.material),
+            };
+            let angle = center.z.atan2(center.x);
+            let pulse = 0.94
+                + 0.06
+                    * (water_time.unwrap_or_default() * 0.8 + angle * 3.0 - radius * 0.025)
+                        .sin();
+            let color = flat_color
+                .map(|channel| (channel as f32 * pulse).clamp(0.0, 255.0) as u8);
+            batch.commands.push(TriangleCommand {
+                vertices: [a, b, c],
+                style: TriangleStyle::BlackHolePlasma {
+                    color: pack(color, 1.0),
+                    alpha,
+                },
+            });
+            continue;
+        }
 
         if shader != SurfaceShader::Flat {
             let p0 = model.vertices[i0];
@@ -5332,7 +5356,7 @@ fn render_scene(
     wormhole_center: Vec3,
     galaxy: Galaxy,
     vesper_planets: &[VesperPlanet; 2],
-    vesper_black_hole: &Model,
+    vesper_black_hole: &black_hole::BlackHole,
     vesper_orbit_rings: &Model,
     castle_planet: &VesperPlanet,
     race_planet: &Model,
@@ -5506,19 +5530,49 @@ fn render_scene(
             None,
             None,
         );
-        let (disk_sin, disk_cos) = (world_time * 0.22).sin_cos();
         queue_model(
-            vesper_black_hole,
+            &vesper_black_hole.core,
+            batch,
+            &camera,
+            |vertex| vertex.mul(black_hole::VISUAL_SCALE).add(VESPER_SYSTEM_CENTER),
+            None,
+            None,
+        );
+        queue_model(
+            &vesper_black_hole.disk,
             batch,
             &camera,
             |vertex| {
-                Vec3::new(
-                    vertex.x * disk_cos - vertex.z * disk_sin,
-                    vertex.y,
-                    vertex.x * disk_sin + vertex.z * disk_cos,
-                )
-                .add(VESPER_SYSTEM_CENTER)
+                black_hole::differential_disk_transform(vertex, world_time)
+                    .mul(black_hole::VISUAL_SCALE)
+                    .add(VESPER_SYSTEM_CENTER)
             },
+            Some(world_time),
+            None,
+        );
+        queue_model(
+            &vesper_black_hole.filaments,
+            batch,
+            &camera,
+            |vertex| {
+                black_hole::differential_disk_transform(vertex, world_time)
+                    .mul(black_hole::VISUAL_SCALE)
+                    .add(VESPER_SYSTEM_CENTER)
+            },
+            Some(world_time),
+            None,
+        );
+        let arc_transform = black_hole::camera_arc_transform(
+            VESPER_SYSTEM_CENTER,
+            camera.position,
+            camera.right,
+            Vec3::new(0.0, 1.0, 0.0),
+        );
+        queue_model(
+            &vesper_black_hole.lensing_arcs,
+            batch,
+            &camera,
+            |vertex| black_hole::scale_about_center(arc_transform(vertex), VESPER_SYSTEM_CENTER),
             Some(world_time),
             None,
         );
@@ -5587,15 +5641,16 @@ fn render_scene(
         );
     }
 
-    // Place natural, thin debris belts between the planetary orbits in the
-    // two star systems. Nova is a standalone world and has no orbital belt.
+    // Keep fine debris and collectible-size rocks in the same orbital lanes.
     let asteroid_orbit = match galaxy {
         Galaxy::Home => Some((sun_position, 350.0)),
         Galaxy::Vesper => Some((VESPER_SYSTEM_CENTER, 350.0)),
-        Galaxy::Nova => None,
+        // Nova has no star system center; its three belts circle the region
+        // between the return portal and the castle world.
+        Galaxy::Nova => Some((Vec3::new(0.0, 70.0, 0.0), 300.0)),
     };
     if let Some((asteroid_center, asteroid_radius)) = asteroid_orbit {
-        let dust_rotation = world_time * 0.006;
+        let dust_rotation = world_time * if galaxy == Galaxy::Nova { 0.0035 } else { 0.006 };
         let (dust_sin, dust_cos) = dust_rotation.sin_cos();
         queue_model(
             space_decor::asteroid_belt(galaxy),
@@ -5615,14 +5670,12 @@ fn render_scene(
         );
 
         for asteroid in space_decor::asteroids(galaxy) {
-            let orbit_angle = asteroid.orbit_phase + world_time * asteroid.orbit_speed;
-            let (orbit_sin, orbit_cos) = orbit_angle.sin_cos();
-            let radius = asteroid.orbit_fraction * asteroid_radius;
-            let position = asteroid_center.add(Vec3::new(
-                orbit_cos * radius,
-                orbit_sin * radius * 0.055 + asteroid.vertical_offset,
-                orbit_sin * radius,
-            ));
+            let position = space_decor::asteroid_position(
+                asteroid,
+                asteroid_center,
+                asteroid_radius,
+                world_time,
+            );
             let spin = asteroid.spin_phase + world_time * asteroid.spin_speed;
             let (spin_sin, spin_cos) = spin.sin_cos();
             queue_model(
@@ -6563,105 +6616,94 @@ fn draw_unified_combat_hud(
     score: u32,
     boost_ratio: f32,
     charge_ratio: f32,
-    altitude: f32,
-    contacts: usize,
     boss: Option<(&str, f32)>,
     aim_position: (f32, f32),
 ) {
-    hud_rect(framebuffer, 18, 16, 300, 84);
-    draw_selection_label(framebuffer, "ESCUDO", 98, 27, 2, 0xffffff);
-    hud_bar(framebuffer, 78, 57, 220, 18, shield_ratio, 0x22e8f4);
-    draw_selection_label(framebuffer, "VIDAS 3", 72, 79, 1, 0xbfefff);
+    let width = framebuffer.width as f32;
+    let height = framebuffer.height as f32;
+    let unit = width.min(height);
+    let scale = ((height / 900.0).round() as i32).clamp(1, 2);
+    let x = |ratio: f32| (ratio * width).round() as usize;
+    let y = |ratio: f32| (ratio * height).round() as usize;
+    let label = |frame: &mut Framebuffer, text: &str, xr: f32, yr: f32, color: u32| {
+        draw_selection_label(frame, text, x(xr) as i32, y(yr) as i32, scale, color);
+    };
+    let panel = |frame: &mut Framebuffer, l: f32, t: f32, r: f32, b: f32| {
+        hud_rect(frame, x(l), y(t), x(r - l).max(1), y(b - t).max(1));
+    };
+    let bar = |frame: &mut Framebuffer, l: f32, t: f32, r: f32, b: f32, ratio: f32, color| {
+        hud_bar(
+            frame,
+            x(l),
+            y(t),
+            x(r - l).max(1),
+            y(b - t).max(3),
+            ratio,
+            color,
+        );
+    };
 
-    hud_rect(framebuffer, 365, 10, 470, 86);
-    draw_selection_label(framebuffer, "OBJETIVO", 600, 20, 2, 0xffffff);
-    draw_selection_label(framebuffer, objective, 600, 53, 1, 0xcaf5ff);
+    // Compact corner cards leave the center and horizon open for navigation.
+    panel(framebuffer, 0.018, 0.020, 0.226, 0.091);
+    label(framebuffer, "ESCUDO", 0.055, 0.034, 0xffffff);
+    bar(framebuffer, 0.032, 0.060, 0.211, 0.073, shield_ratio, 0x22e8f4);
+    label(framebuffer, "VIDAS 3", 0.055, 0.081, 0xbfefff);
 
-    hud_rect(framebuffer, 930, 18, 252, 76);
-    draw_selection_label(framebuffer, "PUNTAJE", 1000, 29, 2, 0xffffff);
-    draw_selection_label(framebuffer, &format!("{:07}", score), 1080, 56, 2, 0xe9f8ff);
+    panel(framebuffer, 0.018, 0.858, 0.318, 0.980);
+    label(framebuffer, "OBJETIVO", 0.168, 0.883, 0xffffff);
+    label(framebuffer, objective, 0.168, 0.936, 0xcaf5ff);
 
-    hud_rect(framebuffer, 18, 238, 175, 104);
-    draw_selection_label(framebuffer, "ALTITUD", 84, 251, 2, 0xffffff);
-    draw_selection_label(
-        framebuffer,
-        &format!("{:+05.0} M", altitude),
-        105,
-        286,
-        2,
-        0xc8f5ff,
-    );
+    panel(framebuffer, 0.774, 0.020, 0.982, 0.091);
+    label(framebuffer, "PUNTAJE", 0.878, 0.034, 0xffffff);
+    label(framebuffer, &format!("{:07}", score), 0.878, 0.068, 0xe9f8ff);
 
-    hud_rect(framebuffer, 1012, 112, 170, 92);
-    draw_selection_label(framebuffer, "IMPULSO", 1095, 124, 2, 0xffffff);
-    hud_bar(framebuffer, 1032, 157, 130, 15, boost_ratio, 0x20dcf2);
-    draw_selection_label(
+    panel(framebuffer, 0.797, 0.826, 0.982, 0.982);
+    label(framebuffer, "IMPULSO", 0.889, 0.842, 0xffffff);
+    bar(framebuffer, 0.814, 0.862, 0.965, 0.872, boost_ratio, 0x20dcf2);
+    label(
         framebuffer,
         &format!("{:03}%", (boost_ratio * 100.0) as u32),
-        1095,
-        178,
-        2,
+        0.889,
+        0.888,
         0xdafcff,
     );
+    label(framebuffer, "BLASTER", 0.889, 0.914, 0xffffff);
+    bar(framebuffer, 0.814, 0.934, 0.965, 0.944, charge_ratio, 0x26e7f2);
+    label(framebuffer, "ENTER: DISPARAR", 0.889, 0.963, 0xcaf5ff);
 
-    hud_rect(framebuffer, 928, 650, 254, 92);
-    draw_selection_label(framebuffer, "BLASTER", 1010, 663, 2, 0xffffff);
-    hud_bar(framebuffer, 955, 695, 205, 15, charge_ratio, 0x26e7f2);
-    draw_selection_label(
-        framebuffer,
-        "ENTER: CARGAR / DISPARAR",
-        1055,
-        718,
-        1,
-        0xcaf5ff,
-    );
-
-    // Central lock-on reticle.
-    let cx = (aim_position.0.clamp(0.08, 0.92) * framebuffer.width as f32) as usize;
-    let cy = (aim_position.1.clamp(0.12, 0.82) * framebuffer.height as f32) as usize;
-    for offset in 0..34 {
-        if offset < 16 || offset > 27 {
-            framebuffer.pixels[(cy - 34) * framebuffer.width + cx - 34 + offset] = 0x56eaff;
-            framebuffer.pixels[(cy + 34) * framebuffer.width + cx + 34 - offset] = 0x56eaff;
-            framebuffer.pixels[(cy - 34 + offset) * framebuffer.width + cx + 34] = 0x56eaff;
-            framebuffer.pixels[(cy + 34 - offset) * framebuffer.width + cx - 34] = 0x56eaff;
-        }
-    }
-    for x in cx - 9..=cx + 9 {
-        framebuffer.pixels[cy * framebuffer.width + x] = 0xff685c;
-    }
-    for y in cy - 9..=cy + 9 {
-        framebuffer.pixels[y * framebuffer.width + cx] = 0xff685c;
-    }
-
-    hud_rect(framebuffer, 485, 650, 230, 92);
-    draw_selection_label(framebuffer, "RADAR", 600, 660, 1, 0xbff6ff);
-    for ring in [18_i32, 32, 45] {
-        for degree in (0..360).step_by(6) {
-            let angle = degree as f32 * PI / 180.0;
-            let x = 600 + (angle.cos() * ring as f32) as i32;
-            let y = 704 + (angle.sin() * ring as f32 * 0.55) as i32;
-            if x >= 0 && y >= 0 && x < framebuffer.width as i32 && y < framebuffer.height as i32 {
-                framebuffer.pixels[y as usize * framebuffer.width + x as usize] = 0x258eb5;
+    // Small, centered reticle scales with the viewport and remains inside it.
+    let arm = (unit * 0.022).clamp(10.0, 22.0) as i32;
+    let cx = (aim_position.0.clamp(0.08, 0.92) * width) as i32;
+    let cy = (aim_position.1.clamp(0.12, 0.82) * height) as i32;
+    for offset in 0..=arm {
+        if offset < arm * 48 / 100 || offset > arm * 78 / 100 {
+            for (px, py) in [
+                (cx - arm + offset, cy - arm),
+                (cx + arm - offset, cy + arm),
+                (cx + arm, cy - arm + offset),
+                (cx - arm, cy + arm - offset),
+            ] {
+                if px >= 0 && py >= 0 && px < framebuffer.width as i32 && py < framebuffer.height as i32 {
+                    framebuffer.pixels[py as usize * framebuffer.width + px as usize] = 0x56eaff;
+                }
             }
         }
     }
-    for contact in 0..contacts.min(7) {
-        let angle = contact as f32 * 2.31 + 0.4;
-        let x = 600 + (angle.cos() * (14.0 + contact as f32 * 4.0)) as i32;
-        let y = 704 + (angle.sin() * (9.0 + contact as f32 * 2.0)) as i32;
-        for dy in -2..=2 {
-            for dx in -2..=2 {
-                framebuffer.pixels[(y + dy) as usize * framebuffer.width + (x + dx) as usize] =
-                    0xff554b;
-            }
+    for offset in -5..=5 {
+        let px = cx + offset;
+        let py = cy + offset;
+        if px >= 0 && px < framebuffer.width as i32 {
+            framebuffer.pixels[cy as usize * framebuffer.width + px as usize] = 0xff685c;
+        }
+        if py >= 0 && py < framebuffer.height as i32 {
+            framebuffer.pixels[py as usize * framebuffer.width + cx as usize] = 0xff685c;
         }
     }
 
     if let Some((name, health)) = boss {
-        hud_rect(framebuffer, 245, 748, 710, 48);
-        draw_selection_label(framebuffer, name, 405, 758, 1, 0xffffff);
-        hud_bar(framebuffer, 430, 773, 490, 13, health, 0xff4d47);
+        panel(framebuffer, 0.30, 0.105, 0.70, 0.158);
+        label(framebuffer, name, 0.50, 0.117, 0xffffff);
+        bar(framebuffer, 0.32, 0.140, 0.68, 0.151, health, 0xff4d47);
     }
 }
 
@@ -7286,6 +7328,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         ))
     })?;
     let tower_audio = tower_guard::TowerAudio::load();
+    let mut minigame_music = minigame_audio::MusicPlayer::new();
     let buzz_variants = [
         load_obj("assets/vehicles/buzz/buzz_nave_detallada.obj")?,
         load_obj("assets/vehicles/buzz/buzz_carro_detallado.obj")?,
@@ -7358,7 +7401,14 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         (2, 0)
     } else {
         loop {
-            if menu::show(&mut window, &mut framebuffer, false)? == menu::Action::Quit {
+            if menu::show(
+                &mut window,
+                &mut framebuffer,
+                false,
+                false,
+                &mut minigame_music,
+            )? == menu::Action::Quit
+            {
                 return Ok(false);
             }
             if let Some(index) =
@@ -7562,6 +7612,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut motion_was_active = false;
 
     while window.is_open() {
+        minigame_music.update(game_mode.music_track());
         gamepad.update();
         if gamepad.connected != gamepad_was_connected {
             if gamepad.connected {
@@ -7595,9 +7646,24 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 || gamepad.pressed(crate::input::Gamepad::START))
         {
             race_track.pause();
-            match menu::show(&mut window, &mut framebuffer, true)? {
+            match menu::show(
+                &mut window,
+                &mut framebuffer,
+                true,
+                true,
+                &mut minigame_music,
+            )? {
                 menu::Action::Quit => return Ok(false),
                 menu::Action::Play => race_track.resume(),
+                menu::Action::ExitToSpace => {
+                    game_mode = GameMode::FreeWorld;
+                    ship_controller = ShipController::new(ship_spec);
+                    race_track.leave(&mut ship_controller, race_planet_position(world_time));
+                    window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
+                    previous = Instant::now();
+                    crate::input::clear();
+                    continue;
+                }
                 menu::Action::Hangar => {
                     if let Some((new_selection, _)) = select_ship(
                         &mut window,
@@ -7633,9 +7699,30 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         {
             tower_game.pause();
             window.set_cursor_visibility(true);
-            match menu::show(&mut window, &mut framebuffer, true)? {
+            match menu::show(
+                &mut window,
+                &mut framebuffer,
+                true,
+                true,
+                &mut minigame_music,
+            )? {
                 menu::Action::Quit => return Ok(false),
                 menu::Action::Play => tower_game.resume(),
+                menu::Action::ExitToSpace => {
+                    tower_audio.stop_music();
+                    tower_game.resume();
+                    game_mode = GameMode::FreeWorld;
+                    launch_ship_from_planet(
+                        &mut ship_controller,
+                        vesper_planet_position(1, world_time),
+                        vesper_planets[1].radius,
+                    );
+                    window.set_cursor_visibility(true);
+                    window.set_title("Galaxia Vesper | Vuelo libre 3D");
+                    previous = Instant::now();
+                    crate::input::clear();
+                    continue;
+                }
                 menu::Action::Hangar => {
                     if let Some((new_selection, new_form)) = select_ship(
                         &mut window,
@@ -7672,8 +7759,38 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             && game_mode != GameMode::HourglassRescue
             && (crate::input::pressed(Key::Escape) || gamepad.pressed(crate::input::Gamepad::START))
         {
-            match menu::show(&mut window, &mut framebuffer, true)? {
+            match menu::show(
+                &mut window,
+                &mut framebuffer,
+                true,
+                game_mode.is_planet_minigame(),
+                &mut minigame_music,
+            )? {
                 menu::Action::Quit => return Ok(false),
+                menu::Action::ExitToSpace => {
+                    let leaving = game_mode;
+                    game_mode = GameMode::FreeWorld;
+                    match leaving {
+                        GameMode::CoreGuardian => {
+                            launch_ship_after_guardian_exit(&mut ship_controller, world_time);
+                        }
+                        GameMode::WaterLevel => {
+                            bubble_emitter.clear();
+                            ship_controller = ShipController::new(ship_spec);
+                            launch_ship_from_planet(
+                                &mut ship_controller,
+                                water_planet_position(world_time),
+                                WATER_PLANET_RADIUS,
+                            );
+                        }
+                        _ => {}
+                    }
+                    window.set_cursor_visibility(true);
+                    window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
+                    previous = Instant::now();
+                    crate::input::clear();
+                    continue;
+                }
                 menu::Action::Hangar => {
                     if let Some((new_selection, new_form)) = select_ship(
                         &mut window,
@@ -8283,6 +8400,27 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     ship.orbit_camera_blend = 0.0;
                     window.set_title("La nave fue destruida por el Sol");
                 }
+                if !portal_approach_active && !black_hole_absorption_active && !ship.planet_locked {
+                    let asteroid_field = match active_galaxy {
+                        Galaxy::Home => Some((Vec3::new(SUN_POSITION_X, 20.0, 0.0), 350.0)),
+                        Galaxy::Vesper => Some((VESPER_SYSTEM_CENTER, 350.0)),
+                        Galaxy::Nova => Some((Vec3::new(0.0, 70.0, 0.0), 300.0)),
+                    };
+                    if let Some((center, radius)) = asteroid_field {
+                        if let Some(safe_position) = space_decor::asteroid_collision_position(
+                            previous_ship_position,
+                            ship.position,
+                            ship.spec.collision_radius,
+                            active_galaxy,
+                            center,
+                            radius,
+                            world_time,
+                        ) {
+                            ship.position = safe_position;
+                            ship.speed = ship.speed.min(ship.spec.cruise_speed * 0.38);
+                        }
+                    }
+                }
                 let camera_target = if ship.orbit_plane_normal.is_some() {
                     1.0
                 } else {
@@ -8668,6 +8806,23 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 ));
             }
             GameMode::HourglassRescue => {
+                if hourglass_rescue.is_paused() {
+                    if crate::input::pressed(Key::Equal)
+                        || crate::input::pressed(Key::NumPadPlus)
+                        || crate::input::pressed(Key::RightBracket)
+                    {
+                        minigame_music.adjust(true);
+                    }
+                    if crate::input::pressed(Key::Minus)
+                        || crate::input::pressed(Key::NumPadMinus)
+                        || crate::input::pressed(Key::LeftBracket)
+                    {
+                        minigame_music.adjust(false);
+                    }
+                    if crate::input::pressed(Key::M) {
+                        minigame_music.toggle_mute();
+                    }
+                }
                 let restart_pressed =
                     crate::input::pressed(Key::R) || gamepad.pressed(crate::input::Gamepad::Y);
                 let rescue_input = hourglass_rescue::Input {
@@ -8880,7 +9035,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 0xffffff,
             );
         } else if game_mode == GameMode::HourglassRescue {
-            hourglass_rescue.draw_hud(&mut framebuffer, &ship_controller.ship);
+            hourglass_rescue.draw_hud_with_audio(
+                &mut framebuffer,
+                &ship_controller.ship,
+                minigame_music.volume_percent(),
+                minigame_music.muted(),
+            );
         } else if game_mode != GameMode::TowerGuard {
             let form = if game_mode == GameMode::Racing {
                 race_vehicles[selected_ship]
@@ -9052,17 +9212,6 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
             GameMode::FreeWorld => ship_controller.projectiles.len() as u32 * 100,
         };
-        let contacts = match game_mode {
-            GameMode::WaterLevel => water_level_state
-                .enemies
-                .iter()
-                .filter(|enemy| {
-                    enemy.alive && (enemy.progress - water_level_state.progress).abs() < 120.0
-                })
-                .count(),
-            GameMode::CoreGuardian => 5,
-            _ => 0,
-        };
         let boss_hud = match game_mode {
             GameMode::WaterLevel
                 if water_level_state.stage() == WaterStage::SharkBoss
@@ -9078,8 +9227,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
             _ => None,
         };
-        // Racing has its own purpose-built HUD. Do not layer the combat
-        // reticle, blaster charge, shields, contacts or combat objective over it.
+        // Racing and the shooting/rescue games have purpose-built HUDs.
         if game_mode != GameMode::Racing
             && game_mode != GameMode::TowerGuard
             && game_mode != GameMode::HourglassRescue
@@ -9095,8 +9243,6 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 } else {
                     ship_controller.charge_ratio()
                 },
-                ship_controller.ship.position.y,
-                contacts,
                 boss_hud,
                 if game_mode == GameMode::CoreGuardian {
                     guardian_fight.aim_screen_position()
@@ -9134,19 +9280,26 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     planet_lod_states[2].level,
                 ]
             };
-            // Keep diagnostics away from the top-center objective and draw
-            // them after gameplay HUDs so the opaque panel stays readable.
-            const PANEL_LEFT: usize = 16;
-            const PANEL_TOP: usize = 366;
-            const PANEL_WIDTH: usize = 450;
-            hud_rect(&mut framebuffer, PANEL_LEFT, PANEL_TOP, PANEL_WIDTH, 132);
-            let center = (PANEL_LEFT + PANEL_WIDTH / 2) as i32;
+            // F3 diagnostics stay compact in the upper-left corner.
+            let panel_left = (framebuffer.width as f32 * 0.018) as usize;
+            let panel_top = (framebuffer.height as f32 * 0.125) as usize;
+            let panel_width = (framebuffer.width as f32 * 0.21) as usize;
+            let panel_height = (framebuffer.height as f32 * 0.105) as usize;
+            hud_rect(
+                &mut framebuffer,
+                panel_left,
+                panel_top,
+                panel_width,
+                panel_height,
+            );
+            let center = (panel_left + panel_width / 2) as i32;
+            let row = (framebuffer.height as f32 * 0.0175) as i32;
             draw_selection_label(
                 &mut framebuffer,
                 "RENDIMIENTO",
                 center,
-                PANEL_TOP as i32 + 8,
-                2,
+                panel_top as i32 + 5,
+                1,
                 0x46e6ff,
             );
             draw_selection_label(
@@ -9156,8 +9309,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     dynamic_resolution.fps_average, dynamic_resolution.frame_ms_average
                 ),
                 center,
-                PANEL_TOP as i32 + 30,
-                2,
+                panel_top as i32 + 5 + row,
+                1,
                 0xffffff,
             );
             draw_selection_label(
@@ -9167,8 +9320,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     stats.geometry_ms, stats.sort_ms, stats.raster_ms
                 ),
                 center,
-                PANEL_TOP as i32 + 52,
-                2,
+                panel_top as i32 + 5 + row * 2,
+                1,
                 0xc6d8ff,
             );
             draw_selection_label(
@@ -9180,8 +9333,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     dynamic_resolution.percentage()
                 ),
                 center,
-                PANEL_TOP as i32 + 74,
-                2,
+                panel_top as i32 + 5 + row * 3,
+                1,
                 0x9fffd2,
             );
             draw_selection_label(
@@ -9194,8 +9347,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     displayed_lods[2],
                 ),
                 center,
-                PANEL_TOP as i32 + 96,
-                2,
+                panel_top as i32 + 5 + row * 4,
+                1,
                 0xffd78a,
             );
         }
@@ -9381,22 +9534,27 @@ mod tests {
     fn vesper_black_hole_has_a_dark_core_and_layered_accretion_disk() {
         let model = make_vesper_black_hole();
         assert!(
-            model
+            model.core
                 .faces
                 .iter()
                 .any(|face| face.group == "vesper_black_hole_core")
         );
-        let disk_faces = model
+        let disk_faces = model.disk
             .faces
             .iter()
             .filter(|face| face.group == "accretion_disk")
             .count();
-        assert_eq!(disk_faces, 4 * 96 * 2);
-        assert!(model.faces.iter().any(|face| {
-            face.group == "accretion_disk" && face.color == MaterialColor::Fixed([255, 211, 150])
+        assert_eq!(disk_faces, 48 * 256 * 2);
+        assert!(model.disk.faces.iter().any(|face| {
+            face.group == "accretion_disk"
+                && matches!(face.color, MaterialColor::Fixed([r, g, b]) if r > g && g > b)
         }));
-        assert!(model.faces.iter().any(|face| {
-            face.group == "accretion_disk" && face.color == MaterialColor::Fixed([38, 13, 112])
+        assert!(model.filaments.faces.iter().any(|face| {
+            face.group == "accretion_filament"
+                && matches!(face.color, MaterialColor::Fixed([r, g, b]) if r > g && g > b)
+        }));
+        assert!(model.lensing_arcs.faces.iter().any(|face| {
+            face.group == "lensing_arc_upper"
         }));
     }
 
@@ -10892,8 +11050,6 @@ mod tests {
             37_845,
             0.6,
             0.4,
-            280.0,
-            5,
             Some(("JEFE: DESTRUCTOR", 0.5)),
             (0.5, 0.5),
         );

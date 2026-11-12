@@ -5,7 +5,13 @@ use super::scene::CAPSULE_POSITIONS;
 use super::ui::{bar, draw_overlay, panel, shield_icon};
 use super::{HourglassRescue, Phase};
 
-pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship) {
+pub(super) fn draw(
+    game: &HourglassRescue,
+    frame: &mut Framebuffer,
+    ship: &Ship,
+    volume: u32,
+    muted: bool,
+) {
     let w = frame.width as i32;
     let h = frame.height as i32;
     let scale = (frame.width as f32 / 600.0).round().clamp(1.0, 3.0) as i32;
@@ -42,11 +48,23 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, ship: &Ship)
         );
         draw_selection_label(
             frame,
-            "BACKSPACE  VOLVER A VESPER",
+            "BACKSPACE  VOLVER AL ESPACIO",
             w / 2,
             (h as f32 * 0.63) as i32,
             scale,
             0xffbd67,
+        );
+        draw_selection_label(
+            frame,
+            &format!(
+                "MUSICA: {}  {}%   [-]/[+] VOLUMEN   M SILENCIO",
+                if muted { "SILENCIADA" } else { "ACTIVA" },
+                volume
+            ),
+            w / 2,
+            (h as f32 * 0.66) as i32,
+            (scale / 2).max(1),
+            0x8feaff,
         );
         draw_selection_label(
             frame,

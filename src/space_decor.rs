@@ -18,6 +18,7 @@ const STAR_BIT_COUNT: usize = 144;
 
 pub(crate) struct Asteroid {
     pub model: Model,
+    pub collision_radius: f32,
     pub orbit_fraction: f32,
     pub orbit_phase: f32,
     pub orbit_speed: f32,
@@ -85,9 +86,21 @@ pub(crate) fn asteroid_belt(galaxy: Galaxy) -> &'static Model {
     static BELTS: OnceLock<[Model; 3]> = OnceLock::new();
     let belts = BELTS.get_or_init(|| {
         [
-            make_dust_belt([[91, 111, 142], [129, 116, 104], [66, 82, 105]]),
-            make_dust_belt([[122, 126, 169], [90, 103, 145], [157, 139, 166]]),
-            make_dust_belt([[137, 112, 91], [93, 112, 108], [171, 153, 121]]),
+            make_dust_belt(
+                [[91, 111, 142], [129, 116, 104], [66, 82, 105]],
+                &[0.95, 1.98],
+                BELT_DUST_COUNT,
+            ),
+            make_dust_belt(
+                [[122, 126, 169], [90, 103, 145], [157, 139, 166]],
+                &[0.95, 1.98],
+                BELT_DUST_COUNT,
+            ),
+            make_dust_belt(
+                [[137, 112, 91], [93, 112, 108], [171, 153, 121]],
+                &[0.52, 1.45, 2.12],
+                288,
+            ),
         ]
     });
     &belts[match galaxy {
@@ -104,14 +117,17 @@ pub(crate) fn asteroids(galaxy: Galaxy) -> &'static [Asteroid] {
             make_asteroids(
                 [[91, 111, 142], [129, 116, 104], [66, 82, 105]],
                 0x13a5_8f21,
+                false,
             ),
             make_asteroids(
                 [[122, 126, 169], [90, 103, 145], [157, 139, 166]],
                 0x7e31_4c99,
+                false,
             ),
             make_asteroids(
                 [[137, 112, 91], [93, 112, 108], [171, 153, 121]],
                 0xc049_827b,
+                true,
             ),
         ]
     });
@@ -133,13 +149,14 @@ pub(crate) fn draw_nebula(
         // These are fixed directions in each system's distant sky.
         Galaxy::Home => (0, std::f32::consts::PI),
         Galaxy::Vesper => (1, -std::f32::consts::FRAC_PI_2),
-        Galaxy::Nova => return,
+        Galaxy::Nova => (2, std::f32::consts::FRAC_PI_4),
     };
-    static NEBULAS: OnceLock<[Option<NebulaTexture>; 2]> = OnceLock::new();
+    static NEBULAS: OnceLock<[Option<NebulaTexture>; 3]> = OnceLock::new();
     let nebulae = NEBULAS.get_or_init(|| {
         [
             NebulaTexture::load("assets/space/nebula_home.png"),
             NebulaTexture::load("assets/space/nebula_vesper.png"),
+            NebulaTexture::load("assets/space/nebula_nova.png"),
         ]
     });
     let Some(nebula) = nebulae[nebula_index].as_ref() else {
@@ -156,7 +173,11 @@ pub(crate) fn draw_nebula(
     let center_y = framebuffer.height as f32 * 0.5;
     let angular_width = 1.95;
     let angular_height = 1.05;
-    let opacity = if galaxy == Galaxy::Home { 0.50 } else { 0.47 };
+    let opacity = match galaxy {
+        Galaxy::Home => 0.50,
+        Galaxy::Vesper => 0.47,
+        Galaxy::Nova => 0.50,
+    };
     for y in (0..framebuffer.height).step_by(block) {
         for x in (0..framebuffer.width).step_by(block) {
             let ray = camera_forward
@@ -337,18 +358,43 @@ fn add_pixel(framebuffer: &mut Framebuffer, x: i32, y: i32, color: [u32; 3], str
     *pixel = (channels[0] << 16) | (channels[1] << 8) | channels[2];
 }
 
-fn make_asteroids(palette: [[u8; 3]; 3], galaxy_seed: u32) -> Vec<Asteroid> {
-    (0..INNER_ASTEROID_COUNT + OUTER_ASTEROID_COUNT)
+fn make_asteroids(palette: [[u8; 3]; 3], galaxy_seed: u32, three_bands: bool) -> Vec<Asteroid> {
+    let count = if three_bands {
+        120
+    } else {
+        INNER_ASTEROID_COUNT + OUTER_ASTEROID_COUNT
+    };
+    (0..count)
         .map(|index| {
             let seed = (index as u32).wrapping_mul(7919).wrapping_add(galaxy_seed);
-            let outer = index >= INNER_ASTEROID_COUNT;
-            Asteroid {
-                model: make_asteroid(seed, palette, index, if outer { 1.30 } else { 1.0 }),
-                orbit_fraction: if outer {
+            let band = index % 3;
+            let outer = if three_bands {
+                band == 2
+            } else {
+                index >= INNER_ASTEROID_COUNT
+            };
+            let orbit_fraction = if three_bands {
+                [0.52, 1.45, 2.12][band] + (unit(seed ^ 0xa511_e9b3) - 0.5) * 0.075
+            } else {
+                let outer = index >= INNER_ASTEROID_COUNT;
+                if outer {
                     1.98 + unit(seed ^ 0xa511_e9b3) * 0.10
                 } else {
                     0.93 + unit(seed ^ 0xa511_e9b3) * 0.14
-                },
+                }
+            };
+            let size_scale = if three_bands {
+                if band == 2 { 0.88 } else { 1.0 }
+            } else if index >= INNER_ASTEROID_COUNT {
+                1.30
+            } else {
+                1.0
+            };
+            let (model, collision_radius) = make_asteroid(seed, palette, index, size_scale);
+            Asteroid {
+                model,
+                collision_radius,
+                orbit_fraction,
                 orbit_phase: index as f32 * 2.399_963_1 + (unit(seed) - 0.5) * 0.28,
                 // Much slower than the planets; each rock has a slightly
                 // different period so the belt does not rotate as one object.
@@ -369,7 +415,12 @@ fn make_asteroids(palette: [[u8; 3]; 3], galaxy_seed: u32) -> Vec<Asteroid> {
         .collect()
 }
 
-fn make_asteroid(seed: u32, palette: [[u8; 3]; 3], asteroid: usize, size_scale: f32) -> Model {
+fn make_asteroid(
+    seed: u32,
+    palette: [[u8; 3]; 3],
+    asteroid: usize,
+    size_scale: f32,
+) -> (Model, f32) {
     let size = (2.8 + unit(seed ^ 0x9e37_79b9) * 4.7) * size_scale;
     let rotation = unit(seed ^ 0x7f4a_7c15) * std::f32::consts::TAU;
     let mut vertices = Vec::with_capacity(ASTEROID_RING_SEGMENTS * ASTEROID_SHAPE_RINGS + 2);
@@ -456,17 +507,18 @@ fn make_asteroid(seed: u32, palette: [[u8; 3]; 3], asteroid: usize, size_scale: 
         );
     }
 
-    Model::new(vertices, faces)
+    (Model::new(vertices, faces), size * 1.15)
 }
 
-fn make_dust_belt(palette: [[u8; 3]; 3]) -> Model {
-    let mut vertices = Vec::with_capacity(BELT_DUST_COUNT * 3);
-    let mut faces = Vec::with_capacity(BELT_DUST_COUNT);
+fn make_dust_belt(palette: [[u8; 3]; 3], bands: &[f32], count: usize) -> Model {
+    let mut vertices = Vec::with_capacity(count * 3);
+    let mut faces = Vec::with_capacity(count);
     // Fine fragments trace the same narrow orbital lane as the rocks.
-    for chip in 0..BELT_DUST_COUNT {
+    for chip in 0..count {
         let seed = chip as u32 * 65_537 + 0x51ed_270b;
         let angle = unit(seed) * std::f32::consts::TAU;
-        let radius = 0.82 + unit(seed ^ 0x9e37_79b9) * 0.36;
+        let band = bands[chip % bands.len()];
+        let radius = band + (unit(seed ^ 0x9e37_79b9) - 0.5) * 0.10;
         let center = Vec3::new(
             angle.cos() * radius,
             angle.sin() * radius * 0.055 + (unit(seed ^ 0x63d8_3595) - 0.5) * 0.035,
@@ -493,11 +545,81 @@ fn make_dust_belt(palette: [[u8; 3]; 3]) -> Model {
     Model::new(vertices, faces)
 }
 
+pub(crate) fn asteroid_position(
+    asteroid: &Asteroid,
+    center: Vec3,
+    base_radius: f32,
+    time: f32,
+) -> Vec3 {
+    let angle = asteroid.orbit_phase + time * asteroid.orbit_speed;
+    let (sin, cos) = angle.sin_cos();
+    let radius = asteroid.orbit_fraction * base_radius;
+    center.add(Vec3::new(
+        cos * radius,
+        sin * radius * 0.055 + asteroid.vertical_offset,
+        sin * radius,
+    ))
+}
+
+/// Sweep the ship's movement segment against the visible asteroid field so
+/// high speed cannot tunnel through rocks between rendered frames.
+pub(crate) fn asteroid_collision_position(
+    previous: Vec3,
+    current: Vec3,
+    ship_radius: f32,
+    galaxy: Galaxy,
+    center: Vec3,
+    base_radius: f32,
+    time: f32,
+) -> Option<Vec3> {
+    let movement = current.sub(previous);
+    let movement_length_squared = movement.dot(movement);
+    let mut earliest: Option<(f32, Vec3)> = None;
+
+    for asteroid in asteroids(galaxy) {
+        let rock = asteroid_position(asteroid, center, base_radius, time);
+        let t = if movement_length_squared > 0.0001 {
+            rock.sub(previous).dot(movement) / movement_length_squared
+        } else {
+            0.0
+        }
+        .clamp(0.0, 1.0);
+        let closest = previous.add(movement.mul(t));
+        let delta = closest.sub(rock);
+        let distance_squared = delta.dot(delta);
+        let combined_radius = ship_radius.max(1.0) + asteroid.collision_radius;
+        if distance_squared >= combined_radius * combined_radius {
+            continue;
+        }
+        if earliest.is_some_and(|(best_t, _)| t >= best_t) {
+            continue;
+        }
+        let distance = distance_squared.sqrt();
+        let normal = if distance > 0.001 {
+            delta.mul(1.0 / distance)
+        } else {
+            let heading = current.sub(rock).normalize();
+            if heading.dot(heading) > 0.5 {
+                heading
+            } else {
+                let prior = previous.sub(rock).normalize();
+                if prior.dot(prior) > 0.5 {
+                    prior
+                } else {
+                    Vec3::new(1.0, 0.0, 0.0)
+                }
+            }
+        };
+        earliest = Some((t, closest.add(normal.mul(combined_radius + 0.4))));
+    }
+    earliest.map(|(_, resolved)| resolved)
+}
+
 pub(crate) fn draw_dust(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
     let tint = match galaxy {
         Galaxy::Home => [94_u32, 136_u32, 204_u32],
         Galaxy::Vesper => [160, 125, 222],
-        Galaxy::Nova => [88, 200, 170],
+        Galaxy::Nova => [220, 116, 130],
     };
     let center_x = framebuffer.width as f32 * 0.5;
     let center_y = framebuffer.height as f32 * 0.48;
