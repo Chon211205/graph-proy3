@@ -1,7 +1,7 @@
+mod black_hole;
 mod core_guardian;
 mod framebuffer;
 mod galaxy;
-mod black_hole;
 mod hourglass_rescue;
 mod input;
 mod lava_castle;
@@ -430,6 +430,25 @@ fn upscale_scene(source: &Framebuffer, target: &mut Framebuffer) {
             target.pixels[target_row + x] =
                 (interpolate(16) << 16) | (interpolate(8) << 8) | interpolate(0);
         }
+    }
+}
+
+fn upscale_split_scene(left: &Framebuffer, right: &Framebuffer, target: &mut Framebuffer) {
+    let split = target.width / 2;
+    for y in 0..target.height {
+        let source_y = y * left.height / target.height;
+        for x in 0..target.width {
+            let (source, local_x, viewport_width) = if x < split {
+                (left, x, split)
+            } else {
+                (right, x - split, target.width - split)
+            };
+            let source_x = local_x * source.width / viewport_width.max(1);
+            target.pixels[y * target.width + x] = source.pixels
+                [source_y.min(source.height - 1) * source.width + source_x.min(source.width - 1)];
+        }
+        target.pixels[y * target.width + split.saturating_sub(1)] = 0x46e6ff;
+        target.pixels[y * target.width + split.min(target.width - 1)] = 0x46e6ff;
     }
 }
 
@@ -4606,7 +4625,10 @@ fn move_around_planet(
 
 enum TriangleStyle {
     Flat(u32),
-    BlackHolePlasma { color: u32, alpha: u8 },
+    BlackHolePlasma {
+        color: u32,
+        alpha: u8,
+    },
     Smooth {
         color: [u8; 3],
         brightness: [f32; 3],
@@ -4949,8 +4971,16 @@ impl TriangleBatch {
                             ),
                             TriangleStyle::BlackHolePlasma { color, alpha } => {
                                 draw_triangle_alpha_region(
-                                    tile_pixels, tile_depth, width, height, region_y, a, b, c,
-                                    *color, *alpha,
+                                    tile_pixels,
+                                    tile_depth,
+                                    width,
+                                    height,
+                                    region_y,
+                                    a,
+                                    b,
+                                    c,
+                                    *color,
+                                    *alpha,
                                 )
                             }
                             TriangleStyle::Smooth { color, brightness } => {
@@ -5256,10 +5286,8 @@ fn queue_model_with_scratch<F>(
             let angle = center.z.atan2(center.x);
             let pulse = 0.94
                 + 0.06
-                    * (water_time.unwrap_or_default() * 0.8 + angle * 3.0 - radius * 0.025)
-                        .sin();
-            let color = flat_color
-                .map(|channel| (channel as f32 * pulse).clamp(0.0, 255.0) as u8);
+                    * (water_time.unwrap_or_default() * 0.8 + angle * 3.0 - radius * 0.025).sin();
+            let color = flat_color.map(|channel| (channel as f32 * pulse).clamp(0.0, 255.0) as u8);
             batch.commands.push(TriangleCommand {
                 vertices: [a, b, c],
                 style: TriangleStyle::BlackHolePlasma {
@@ -5534,7 +5562,11 @@ fn render_scene(
             &vesper_black_hole.core,
             batch,
             &camera,
-            |vertex| vertex.mul(black_hole::VISUAL_SCALE).add(VESPER_SYSTEM_CENTER),
+            |vertex| {
+                vertex
+                    .mul(black_hole::VISUAL_SCALE)
+                    .add(VESPER_SYSTEM_CENTER)
+            },
             None,
             None,
         );
@@ -5650,7 +5682,12 @@ fn render_scene(
         Galaxy::Nova => Some((Vec3::new(0.0, 70.0, 0.0), 300.0)),
     };
     if let Some((asteroid_center, asteroid_radius)) = asteroid_orbit {
-        let dust_rotation = world_time * if galaxy == Galaxy::Nova { 0.0035 } else { 0.006 };
+        let dust_rotation = world_time
+            * if galaxy == Galaxy::Nova {
+                0.0035
+            } else {
+                0.006
+            };
         let (dust_sin, dust_cos) = dust_rotation.sin_cos();
         queue_model(
             space_decor::asteroid_belt(galaxy),
@@ -6645,9 +6682,23 @@ fn draw_unified_combat_hud(
 
     // Compact corner cards leave the center and horizon open for navigation.
     panel(framebuffer, 0.018, 0.020, 0.226, 0.091);
-    label(framebuffer, "ESCUDO", 0.055, 0.034, 0xffffff);
-    bar(framebuffer, 0.032, 0.060, 0.211, 0.073, shield_ratio, 0x22e8f4);
-    label(framebuffer, "VIDAS 3", 0.055, 0.081, 0xbfefff);
+    label(framebuffer, "INTEGRIDAD", 0.072, 0.034, 0xffffff);
+    bar(
+        framebuffer,
+        0.032,
+        0.060,
+        0.211,
+        0.073,
+        shield_ratio,
+        0x22e8f4,
+    );
+    label(
+        framebuffer,
+        &format!("{:03}%", (shield_ratio.clamp(0.0, 1.0) * 100.0) as u32),
+        0.055,
+        0.081,
+        0xbfefff,
+    );
 
     panel(framebuffer, 0.018, 0.858, 0.318, 0.980);
     label(framebuffer, "OBJETIVO", 0.168, 0.883, 0xffffff);
@@ -6655,11 +6706,25 @@ fn draw_unified_combat_hud(
 
     panel(framebuffer, 0.774, 0.020, 0.982, 0.091);
     label(framebuffer, "PUNTAJE", 0.878, 0.034, 0xffffff);
-    label(framebuffer, &format!("{:07}", score), 0.878, 0.068, 0xe9f8ff);
+    label(
+        framebuffer,
+        &format!("{:07}", score),
+        0.878,
+        0.068,
+        0xe9f8ff,
+    );
 
     panel(framebuffer, 0.797, 0.826, 0.982, 0.982);
-    label(framebuffer, "IMPULSO", 0.889, 0.842, 0xffffff);
-    bar(framebuffer, 0.814, 0.862, 0.965, 0.872, boost_ratio, 0x20dcf2);
+    label(framebuffer, "ENERGIA", 0.889, 0.842, 0xffffff);
+    bar(
+        framebuffer,
+        0.814,
+        0.862,
+        0.965,
+        0.872,
+        boost_ratio,
+        0x20dcf2,
+    );
     label(
         framebuffer,
         &format!("{:03}%", (boost_ratio * 100.0) as u32),
@@ -6667,8 +6732,16 @@ fn draw_unified_combat_hud(
         0.888,
         0xdafcff,
     );
-    label(framebuffer, "BLASTER", 0.889, 0.914, 0xffffff);
-    bar(framebuffer, 0.814, 0.934, 0.965, 0.944, charge_ratio, 0x26e7f2);
+    label(framebuffer, "ARMA", 0.889, 0.914, 0xffffff);
+    bar(
+        framebuffer,
+        0.814,
+        0.934,
+        0.965,
+        0.944,
+        charge_ratio,
+        0x26e7f2,
+    );
     label(framebuffer, "ENTER: DISPARAR", 0.889, 0.963, 0xcaf5ff);
 
     // Small, centered reticle scales with the viewport and remains inside it.
@@ -6683,7 +6756,11 @@ fn draw_unified_combat_hud(
                 (cx + arm, cy - arm + offset),
                 (cx - arm, cy + arm - offset),
             ] {
-                if px >= 0 && py >= 0 && px < framebuffer.width as i32 && py < framebuffer.height as i32 {
+                if px >= 0
+                    && py >= 0
+                    && px < framebuffer.width as i32
+                    && py < framebuffer.height as i32
+                {
                     framebuffer.pixels[py as usize * framebuffer.width + px as usize] = 0x56eaff;
                 }
             }
@@ -6704,6 +6781,77 @@ fn draw_unified_combat_hud(
         panel(framebuffer, 0.30, 0.105, 0.70, 0.158);
         label(framebuffer, name, 0.50, 0.117, 0xffffff);
         bar(framebuffer, 0.32, 0.140, 0.68, 0.151, health, 0xff4d47);
+    }
+}
+
+fn draw_split_coop_hud(
+    framebuffer: &mut Framebuffer,
+    first: &ShipController,
+    second: &ShipController,
+    dragon_balls: u8,
+) {
+    let half = framebuffer.width / 2;
+    let scale = ((framebuffer.height as f32 / 900.0).round() as i32).clamp(1, 2);
+    for (index, controller) in [first, second].into_iter().enumerate() {
+        let left = index * half;
+        let center = left + half / 2;
+        hud_rect(framebuffer, left + 14, 16, 190.min(half - 28), 58);
+        draw_selection_label(
+            framebuffer,
+            if index == 0 { "JUGADOR 1" } else { "JUGADOR 2" },
+            (left + 105.min(half / 2)) as i32,
+            25,
+            scale,
+            if index == 0 { 0x56eaff } else { 0xffd15c },
+        );
+        draw_selection_label(
+            framebuffer,
+            &format!(
+                "ENERGIA {:03}%",
+                (controller.turbo_power(controller.ship.speed) * 100.0) as u32
+            ),
+            (left + 105.min(half / 2)) as i32,
+            49,
+            scale,
+            0xffffff,
+        );
+        draw_selection_label(
+            framebuffer,
+            &format!("ESFERAS {}/7", dragon_balls.count_ones()),
+            (left + 105.min(half / 2)) as i32,
+            72,
+            scale,
+            0xffc95c,
+        );
+        hud_rect(
+            framebuffer,
+            left + 14,
+            framebuffer.height - 66,
+            half.saturating_sub(28),
+            50,
+        );
+        draw_selection_label(
+            framebuffer,
+            if index == 1 {
+                "SELECT: HANGAR  //  C: SALIR"
+            } else {
+                "CRUCETA: NAVE  //  C: SALIR"
+            },
+            center as i32,
+            framebuffer.height as i32 - 49,
+            scale,
+            0xcaf5ff,
+        );
+        let cy = framebuffer.height as i32 / 2;
+        let cx = center as i32;
+        for offset in -10_i32..=10 {
+            if offset.abs() > 3 {
+                let x = cx + offset;
+                let y = cy + offset;
+                framebuffer.pixels[cy as usize * framebuffer.width + x as usize] = 0x56eaff;
+                framebuffer.pixels[y as usize * framebuffer.width + cx as usize] = 0x56eaff;
+            }
+        }
     }
 }
 
@@ -7109,6 +7257,7 @@ fn select_ship(
     choices: &[(&Model, &ShipSpec)],
     ship_forms: &[Vec<(&Model, &ShipSpec, &str)>],
     initial_selection: usize,
+    gamepad_index: u32,
 ) -> Result<Option<(usize, usize)>, minifb::Error> {
     crate::input::clear();
     window.update();
@@ -7132,7 +7281,7 @@ fn select_ship(
         (428, 385),
     ];
     let mut thumbnails = Vec::with_capacity(choices.len());
-    let mut gamepad = crate::input::Gamepad::default();
+    let mut gamepad = crate::input::Gamepad::new(gamepad_index);
     for (index, forms) in ship_forms.iter().enumerate() {
         let (model, spec, _) = forms[0];
         let (left, top) = card_positions[index];
@@ -7340,6 +7489,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         load_obj("assets/vehicles/mcqueen/mcqueen_submarino_detallado.obj")?;
     let mcqueen_car_center = model_center(&mcqueen_car_model);
     let mut race_track = race_track::RaceTrack::load()?;
+    let mut coop_race_track = race_track::RaceTrack::load()?;
     let race_vehicles = [
         Some((&arwing_car_model, &ARWING_CAR_SPEC)),
         Some((&kirby_car_model, &KIRBY_CAR_SPEC)),
@@ -7412,7 +7562,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 return Ok(false);
             }
             if let Some(index) =
-                select_ship(&mut window, &mut framebuffer, &choices, &ship_forms, 0)?
+                select_ship(&mut window, &mut framebuffer, &choices, &ship_forms, 0, 0)?
             {
                 break index;
             }
@@ -7421,6 +7571,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
         }
     };
+    // Selection is local to each player. P2 starts with P1's choice but can
+    // change it at any time while flying freely.
+    let mut coop_selected_ship = selected_ship;
     let (mut ship_model, mut ship_spec) = choices[selected_ship];
     if selected_ship == 5 && initial_form == 1 {
         ship_spec = &MCQUEEN_CAR_SPEC;
@@ -7481,10 +7634,14 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     ];
     let mut enemy_instance_buffers: [Vec<Vec3>; 3] =
         std::array::from_fn(|index| Vec::with_capacity(enemy_models[index].vertices.len()));
+    let mut coop_enemy_instance_buffers: [Vec<Vec3>; 3] =
+        std::array::from_fn(|index| Vec::with_capacity(enemy_models[index].vertices.len()));
     let mut dynamic_resolution = DynamicResolution::new();
     let (initial_render_width, initial_render_height) = dynamic_resolution.dimensions();
     let mut scene_framebuffer = Framebuffer::new(initial_render_width, initial_render_height);
     let mut triangle_batch = TriangleBatch::new(initial_render_width, initial_render_height);
+    let mut coop_framebuffer = Framebuffer::new(initial_render_width, initial_render_height);
+    let mut coop_triangle_batch = TriangleBatch::new(initial_render_width, initial_render_height);
     let mut hybrid_ray_tracing = HybridRayTracing::new();
     let level_colliders = build_level_colliders(&water_level);
     let water_level_spatial = LevelSpatialIndex::new(&water_level, level_colliders);
@@ -7574,12 +7731,29 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     } else {
         ship_spec
     });
+    let mut coop_controller = ShipController::new(ship_spec);
+    coop_controller.ship.position = ship_controller.ship.position.add(Vec3::new(8.0, 0.0, 0.0));
+    let mut coop_enabled = false;
+    let mut coop_game_mode = GameMode::FreeWorld;
+    let mut coop_water_level_state = WaterLevelState::new();
+    let mut coop_bubble_emitter = BubbleEmitter::new();
+    let mut coop_guardian_fight = CoreGuardian::new();
+    let mut coop_hourglass_rescue = hourglass_rescue::HourglassRescue::new();
+    let mut coop_lava_castle = lava_castle::LavaCastle::new();
+    let mut coop_lava_castle_interior = lava_castle_interior::LavaCastleInterior::new();
+    let mut coop_vesper_orbit_index: Option<usize> = None;
+    let mut coop_planet_lod_states = [PlanetLodState::default(); 3];
+    let mut coop_vesper_lod_states = [PlanetLodState::default(); 2];
+    let mut coop_castle_lod_state = PlanetLodState::default();
     let mut game_mode = if start_underwater {
         GameMode::WaterLevel
     } else {
         GameMode::FreeWorld
     };
     let mut active_galaxy = Galaxy::Home;
+    // The guest is a separate local session: its portal travel must never
+    // change the galaxy shown to player one.
+    let mut coop_active_galaxy = Galaxy::Home;
     let mut vesper_orbit_index: Option<usize> = None;
     let mut galaxy_transition: Option<GalaxyTransit> = None;
     if start_underwater {
@@ -7592,6 +7766,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut lava_castle = lava_castle::LavaCastle::new();
     let mut lava_castle_interior = lava_castle_interior::LavaCastleInterior::new();
     let mut tower_game = tower_guard::TowerGame::new(&tower_sprites);
+    let mut coop_tower_game = tower_guard::TowerGame::new(&tower_sprites);
     let mut ambient_battle = space_battle::SpaceBattle::new();
     let mut previous = Instant::now();
     let mut world_time = 0.0_f32;
@@ -7601,6 +7776,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut last_tower_cursor = (0.5_f32, 0.52_f32);
     let mut tower_mouse_down = false;
     let mut tower_dragon_ball_collected = false;
+    // One bit per Dragon Ball. Both local players read and write this shared
+    // progression, so a completed planet cannot be farmed twice.
+    let mut collected_dragon_balls: u8 = 0;
     let mut tower_reward_timer = 0.0_f32;
     let mut tower_reward_position = Vec3::default();
     let mut solar_explosion_timer = 0.0_f32;
@@ -7608,12 +7786,15 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut black_hole_absorption_timer = 0.0_f32;
     let mut black_hole_absorption_start = Vec3::default();
     let mut gamepad = crate::input::Gamepad::default();
+    let mut gamepad_two = crate::input::Gamepad::new(1);
     let mut gamepad_was_connected = false;
+    let mut gamepad_two_was_connected = false;
     let mut motion_was_active = false;
 
     while window.is_open() {
         minigame_music.update(game_mode.music_track());
         gamepad.update();
+        gamepad_two.update();
         if gamepad.connected != gamepad_was_connected {
             if gamepad.connected {
                 println!("Control detectado y listo para jugar");
@@ -7627,6 +7808,17 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             println!("Control de movimiento detectado");
         }
         motion_was_active = motion_active;
+        if gamepad_two.connected != gamepad_two_was_connected {
+            println!(
+                "Control 2 {}",
+                if gamepad_two.connected {
+                    "conectado"
+                } else {
+                    "desconectado"
+                }
+            );
+            gamepad_two_was_connected = gamepad_two.connected;
+        }
         let benchmark_frame_start = Instant::now();
         if game_mode == GameMode::HourglassRescue && !window.is_active() {
             // Do not let Alt+Tab or a transient Windows focus change eat the
@@ -7671,6 +7863,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         &choices,
                         &ship_forms,
                         selected_ship,
+                        0,
                     )? {
                         if let Some((_, car_spec)) = race_vehicles[new_selection] {
                             selected_ship = new_selection;
@@ -7730,6 +7923,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         &choices,
                         &ship_forms,
                         selected_ship,
+                        0,
                     )? {
                         selected_ship = new_selection;
                         (ship_model, ship_spec) = choices[selected_ship];
@@ -7798,6 +7992,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         &choices,
                         &ship_forms,
                         selected_ship,
+                        0,
                     )? {
                         selected_ship = new_selection;
                         (ship_model, ship_spec) = choices[selected_ship];
@@ -7845,6 +8040,83 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             menu::instructions(&mut window, &mut framebuffer)?;
             previous = Instant::now();
             continue;
+        }
+        if game_mode == GameMode::FreeWorld
+            && (crate::input::pressed(Key::C)
+                || (!coop_enabled
+                    && gamepad_two.connected
+                    && gamepad_two.pressed(crate::input::Gamepad::START)))
+        {
+            coop_enabled = !coop_enabled;
+            if coop_enabled {
+                coop_controller = ShipController::new(choices[coop_selected_ship].1);
+                coop_controller.ship.position =
+                    ship_controller.ship.position.add(Vec3::new(8.0, 0.0, 0.0));
+                coop_controller.ship.yaw = ship_controller.ship.yaw;
+                window.set_title("Cooperativo local | P1: WASD | P2: IJKL | C: salir");
+            } else {
+                window.set_title("Sistema solar | Vuelo libre 3D | C: cooperativo");
+            }
+        }
+        if coop_enabled
+            && coop_game_mode == GameMode::FreeWorld
+            && !coop_controller.ship.planet_locked
+            && gamepad_two.pressed(crate::input::Gamepad::SELECT)
+        {
+            if let Some((new_selection, _)) = select_ship(
+                &mut window,
+                &mut framebuffer,
+                &choices,
+                &ship_forms,
+                coop_selected_ship,
+                1,
+            )? {
+                coop_selected_ship = new_selection;
+                coop_controller.ship.spec = choices[coop_selected_ship].1;
+            }
+            previous = Instant::now();
+            crate::input::clear();
+            continue;
+        }
+        if game_mode == GameMode::FreeWorld
+            && !ship_controller.ship.planet_locked
+            && (gamepad.pressed(crate::input::Gamepad::DPAD_LEFT)
+                || gamepad.pressed(crate::input::Gamepad::DPAD_RIGHT))
+        {
+            let direction = if gamepad.pressed(crate::input::Gamepad::DPAD_LEFT) {
+                choices.len() - 1
+            } else {
+                1
+            };
+            selected_ship = (selected_ship + direction) % choices.len();
+            (ship_model, ship_spec) = choices[selected_ship];
+            car_mode = false;
+            base_center = model_center(ship_model);
+            ship_controller.ship.spec = ship_spec;
+            (level_ship_model, level_ship_spec) = match selected_ship {
+                0 => (&arwing_submarine_model, &ARWING_SUBMARINE_SPEC),
+                1 => (&kirby_submarine_model, &KIRBY_SUBMARINE_SPEC),
+                2 => (&astra_submarine_model, &ASTRA_SUBMARINE_SPEC),
+                3 => (&cowboyb_submarine_model, &COWBOYB_SUBMARINE_SPEC),
+                4 => (&buzz_variants[2], &BUZZ_SUBMARINE_SPEC),
+                5 => (&mcqueen_submarine_model, &MCQUEEN_SUBMARINE_SPEC),
+                _ => unreachable!(),
+            };
+            level_ship_center = model_center(level_ship_model);
+        }
+        if coop_enabled
+            && coop_game_mode == GameMode::FreeWorld
+            && !coop_controller.ship.planet_locked
+            && (gamepad_two.pressed(crate::input::Gamepad::DPAD_LEFT)
+                || gamepad_two.pressed(crate::input::Gamepad::DPAD_RIGHT))
+        {
+            let direction = if gamepad_two.pressed(crate::input::Gamepad::DPAD_LEFT) {
+                choices.len() - 1
+            } else {
+                1
+            };
+            coop_selected_ship = (coop_selected_ship + direction) % choices.len();
+            coop_controller.ship.spec = choices[coop_selected_ship].1;
         }
         if matches!(selected_ship, 4 | 5)
             && game_mode == GameMode::FreeWorld
@@ -8023,12 +8295,69 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         } else {
             yaw_input
         };
+        if coop_enabled
+            && coop_game_mode == GameMode::FreeWorld
+            && coop_controller.ship.planet_locked
+            && gamepad_two.pressed(crate::input::Gamepad::A)
+        {
+            if coop_active_galaxy == Galaxy::Home
+                && coop_controller.ship.race_planet_locked
+                && collected_dragon_balls & 0b0000001 == 0
+            {
+                if let Some((_, car_spec)) = race_vehicles[coop_selected_ship] {
+                    coop_controller = ShipController::new(car_spec);
+                    if coop_race_track.enter(
+                        &mut coop_controller,
+                        coop_selected_ship,
+                        &race_vehicles,
+                    ) {
+                        coop_game_mode = GameMode::Racing;
+                    }
+                }
+            } else if coop_active_galaxy == Galaxy::Home
+                && coop_controller.ship.spiky_planet_locked
+                && collected_dragon_balls & 0b0000100 == 0
+            {
+                coop_guardian_fight = CoreGuardian::new();
+                coop_game_mode = GameMode::CoreGuardian;
+            } else if coop_active_galaxy == Galaxy::Home
+                && !coop_controller.ship.race_planet_locked
+                && collected_dragon_balls & 0b0001000 == 0
+            {
+                let coop_level_spec = match coop_selected_ship {
+                    0 => &ARWING_SUBMARINE_SPEC,
+                    1 => &KIRBY_SUBMARINE_SPEC,
+                    2 => &ASTRA_SUBMARINE_SPEC,
+                    3 => &COWBOYB_SUBMARINE_SPEC,
+                    4 => &BUZZ_SUBMARINE_SPEC,
+                    5 => &MCQUEEN_SUBMARINE_SPEC,
+                    _ => unreachable!(),
+                };
+                coop_controller = ShipController::new(coop_level_spec);
+                coop_water_level_state = WaterLevelState::new();
+                coop_bubble_emitter.clear();
+                coop_game_mode = GameMode::WaterLevel;
+            } else if coop_active_galaxy == Galaxy::Vesper && coop_vesper_orbit_index == Some(0) {
+                coop_hourglass_rescue = hourglass_rescue::HourglassRescue::new();
+                coop_hourglass_rescue.place_ship_at_start(&mut coop_controller.ship);
+                coop_game_mode = GameMode::HourglassRescue;
+            } else if coop_active_galaxy == Galaxy::Vesper
+                && coop_vesper_orbit_index == Some(1)
+                && collected_dragon_balls & 0b0000010 == 0
+            {
+                coop_tower_game = tower_guard::TowerGame::new(&tower_sprites);
+                coop_game_mode = GameMode::TowerGuard;
+            } else if coop_active_galaxy == Galaxy::Nova {
+                coop_lava_castle.enter(&mut coop_controller);
+                coop_game_mode = GameMode::LavaCastle;
+            }
+        }
         let mut entered_level = false;
         if game_mode == GameMode::FreeWorld
             && ship_controller.ship.planet_locked
             && (crate::input::pressed(Key::Enter) || gamepad.pressed(crate::input::Gamepad::A))
         {
-            if ship_controller.ship.race_planet_locked {
+            if ship_controller.ship.race_planet_locked && collected_dragon_balls & 0b0000001 == 0 {
                 if let Some((_, car_spec)) = race_vehicles[selected_ship] {
                     ship_controller = ShipController::new(car_spec);
                     if race_track.enter(&mut ship_controller, selected_ship, &race_vehicles) {
@@ -8151,6 +8480,216 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 || gamepad.brake,
             firing: (window.is_key_down(Key::Enter) || gamepad.fire) && !entered_level,
         };
+        let coop_input = ShipInput {
+            pitch: (window.is_key_down(Key::K) as i8 - window.is_key_down(Key::I) as i8)
+                + gamepad_two.vertical(),
+            yaw: (window.is_key_down(Key::L) as i8 - window.is_key_down(Key::J) as i8)
+                + gamepad_two.horizontal(),
+            roll: (window.is_key_down(Key::O) as i8 - window.is_key_down(Key::U) as i8)
+                + gamepad_two.roll_right as i8
+                - gamepad_two.roll_left as i8,
+            accelerating: window.is_key_down(Key::N) || gamepad_two.accelerate,
+            braking: window.is_key_down(Key::M) || gamepad_two.brake,
+            firing: window.is_key_down(Key::H) || gamepad_two.fire,
+        };
+        if coop_enabled && coop_game_mode == GameMode::Racing {
+            if gamepad_two.pressed(crate::input::Gamepad::B) || coop_race_track.reward_complete() {
+                if coop_race_track.reward_complete() {
+                    collected_dragon_balls |= 0b0000001;
+                }
+                coop_game_mode = GameMode::FreeWorld;
+                coop_controller = ShipController::new(ship_spec);
+                coop_race_track.leave(&mut coop_controller, race_planet_position(world_time));
+            } else {
+                coop_race_track.update(
+                    &mut coop_controller,
+                    race_track::RaceInput {
+                        accelerate: gamepad_two.accelerate,
+                        reverse: gamepad_two.brake,
+                        brake: gamepad_two.brake,
+                        steering: (-gamepad_two.move_x * i8::MAX as f32)
+                            .round()
+                            .clamp(i8::MIN as f32, i8::MAX as f32)
+                            as i8,
+                        drift: gamepad_two.down(crate::input::Gamepad::X),
+                        boost: gamepad_two.boost,
+                        pause: gamepad_two.pressed(crate::input::Gamepad::START),
+                        confirm: gamepad_two.pressed(crate::input::Gamepad::A),
+                    },
+                    delta_time,
+                );
+            }
+        } else if coop_enabled && coop_game_mode == GameMode::TowerGuard {
+            let action = coop_tower_game.update(
+                delta_time,
+                tower_guard::InputFrame {
+                    cursor: (0.5, 0.5),
+                    cursor_moved: false,
+                    fire: gamepad_two.fire,
+                    fire_held: gamepad_two.fire,
+                    mouse_clicked: false,
+                    confirm: gamepad_two.pressed(crate::input::Gamepad::A),
+                    exit: gamepad_two.pressed(crate::input::Gamepad::B),
+                    reload: gamepad_two.pressed(crate::input::Gamepad::Y),
+                    arrow_x: gamepad_two.horizontal(),
+                    arrow_y: -gamepad_two.vertical(),
+                    move_x: gamepad_two.horizontal(),
+                    move_y: gamepad_two.vertical(),
+                    interact: gamepad_two.pressed(crate::input::Gamepad::A),
+                    look_x: gamepad_two.motion_x * 0.035,
+                    look_y: -gamepad_two.motion_y * 0.035,
+                    aiming: gamepad_two.brake,
+                    weapon: 0,
+                },
+                coop_framebuffer.width,
+                coop_framebuffer.height,
+                &tower_sprites,
+            );
+            if matches!(
+                action,
+                tower_guard::TowerAction::Exit | tower_guard::TowerAction::Restart
+            ) {
+                if action == tower_guard::TowerAction::Restart {
+                    coop_tower_game = tower_guard::TowerGame::new(&tower_sprites);
+                } else {
+                    coop_game_mode = GameMode::FreeWorld;
+                    launch_ship_from_planet(
+                        &mut coop_controller,
+                        vesper_planet_position(1, world_time),
+                        VESPER_ORBIT_RADII[1],
+                    );
+                }
+            }
+        } else if coop_enabled && coop_game_mode == GameMode::WaterLevel {
+            if gamepad_two.pressed(crate::input::Gamepad::B) {
+                coop_game_mode = GameMode::FreeWorld;
+                coop_bubble_emitter.clear();
+                coop_controller = ShipController::new(choices[coop_selected_ship].1);
+                launch_ship_from_planet(
+                    &mut coop_controller,
+                    water_planet_position(world_time),
+                    WATER_PLANET_RADIUS,
+                );
+            } else {
+                coop_controller.update(&coop_input, delta_time);
+                coop_water_level_state.update(&mut coop_controller.ship, &coop_input, delta_time);
+                resolve_level_collisions(
+                    &mut coop_water_level_state,
+                    &mut coop_controller.ship,
+                    &water_level_spatial,
+                );
+                resolve_water_enemy_collisions(
+                    &mut coop_water_level_state,
+                    &mut coop_controller.ship,
+                    &mut coop_controller.projectiles,
+                );
+                coop_bubble_emitter.update(&coop_controller.ship, delta_time);
+                if coop_water_level_state.dragon_ball_collected {
+                    collected_dragon_balls |= 0b0001000;
+                }
+            }
+        } else if coop_enabled && coop_game_mode == GameMode::CoreGuardian {
+            let action = coop_guardian_fight.update(
+                delta_time,
+                GuardianInput {
+                    horizontal: gamepad_two.move_x,
+                    vertical: -gamepad_two.move_y,
+                    fire: gamepad_two.fire,
+                    confirm: gamepad_two.pressed(crate::input::Gamepad::A),
+                    exit: gamepad_two.pressed(crate::input::Gamepad::B),
+                },
+                coop_framebuffer.width,
+                coop_framebuffer.height,
+            );
+            if action == GuardianAction::Exit {
+                coop_game_mode = GameMode::FreeWorld;
+                launch_ship_after_guardian_exit(&mut coop_controller, world_time);
+            }
+        } else if coop_enabled && coop_game_mode == GameMode::HourglassRescue {
+            let rescue_input = hourglass_rescue::Input {
+                forward: gamepad_two.accelerate,
+                brake: gamepad_two.brake,
+                left: gamepad_two.horizontal() < 0,
+                right: gamepad_two.horizontal() > 0,
+                rise: gamepad_two.vertical() > 0,
+                descend: gamepad_two.vertical() < 0,
+                roll_left: gamepad_two.roll_left,
+                roll_right: gamepad_two.roll_right,
+                boost: gamepad_two.boost,
+                firing: gamepad_two.fire,
+                pause: gamepad_two.pressed(crate::input::Gamepad::START),
+                exit: gamepad_two.pressed(crate::input::Gamepad::B),
+                restart: gamepad_two.pressed(crate::input::Gamepad::Y),
+                recover: gamepad_two.pressed(crate::input::Gamepad::Y),
+            };
+            if coop_hourglass_rescue.update(&mut coop_controller.ship, rescue_input, delta_time)
+                == hourglass_rescue::Action::Exit
+            {
+                coop_game_mode = GameMode::FreeWorld;
+                launch_ship_from_planet(
+                    &mut coop_controller,
+                    vesper_planet_position(0, world_time),
+                    VESPER_ORBIT_RADII[0],
+                );
+            } else {
+                coop_controller.update_weapon_and_projectiles(rescue_input.firing, delta_time);
+                coop_hourglass_rescue.update_enemies(
+                    &mut coop_controller.ship,
+                    &mut coop_controller.projectiles,
+                    delta_time,
+                );
+            }
+        } else if coop_enabled && coop_game_mode == GameMode::LavaCastle {
+            let action = coop_lava_castle.update(
+                &mut coop_controller,
+                lava_castle::Input {
+                    pitch: coop_input.pitch,
+                    yaw: coop_input.yaw,
+                    roll: coop_input.roll,
+                    accelerate: coop_input.accelerating,
+                    brake: coop_input.braking,
+                    boost: gamepad_two.boost,
+                    fire: coop_input.firing,
+                    restart: gamepad_two.pressed(crate::input::Gamepad::Y),
+                    exit: gamepad_two.pressed(crate::input::Gamepad::B),
+                },
+                delta_time,
+            );
+            match action {
+                lava_castle::Action::Continue => {}
+                lava_castle::Action::InteriorTransition => {
+                    coop_game_mode = GameMode::LavaCastleInterior;
+                    coop_lava_castle_interior.enter(&mut coop_controller);
+                }
+                lava_castle::Action::Exit => {
+                    coop_game_mode = GameMode::FreeWorld;
+                    launch_ship_from_planet(
+                        &mut coop_controller,
+                        castle_planet.center,
+                        castle_planet.radius,
+                    );
+                }
+            }
+        } else if coop_enabled && coop_game_mode == GameMode::LavaCastleInterior {
+            let action = coop_lava_castle_interior.update(
+                &mut coop_controller,
+                &coop_input,
+                gamepad_two.pressed(crate::input::Gamepad::Y),
+                gamepad_two.pressed(crate::input::Gamepad::B),
+                delta_time,
+            );
+            if matches!(
+                action,
+                lava_castle_interior::Action::Exit | lava_castle_interior::Action::Victory
+            ) {
+                coop_game_mode = GameMode::FreeWorld;
+                launch_ship_from_planet(
+                    &mut coop_controller,
+                    castle_planet.center,
+                    castle_planet.radius,
+                );
+            }
+        }
 
         if let Some(run) = benchmark.as_ref() {
             match run.scene.as_str() {
@@ -8173,6 +8712,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             if run.scene == "free" && !ship_controller.ship.planet_locked {
                 place_ship_near_race_planet(&mut ship_controller, world_time);
             }
+        }
+        if guardian_fight.reward_received() || coop_guardian_fight.reward_received() {
+            collected_dragon_balls |= 0b0000100;
+        }
+        if tower_dragon_ball_collected {
+            collected_dragon_balls |= 0b0000010;
         }
 
         let update_scene_start = Instant::now();
@@ -8198,6 +8743,52 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         } else {
             base_center
         };
+        let coop_active_model = match coop_selected_ship {
+            0 => {
+                if coop_game_mode == GameMode::WaterLevel {
+                    &arwing_submarine_model
+                } else {
+                    choices[0].0
+                }
+            }
+            1 => {
+                if coop_game_mode == GameMode::WaterLevel {
+                    &kirby_submarine_model
+                } else {
+                    choices[1].0
+                }
+            }
+            2 => {
+                if coop_game_mode == GameMode::WaterLevel {
+                    &astra_submarine_model
+                } else {
+                    choices[2].0
+                }
+            }
+            3 => {
+                if coop_game_mode == GameMode::WaterLevel {
+                    &cowboyb_submarine_model
+                } else {
+                    choices[3].0
+                }
+            }
+            4 => {
+                &buzz_variants[if coop_game_mode == GameMode::WaterLevel {
+                    2
+                } else {
+                    0
+                }]
+            }
+            5 => {
+                if coop_game_mode == GameMode::WaterLevel {
+                    &mcqueen_submarine_model
+                } else {
+                    &mcqueen_model
+                }
+            }
+            _ => unreachable!(),
+        };
+        let coop_ship_center = model_center(coop_active_model);
         triangle_batch.begin_frame();
         match game_mode {
             GameMode::FreeWorld => {
@@ -8213,6 +8804,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     && !black_hole_absorption_active
                 {
                     ship_controller.update(&input, delta_time);
+                }
+                // P2's free-flight simulation is deliberately outside P1's
+                // transition lockout: each viewport owns its travel state.
+                if coop_enabled && coop_game_mode == GameMode::FreeWorld {
+                    coop_controller.update(&coop_input, delta_time);
+                    coop_controller.rebase_far_flight();
                 }
                 let light_speed =
                     window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
@@ -8238,7 +8835,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 let ship = &mut ship_controller.ship;
                 let previous_ship_position = ship.position;
 
-                if crate::input::pressed(Key::Backspace) && ship.planet_locked {
+                if (crate::input::pressed(Key::Backspace)
+                    || gamepad.pressed(crate::input::Gamepad::B))
+                    && ship.planet_locked
+                {
                     ship.planet_locked = false;
                     ship.spiky_planet_locked = false;
                     ship.race_planet_locked = false;
@@ -8435,6 +9035,230 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 }
                 distance += movement;
 
+                if coop_enabled && coop_game_mode == GameMode::FreeWorld {
+                    let coop_ship = &mut coop_controller.ship;
+                    let coop_previous = coop_ship.position;
+                    let coop_movement = coop_ship.speed * delta_time;
+                    if window.is_key_down(Key::G)
+                        || gamepad_two.pressed(crate::input::Gamepad::SELECT)
+                        || gamepad_two.pressed(crate::input::Gamepad::B)
+                    {
+                        coop_ship.planet_locked = false;
+                        coop_ship.spiky_planet_locked = false;
+                        coop_ship.race_planet_locked = false;
+                        coop_ship.orbit_release_active = true;
+                        coop_ship.orbit_plane_normal = None;
+                        coop_vesper_orbit_index = None;
+                    }
+
+                    // P2 owns this portal transition.  It is intentionally
+                    // immediate so P1's cinematic transition remains local
+                    // to the left viewport.
+                    let coop_portal = wormhole_position(coop_active_galaxy);
+                    let coop_offset = coop_ship.position.sub(coop_portal);
+                    let coop_near_nova = coop_active_galaxy == Galaxy::Vesper
+                        && coop_ship
+                            .position
+                            .sub(nova_portal_position())
+                            .dot(coop_ship.position.sub(nova_portal_position()))
+                            <= 42.0 * 42.0;
+                    if !coop_ship.planet_locked
+                        && (coop_offset.dot(coop_offset) <= 42.0 * 42.0 || coop_near_nova)
+                    {
+                        coop_active_galaxy = if coop_near_nova {
+                            Galaxy::Nova
+                        } else {
+                            coop_active_galaxy.portal_destination()
+                        };
+                        let exit = match coop_active_galaxy {
+                            Galaxy::Vesper => Vec3::new(-420.0, 0.0, 0.0),
+                            Galaxy::Nova => Vec3::new(0.0, 20.0, -150.0),
+                            Galaxy::Home => Vec3::new(150.0, 0.0, 80.0),
+                        };
+                        coop_ship.position = wormhole_position(coop_active_galaxy).add(exit);
+                        coop_ship.speed = coop_ship.spec.cruise_speed;
+                        coop_vesper_orbit_index = None;
+                    }
+
+                    match coop_active_galaxy {
+                        Galaxy::Home => {
+                            let empty_colliders: [ObjectCollider; 0] = [];
+                            let water_center = water_planet_position(world_time);
+                            let spiky_center = spiky_planet_position(world_time);
+                            let race_center = race_planet_position(world_time);
+                            if !coop_ship.planet_locked {
+                                coop_ship.race_planet_locked = race_planet_is_closest(
+                                    coop_ship.position,
+                                    water_center,
+                                    spiky_center,
+                                    race_center,
+                                );
+                                coop_ship.spiky_planet_locked = !coop_ship.race_planet_locked
+                                    && spiky_planet_is_closer(
+                                        coop_ship.position,
+                                        water_center,
+                                        spiky_center,
+                                    );
+                            }
+                            let (center, radius, rotation, colliders) =
+                                if coop_ship.race_planet_locked {
+                                    (
+                                        race_center,
+                                        race_track::PLANET_RADIUS,
+                                        world_time * RACE_PLANET_ROTATION_SPEED,
+                                        empty_colliders.as_slice(),
+                                    )
+                                } else if coop_ship.spiky_planet_locked {
+                                    (
+                                        spiky_center,
+                                        SPIKY_PLANET_RADIUS,
+                                        world_time * SPIKY_PLANET_ROTATION_SPEED,
+                                        empty_colliders.as_slice(),
+                                    )
+                                } else {
+                                    (
+                                        water_center,
+                                        planet_surface_radius,
+                                        world_time * WATER_PLANET_ROTATION_SPEED,
+                                        object_colliders.as_slice(),
+                                    )
+                                };
+                            move_around_planet(
+                                coop_ship,
+                                coop_movement,
+                                center,
+                                radius,
+                                rotation,
+                                colliders,
+                                coop_input.yaw,
+                                coop_input.pitch,
+                                false,
+                            );
+                            if ship_touches_sun(
+                                coop_previous,
+                                coop_ship.position,
+                                coop_ship.spec.collision_radius,
+                                sun_collision_radius,
+                            ) {
+                                coop_ship.position = coop_previous;
+                                coop_ship.speed = 0.0;
+                                coop_ship.planet_locked = false;
+                                coop_ship.orbit_center = None;
+                                coop_ship.orbit_plane_normal = None;
+                            }
+                        }
+                        Galaxy::Vesper => {
+                            coop_ship.spiky_planet_locked = false;
+                            coop_ship.race_planet_locked = false;
+                            let nearest = coop_vesper_orbit_index.unwrap_or_else(|| {
+                                vesper_planets
+                                    .iter()
+                                    .enumerate()
+                                    .min_by(|(a, _), (b, _)| {
+                                        let da = coop_ship
+                                            .position
+                                            .sub(vesper_planet_position(*a, world_time));
+                                        let db = coop_ship
+                                            .position
+                                            .sub(vesper_planet_position(*b, world_time));
+                                        da.dot(da).total_cmp(&db.dot(db))
+                                    })
+                                    .map(|(index, _)| index)
+                                    .unwrap_or(0)
+                            });
+                            let body = &vesper_planets[nearest];
+                            move_around_planet(
+                                coop_ship,
+                                coop_movement,
+                                vesper_planet_position(nearest, world_time),
+                                VESPER_ORBIT_RADII[nearest],
+                                body.rotation_y + world_time * 0.035,
+                                &[],
+                                coop_input.yaw,
+                                coop_input.pitch,
+                                true,
+                            );
+                            coop_vesper_orbit_index = coop_ship.planet_locked.then_some(nearest);
+                            if !coop_ship.planet_locked {
+                                coop_ship.position =
+                                    apply_vesper_black_hole_gravity(coop_ship.position, delta_time);
+                                let offset = coop_ship.position.sub(VESPER_SYSTEM_CENTER);
+                                if offset.dot(offset).sqrt() <= VESPER_BLACK_HOLE_EVENT_HORIZON {
+                                    coop_ship.position = coop_previous;
+                                    coop_ship.speed = 0.0;
+                                }
+                            }
+                        }
+                        Galaxy::Nova => {
+                            coop_ship.spiky_planet_locked = false;
+                            coop_ship.race_planet_locked = false;
+                            move_around_planet(
+                                coop_ship,
+                                coop_movement,
+                                castle_planet.center,
+                                NOVA_CASTLE_ORBIT_RADIUS,
+                                castle_planet.rotation_y + world_time * 0.018,
+                                &[],
+                                coop_input.yaw,
+                                coop_input.pitch,
+                                true,
+                            );
+                            coop_vesper_orbit_index = None;
+                        }
+                    }
+
+                    if !coop_ship.planet_locked {
+                        let asteroid_field = match coop_active_galaxy {
+                            Galaxy::Home => Some((Vec3::new(SUN_POSITION_X, 20.0, 0.0), 350.0)),
+                            Galaxy::Vesper => Some((VESPER_SYSTEM_CENTER, 350.0)),
+                            Galaxy::Nova => Some((Vec3::new(0.0, 70.0, 0.0), 300.0)),
+                        };
+                        if let Some((center, radius)) = asteroid_field {
+                            if let Some(safe) = space_decor::asteroid_collision_position(
+                                coop_previous,
+                                coop_ship.position,
+                                coop_ship.spec.collision_radius,
+                                coop_active_galaxy,
+                                center,
+                                radius,
+                                world_time,
+                            ) {
+                                coop_ship.position = safe;
+                                coop_ship.speed =
+                                    coop_ship.speed.min(coop_ship.spec.cruise_speed * 0.38);
+                            }
+                        }
+                    }
+                    let camera_target = if coop_ship.orbit_plane_normal.is_some() {
+                        1.0
+                    } else {
+                        0.0
+                    };
+                    let response = 1.0 - (-2.4 * delta_time).exp();
+                    coop_ship.orbit_camera_blend +=
+                        (camera_target - coop_ship.orbit_camera_blend) * response;
+                    if coop_ship.orbit_plane_normal.is_none()
+                        && coop_ship.orbit_camera_blend < 0.001
+                    {
+                        coop_ship.orbit_center = None;
+                        coop_ship.orbit_camera_blend = 0.0;
+                    }
+
+                    // Keep both physical ships from occupying the same space.
+                    let separation = coop_ship.position.sub(ship.position);
+                    let minimum = coop_ship.spec.collision_radius + ship.spec.collision_radius;
+                    let distance_squared = separation.dot(separation);
+                    if distance_squared > 0.0001 && distance_squared < minimum * minimum {
+                        let correction = separation
+                            .normalize()
+                            .mul((minimum - distance_squared.sqrt()) * 0.5);
+                        coop_ship.position = coop_ship.position.add(correction);
+                        ship.position = ship.position.sub(correction);
+                        coop_ship.speed = coop_ship.speed.min(coop_ship.spec.cruise_speed);
+                        ship.speed = ship.speed.min(ship.spec.cruise_speed);
+                    }
+                }
+
                 let portal_center = wormhole_position(active_galaxy);
                 let near_wormhole =
                     crossed_wormhole(previous_ship_position, ship.position, portal_center, 42.0);
@@ -8577,6 +9401,130 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         tower_reward_position,
                     )),
                 );
+                if coop_enabled {
+                    coop_triangle_batch.begin_frame();
+                    let coop_turbo = coop_controller.turbo_power(coop_controller.ship.speed);
+                    if coop_game_mode == GameMode::FreeWorld {
+                        render_scene(
+                            coop_active_model,
+                            coop_ship_center,
+                            &turbo_plume,
+                            &laser_bolt,
+                            &coop_controller.projectiles,
+                            &planet,
+                            planet_center,
+                            planet_scale,
+                            &spiky_planet,
+                            spiky_planet_center,
+                            spiky_planet_scale,
+                            &sun,
+                            sun_center,
+                            &home_orbit_rings,
+                            &wormhole,
+                            wormhole_position(coop_active_galaxy),
+                            coop_active_galaxy,
+                            &vesper_planets,
+                            &vesper_black_hole,
+                            &vesper_orbit_rings,
+                            &castle_planet,
+                            &race_track.planet,
+                            &choices,
+                            &ambient_battle,
+                            [&planet_lods[0], &planet_lods[1], &planet_lods[2]],
+                            &mut coop_planet_lod_states,
+                            &mut coop_vesper_lod_states,
+                            &mut coop_castle_lod_state,
+                            &mut coop_framebuffer,
+                            &mut coop_triangle_batch,
+                            &coop_controller.ship,
+                            world_time,
+                            0.0,
+                            coop_turbo,
+                            false,
+                            coop_controller.charge_ratio(),
+                            true,
+                            None,
+                        );
+                    } else if coop_game_mode == GameMode::WaterLevel {
+                        render_water_level(
+                            &water_level_spatial,
+                            &enemy_models,
+                            &enemy_centers,
+                            &coop_water_level_state,
+                            &mut coop_enemy_instance_buffers,
+                            &bubble_model,
+                            &underwater_boost_ring,
+                            &four_star_dragon_ball,
+                            &reward_pedestal,
+                            &reward_chamber,
+                            &reward_door,
+                            &coop_bubble_emitter.particles,
+                            coop_active_model,
+                            coop_ship_center,
+                            &turbo_plume,
+                            &laser_bolt,
+                            &enemy_laser_bolt,
+                            &coop_controller.projectiles,
+                            &mut coop_framebuffer,
+                            &mut coop_triangle_batch,
+                            &coop_controller.ship,
+                            world_time,
+                            coop_turbo,
+                            coop_controller.charge_ratio(),
+                        );
+                    } else if coop_game_mode == GameMode::CoreGuardian {
+                        coop_guardian_fight.render_scene(
+                            &mut coop_framebuffer,
+                            coop_active_model,
+                            coop_ship_center,
+                            coop_controller.ship.spec,
+                            &three_star_dragon_ball,
+                        );
+                    } else if coop_game_mode == GameMode::HourglassRescue {
+                        coop_hourglass_rescue.render(
+                            &mut coop_framebuffer,
+                            coop_active_model,
+                            &coop_controller.ship,
+                        );
+                        coop_hourglass_rescue.render_weapon(
+                            &mut coop_framebuffer,
+                            &laser_bolt,
+                            &coop_controller.projectiles,
+                            &coop_controller.ship,
+                            coop_controller.charge_ratio(),
+                        );
+                    } else if coop_game_mode == GameMode::LavaCastle {
+                        coop_lava_castle.render(
+                            &mut coop_framebuffer,
+                            coop_active_model,
+                            &laser_bolt,
+                            &six_star_dragon_ball,
+                            &coop_controller,
+                        );
+                    } else if coop_game_mode == GameMode::LavaCastleInterior {
+                        coop_lava_castle_interior.render(
+                            &mut coop_framebuffer,
+                            coop_active_model,
+                            &laser_bolt,
+                            &seven_star_dragon_ball,
+                            &coop_controller,
+                        );
+                    } else if coop_game_mode == GameMode::Racing {
+                        coop_race_track.render(
+                            &mut coop_framebuffer,
+                            &mut coop_triangle_batch,
+                            &race_vehicles,
+                            &race_sky,
+                            &coop_controller,
+                            &turbo_plume,
+                            &laser_bolt,
+                            &one_star_dragon_ball,
+                            world_time,
+                        );
+                    } else if coop_game_mode == GameMode::TowerGuard {
+                        coop_tower_game.render(&mut coop_framebuffer, &tower_sprites);
+                    }
+                }
                 if solar_explosion_timer > 0.0 {
                     let camera = chase_camera(&ship_controller.ship, false);
                     draw_solar_ship_explosion(
@@ -8609,6 +9557,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         || gamepad.pressed(crate::input::Gamepad::A),
                 };
                 if race_track.reward_complete() {
+                    collected_dragon_balls |= 0b0000001;
                     game_mode = GameMode::FreeWorld;
                     ship_controller = ShipController::new(ship_spec);
                     race_track.leave(&mut ship_controller, race_planet_position(world_time));
@@ -8672,6 +9621,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 if water_level_state.dragon_ball_collected
                     && water_level_state.mission_complete_timer <= 0.0
                 {
+                    collected_dragon_balls |= 0b0001000;
                     game_mode = GameMode::FreeWorld;
                     bubble_emitter.clear();
                     ship_controller = ShipController::new(ship_spec);
@@ -8970,6 +9920,316 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
         }
 
+        // When P1 is inside a level, P2 keeps its own renderer and session in
+        // the right viewport instead of inheriting P1's global mode.
+        if coop_enabled && game_mode != GameMode::FreeWorld {
+            coop_triangle_batch.begin_frame();
+            let coop_turbo = coop_controller.turbo_power(coop_controller.ship.speed);
+            match coop_game_mode {
+                GameMode::FreeWorld => {
+                    coop_controller.update(&coop_input, delta_time);
+                    coop_controller.rebase_far_flight();
+                    let coop_ship = &mut coop_controller.ship;
+                    let previous_position = coop_ship.position;
+                    let movement = coop_ship.speed * delta_time;
+                    if gamepad_two.pressed(crate::input::Gamepad::SELECT)
+                        || gamepad_two.pressed(crate::input::Gamepad::B)
+                    {
+                        coop_ship.planet_locked = false;
+                        coop_ship.spiky_planet_locked = false;
+                        coop_ship.race_planet_locked = false;
+                        coop_ship.orbit_release_active = true;
+                        coop_ship.orbit_plane_normal = None;
+                        coop_vesper_orbit_index = None;
+                    }
+                    let coop_portal = wormhole_position(coop_active_galaxy);
+                    let coop_offset = coop_ship.position.sub(coop_portal);
+                    let coop_near_nova = coop_active_galaxy == Galaxy::Vesper
+                        && coop_ship
+                            .position
+                            .sub(nova_portal_position())
+                            .dot(coop_ship.position.sub(nova_portal_position()))
+                            <= 42.0 * 42.0;
+                    if !coop_ship.planet_locked
+                        && (coop_offset.dot(coop_offset) <= 42.0 * 42.0 || coop_near_nova)
+                    {
+                        coop_active_galaxy = if coop_near_nova {
+                            Galaxy::Nova
+                        } else {
+                            coop_active_galaxy.portal_destination()
+                        };
+                        let exit = match coop_active_galaxy {
+                            Galaxy::Vesper => Vec3::new(-420.0, 0.0, 0.0),
+                            Galaxy::Nova => Vec3::new(0.0, 20.0, -150.0),
+                            Galaxy::Home => Vec3::new(150.0, 0.0, 80.0),
+                        };
+                        coop_ship.position = wormhole_position(coop_active_galaxy).add(exit);
+                        coop_ship.speed = coop_ship.spec.cruise_speed;
+                        coop_vesper_orbit_index = None;
+                    }
+                    match coop_active_galaxy {
+                        Galaxy::Home => {
+                            let water_center = water_planet_position(world_time);
+                            let spiky_center = spiky_planet_position(world_time);
+                            let race_center = race_planet_position(world_time);
+                            if !coop_ship.planet_locked {
+                                coop_ship.race_planet_locked = race_planet_is_closest(
+                                    coop_ship.position,
+                                    water_center,
+                                    spiky_center,
+                                    race_center,
+                                );
+                                coop_ship.spiky_planet_locked = !coop_ship.race_planet_locked
+                                    && spiky_planet_is_closer(
+                                        coop_ship.position,
+                                        water_center,
+                                        spiky_center,
+                                    );
+                            }
+                            let (center, radius, rotation, colliders) =
+                                if coop_ship.race_planet_locked {
+                                    (
+                                        race_center,
+                                        race_track::PLANET_RADIUS,
+                                        world_time * RACE_PLANET_ROTATION_SPEED,
+                                        &[] as &[ObjectCollider],
+                                    )
+                                } else if coop_ship.spiky_planet_locked {
+                                    (
+                                        spiky_center,
+                                        SPIKY_PLANET_RADIUS,
+                                        world_time * SPIKY_PLANET_ROTATION_SPEED,
+                                        &[] as &[ObjectCollider],
+                                    )
+                                } else {
+                                    (
+                                        water_center,
+                                        planet_surface_radius,
+                                        world_time * WATER_PLANET_ROTATION_SPEED,
+                                        object_colliders.as_slice(),
+                                    )
+                                };
+                            move_around_planet(
+                                coop_ship,
+                                movement,
+                                center,
+                                radius,
+                                rotation,
+                                colliders,
+                                coop_input.yaw,
+                                coop_input.pitch,
+                                false,
+                            );
+                            if ship_touches_sun(
+                                previous_position,
+                                coop_ship.position,
+                                coop_ship.spec.collision_radius,
+                                sun_collision_radius,
+                            ) {
+                                coop_ship.position = previous_position;
+                                coop_ship.speed = 0.0;
+                            }
+                        }
+                        Galaxy::Vesper => {
+                            let nearest = coop_vesper_orbit_index.unwrap_or_else(|| {
+                                vesper_planets
+                                    .iter()
+                                    .enumerate()
+                                    .min_by(|(a, _), (b, _)| {
+                                        let da = coop_ship
+                                            .position
+                                            .sub(vesper_planet_position(*a, world_time));
+                                        let db = coop_ship
+                                            .position
+                                            .sub(vesper_planet_position(*b, world_time));
+                                        da.dot(da).total_cmp(&db.dot(db))
+                                    })
+                                    .map(|(index, _)| index)
+                                    .unwrap_or(0)
+                            });
+                            let body = &vesper_planets[nearest];
+                            move_around_planet(
+                                coop_ship,
+                                movement,
+                                vesper_planet_position(nearest, world_time),
+                                VESPER_ORBIT_RADII[nearest],
+                                body.rotation_y + world_time * 0.035,
+                                &[],
+                                coop_input.yaw,
+                                coop_input.pitch,
+                                true,
+                            );
+                            coop_vesper_orbit_index = coop_ship.planet_locked.then_some(nearest);
+                            if !coop_ship.planet_locked {
+                                coop_ship.position =
+                                    apply_vesper_black_hole_gravity(coop_ship.position, delta_time);
+                            }
+                        }
+                        Galaxy::Nova => move_around_planet(
+                            coop_ship,
+                            movement,
+                            castle_planet.center,
+                            NOVA_CASTLE_ORBIT_RADIUS,
+                            castle_planet.rotation_y + world_time * 0.018,
+                            &[],
+                            coop_input.yaw,
+                            coop_input.pitch,
+                            true,
+                        ),
+                    }
+                    if !coop_ship.planet_locked {
+                        let (center, radius) = match coop_active_galaxy {
+                            Galaxy::Home => (Vec3::new(SUN_POSITION_X, 20.0, 0.0), 350.0),
+                            Galaxy::Vesper => (VESPER_SYSTEM_CENTER, 350.0),
+                            Galaxy::Nova => (Vec3::new(0.0, 70.0, 0.0), 300.0),
+                        };
+                        if let Some(safe_position) = space_decor::asteroid_collision_position(
+                            previous_position,
+                            coop_ship.position,
+                            coop_ship.spec.collision_radius,
+                            coop_active_galaxy,
+                            center,
+                            radius,
+                            world_time,
+                        ) {
+                            coop_ship.position = safe_position;
+                            coop_ship.speed =
+                                coop_ship.speed.min(coop_ship.spec.cruise_speed * 0.38);
+                        }
+                    }
+                    let camera_target = if coop_ship.orbit_plane_normal.is_some() {
+                        1.0
+                    } else {
+                        0.0
+                    };
+                    let camera_response = 1.0 - (-2.4 * delta_time).exp();
+                    coop_ship.orbit_camera_blend +=
+                        (camera_target - coop_ship.orbit_camera_blend) * camera_response;
+                    if coop_ship.orbit_plane_normal.is_none()
+                        && coop_ship.orbit_camera_blend < 0.001
+                    {
+                        coop_ship.orbit_center = None;
+                        coop_ship.orbit_camera_blend = 0.0;
+                    }
+                    render_scene(
+                        active_model,
+                        ship_center,
+                        &turbo_plume,
+                        &laser_bolt,
+                        &coop_controller.projectiles,
+                        &planet,
+                        planet_center,
+                        planet_scale,
+                        &spiky_planet,
+                        spiky_planet_center,
+                        spiky_planet_scale,
+                        &sun,
+                        sun_center,
+                        &home_orbit_rings,
+                        &wormhole,
+                        wormhole_position(coop_active_galaxy),
+                        coop_active_galaxy,
+                        &vesper_planets,
+                        &vesper_black_hole,
+                        &vesper_orbit_rings,
+                        &castle_planet,
+                        &race_track.planet,
+                        &choices,
+                        &ambient_battle,
+                        [&planet_lods[0], &planet_lods[1], &planet_lods[2]],
+                        &mut coop_planet_lod_states,
+                        &mut coop_vesper_lod_states,
+                        &mut coop_castle_lod_state,
+                        &mut coop_framebuffer,
+                        &mut coop_triangle_batch,
+                        &coop_controller.ship,
+                        world_time,
+                        0.0,
+                        coop_turbo,
+                        false,
+                        coop_controller.charge_ratio(),
+                        true,
+                        None,
+                    );
+                }
+                GameMode::WaterLevel => render_water_level(
+                    &water_level_spatial,
+                    &enemy_models,
+                    &enemy_centers,
+                    &coop_water_level_state,
+                    &mut coop_enemy_instance_buffers,
+                    &bubble_model,
+                    &underwater_boost_ring,
+                    &four_star_dragon_ball,
+                    &reward_pedestal,
+                    &reward_chamber,
+                    &reward_door,
+                    &coop_bubble_emitter.particles,
+                    coop_active_model,
+                    coop_ship_center,
+                    &turbo_plume,
+                    &laser_bolt,
+                    &enemy_laser_bolt,
+                    &coop_controller.projectiles,
+                    &mut coop_framebuffer,
+                    &mut coop_triangle_batch,
+                    &coop_controller.ship,
+                    world_time,
+                    coop_turbo,
+                    coop_controller.charge_ratio(),
+                ),
+                GameMode::CoreGuardian => coop_guardian_fight.render_scene(
+                    &mut coop_framebuffer,
+                    coop_active_model,
+                    coop_ship_center,
+                    coop_controller.ship.spec,
+                    &three_star_dragon_ball,
+                ),
+                GameMode::HourglassRescue => {
+                    coop_hourglass_rescue.render(
+                        &mut coop_framebuffer,
+                        coop_active_model,
+                        &coop_controller.ship,
+                    );
+                    coop_hourglass_rescue.render_weapon(
+                        &mut coop_framebuffer,
+                        &laser_bolt,
+                        &coop_controller.projectiles,
+                        &coop_controller.ship,
+                        coop_controller.charge_ratio(),
+                    );
+                }
+                GameMode::LavaCastle => coop_lava_castle.render(
+                    &mut coop_framebuffer,
+                    coop_active_model,
+                    &laser_bolt,
+                    &six_star_dragon_ball,
+                    &coop_controller,
+                ),
+                GameMode::LavaCastleInterior => coop_lava_castle_interior.render(
+                    &mut coop_framebuffer,
+                    coop_active_model,
+                    &laser_bolt,
+                    &seven_star_dragon_ball,
+                    &coop_controller,
+                ),
+                GameMode::Racing => coop_race_track.render(
+                    &mut coop_framebuffer,
+                    &mut coop_triangle_batch,
+                    &race_vehicles,
+                    &race_sky,
+                    &coop_controller,
+                    &turbo_plume,
+                    &laser_bolt,
+                    &one_star_dragon_ball,
+                    world_time,
+                ),
+                GameMode::TowerGuard => {
+                    coop_tower_game.render(&mut coop_framebuffer, &tower_sprites)
+                }
+            }
+        }
+
         if galaxy_transition
             .as_ref()
             .is_some_and(|transit| transit.elapsed >= 2.15)
@@ -8992,183 +10252,189 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         }
         let post_ms = post_start.elapsed().as_secs_f32() * 1_000.0;
         let copy_start = Instant::now();
-        upscale_scene(&scene_framebuffer, &mut framebuffer);
-        let copy_ms = copy_start.elapsed().as_secs_f32() * 1_000.0;
-        if game_mode == GameMode::Racing {
-            race_track.hud(&mut framebuffer, &ship_controller);
+        if coop_enabled {
+            upscale_split_scene(&scene_framebuffer, &coop_framebuffer, &mut framebuffer);
+        } else {
+            upscale_scene(&scene_framebuffer, &mut framebuffer);
         }
-
-        if game_mode == GameMode::CoreGuardian {
-            guardian_fight.draw_hud(&mut framebuffer);
-            draw_selection_label(&mut framebuffer, "GUARDIAN DEL NUCLEO", 600, 8, 2, 0xffe2ed);
-            let message = if guardian_fight.is_victory() {
-                if guardian_fight.reward_received() {
-                    "ESFERA DE 3 ESTRELLAS OBTENIDA"
-                } else {
-                    "JEFE DESTRUIDO - RECIBIENDO RECOMPENSA"
-                }
-            } else if guardian_fight.is_defeat() {
-                "DERROTA  R: REINTENTAR  BACKSPACE: SALIR"
-            } else if guardian_fight.is_exposed() {
-                "NUCLEO EXPUESTO - DISPARA!"
-            } else {
-                "WASD / FLECHAS: MOVER  ESPACIO: DISPARAR"
-            };
-            draw_selection_label(
-                &mut framebuffer,
-                message,
-                600,
-                64,
-                2,
-                if guardian_fight.is_exposed() {
-                    0xffe68b
-                } else {
-                    0xffd5df
-                },
-            );
-            draw_selection_label(
-                &mut framebuffer,
-                "ESC: PAUSA   BACKSPACE: SALIR",
-                600,
-                766,
-                2,
-                0xffffff,
-            );
-        } else if game_mode == GameMode::HourglassRescue {
-            hourglass_rescue.draw_hud_with_audio(
-                &mut framebuffer,
-                &ship_controller.ship,
-                minigame_music.volume_percent(),
-                minigame_music.muted(),
-            );
-        } else if game_mode != GameMode::TowerGuard {
-            let form = if game_mode == GameMode::Racing {
-                race_vehicles[selected_ship]
-                    .map(|(_, spec)| spec.name)
-                    .unwrap_or("CARRO")
-            } else if selected_ship == 4 {
-                if game_mode == GameMode::WaterLevel {
-                    "BUZZ - SUBMARINO"
-                } else if car_mode {
-                    "BUZZ - CARRO"
-                } else {
-                    "BUZZ - NAVE"
-                }
-            } else if selected_ship == 5 {
-                if game_mode == GameMode::WaterLevel {
-                    "RAYO MCQUEEN - SUBMARINO"
-                } else if car_mode {
-                    "RAYO MCQUEEN - CARRO"
-                } else {
-                    "RAYO MCQUEEN - NAVE"
-                }
-            } else {
-                ship_spec.name
-            };
-            if game_mode != GameMode::Racing {
-                draw_selection_label(
-                    &mut framebuffer,
-                    &form.to_ascii_uppercase(),
-                    600,
-                    22,
-                    2,
-                    0x99e226,
-                );
-            }
-            if game_mode == GameMode::WaterLevel {
-                let enemy_counter = format!(
-                    "ENEMIGOS: {}/{}",
-                    water_level_state.defeated_enemies,
-                    water_level_state.enemies.len() + 1
-                );
-                draw_selection_label(&mut framebuffer, &enemy_counter, 1035, 24, 2, 0x65dfea);
-                draw_selection_label(
-                    &mut framebuffer,
-                    water_level_state.stage().label(),
-                    600,
-                    54,
-                    2,
-                    0x8cebf4,
-                );
-                let hull_status = format!(
-                    "CASCO: {}/{}   ALERTA: FORMACIONES HOSTILES",
-                    water_level_state.hull_health, WATER_SUBMARINE_MAX_HEALTH
-                );
-                draw_selection_label(
-                    &mut framebuffer,
-                    &hull_status,
-                    180,
-                    54,
-                    2,
-                    if water_level_state.hit_invulnerability > 0.0 {
-                        0xff7a62
+        let copy_ms = copy_start.elapsed().as_secs_f32() * 1_000.0;
+        // All gameplay modes use the shared HUD below. Keep the legacy
+        // renderers isolated while their mode-specific data is migrated.
+        if false {
+            if game_mode == GameMode::CoreGuardian {
+                guardian_fight.draw_hud(&mut framebuffer);
+                draw_selection_label(&mut framebuffer, "GUARDIAN DEL NUCLEO", 600, 8, 2, 0xffe2ed);
+                let message = if guardian_fight.is_victory() {
+                    if guardian_fight.reward_received() {
+                        "ESFERA DE 3 ESTRELLAS OBTENIDA"
                     } else {
-                        0x72f3ff
+                        "JEFE DESTRUIDO - RECIBIENDO RECOMPENSA"
+                    }
+                } else if guardian_fight.is_defeat() {
+                    "DERROTA  R: REINTENTAR  BACKSPACE: SALIR"
+                } else if guardian_fight.is_exposed() {
+                    "NUCLEO EXPUESTO - DISPARA!"
+                } else {
+                    "WASD / FLECHAS: MOVER  ESPACIO: DISPARAR"
+                };
+                draw_selection_label(
+                    &mut framebuffer,
+                    message,
+                    600,
+                    64,
+                    2,
+                    if guardian_fight.is_exposed() {
+                        0xffe68b
+                    } else {
+                        0xffd5df
                     },
                 );
-                if water_level_state.stage() == WaterStage::SharkBoss {
-                    let boss_status = if water_level_state.boss_defeated {
-                        if water_level_state.boss_explosion_timer > 0.0 {
-                            "DESTRUCCION DEL TIBURON - MANTEN DISTANCIA".to_string()
-                        } else if water_level_state.reward_door_open < WATER_REWARD_DOOR_PASSABLE {
-                            "COMPUERTA DEL SANTUARIO ABRIENDOSE".to_string()
-                        } else {
-                            "TIBURON DESTRUIDO - SALIDA ABIERTA".to_string()
-                        }
-                    } else {
-                        format!(
-                            "TIBURON MECANICO  VIDA {}/{}  ENTER: DISPARAR",
-                            water_level_state.boss_health, WATER_BOSS_MAX_HEALTH
-                        )
-                    };
-                    draw_selection_label(
-                        &mut framebuffer,
-                        &boss_status,
-                        600,
-                        82,
-                        2,
-                        if water_level_state.boss_hit_flash > 0.0 {
-                            0xffffff
-                        } else {
-                            0xff5252
-                        },
-                    );
-                }
-                if water_level_state.stage() == WaterStage::RewardChamber {
-                    let reward_status = if water_level_state.dragon_ball_collected {
-                        "ESFERA DE 4 ESTRELLAS OBTENIDA - SALIDA ABIERTA"
-                    } else {
-                        "ACERCATE A LA ESFERA DE 4 ESTRELLAS"
-                    };
-                    draw_selection_label(&mut framebuffer, reward_status, 600, 82, 2, 0xffa62b);
-                }
-            }
-            if game_mode != GameMode::Racing {
                 draw_selection_label(
                     &mut framebuffer,
-                    "ESC: PAUSA   F1: CONTROLES",
+                    "ESC: PAUSA   BACKSPACE: SALIR",
                     600,
                     766,
                     2,
                     0xffffff,
                 );
-            }
-            if active_galaxy == Galaxy::Home && game_mode == GameMode::FreeWorld {
-                draw_selection_label(
+            } else if game_mode == GameMode::HourglassRescue {
+                hourglass_rescue.draw_hud_with_audio(
                     &mut framebuffer,
-                    "SISTEMA SOLAR  3: PLANETA DE CARRERAS  ENTER EN ORBITA: JARDIN RUST",
-                    600,
-                    738,
-                    1,
-                    0xa9d8ff,
+                    &ship_controller.ship,
+                    minigame_music.volume_percent(),
+                    minigame_music.muted(),
                 );
+            } else if game_mode != GameMode::TowerGuard {
+                let form = if game_mode == GameMode::Racing {
+                    race_vehicles[selected_ship]
+                        .map(|(_, spec)| spec.name)
+                        .unwrap_or("CARRO")
+                } else if selected_ship == 4 {
+                    if game_mode == GameMode::WaterLevel {
+                        "BUZZ - SUBMARINO"
+                    } else if car_mode {
+                        "BUZZ - CARRO"
+                    } else {
+                        "BUZZ - NAVE"
+                    }
+                } else if selected_ship == 5 {
+                    if game_mode == GameMode::WaterLevel {
+                        "RAYO MCQUEEN - SUBMARINO"
+                    } else if car_mode {
+                        "RAYO MCQUEEN - CARRO"
+                    } else {
+                        "RAYO MCQUEEN - NAVE"
+                    }
+                } else {
+                    ship_spec.name
+                };
+                if game_mode != GameMode::Racing {
+                    draw_selection_label(
+                        &mut framebuffer,
+                        &form.to_ascii_uppercase(),
+                        600,
+                        22,
+                        2,
+                        0x99e226,
+                    );
+                }
+                if game_mode == GameMode::WaterLevel {
+                    let enemy_counter = format!(
+                        "ENEMIGOS: {}/{}",
+                        water_level_state.defeated_enemies,
+                        water_level_state.enemies.len() + 1
+                    );
+                    draw_selection_label(&mut framebuffer, &enemy_counter, 1035, 24, 2, 0x65dfea);
+                    draw_selection_label(
+                        &mut framebuffer,
+                        water_level_state.stage().label(),
+                        600,
+                        54,
+                        2,
+                        0x8cebf4,
+                    );
+                    let hull_status = format!(
+                        "CASCO: {}/{}   ALERTA: FORMACIONES HOSTILES",
+                        water_level_state.hull_health, WATER_SUBMARINE_MAX_HEALTH
+                    );
+                    draw_selection_label(
+                        &mut framebuffer,
+                        &hull_status,
+                        180,
+                        54,
+                        2,
+                        if water_level_state.hit_invulnerability > 0.0 {
+                            0xff7a62
+                        } else {
+                            0x72f3ff
+                        },
+                    );
+                    if water_level_state.stage() == WaterStage::SharkBoss {
+                        let boss_status = if water_level_state.boss_defeated {
+                            if water_level_state.boss_explosion_timer > 0.0 {
+                                "DESTRUCCION DEL TIBURON - MANTEN DISTANCIA".to_string()
+                            } else if water_level_state.reward_door_open
+                                < WATER_REWARD_DOOR_PASSABLE
+                            {
+                                "COMPUERTA DEL SANTUARIO ABRIENDOSE".to_string()
+                            } else {
+                                "TIBURON DESTRUIDO - SALIDA ABIERTA".to_string()
+                            }
+                        } else {
+                            format!(
+                                "TIBURON MECANICO  VIDA {}/{}  ENTER: DISPARAR",
+                                water_level_state.boss_health, WATER_BOSS_MAX_HEALTH
+                            )
+                        };
+                        draw_selection_label(
+                            &mut framebuffer,
+                            &boss_status,
+                            600,
+                            82,
+                            2,
+                            if water_level_state.boss_hit_flash > 0.0 {
+                                0xffffff
+                            } else {
+                                0xff5252
+                            },
+                        );
+                    }
+                    if water_level_state.stage() == WaterStage::RewardChamber {
+                        let reward_status = if water_level_state.dragon_ball_collected {
+                            "ESFERA DE 4 ESTRELLAS OBTENIDA - SALIDA ABIERTA"
+                        } else {
+                            "ACERCATE A LA ESFERA DE 4 ESTRELLAS"
+                        };
+                        draw_selection_label(&mut framebuffer, reward_status, 600, 82, 2, 0xffa62b);
+                    }
+                }
+                if game_mode != GameMode::Racing {
+                    draw_selection_label(
+                        &mut framebuffer,
+                        "ESC: PAUSA   F1: CONTROLES",
+                        600,
+                        766,
+                        2,
+                        0xffffff,
+                    );
+                }
+                if active_galaxy == Galaxy::Home && game_mode == GameMode::FreeWorld {
+                    draw_selection_label(
+                        &mut framebuffer,
+                        "SISTEMA SOLAR  3: PLANETA DE CARRERAS  ENTER EN ORBITA: JARDIN RUST",
+                        600,
+                        738,
+                        1,
+                        0xa9d8ff,
+                    );
+                }
+                let resolution_label = if dynamic_resolution.enabled {
+                    format!("F2: RES AUTO {}%", dynamic_resolution.percentage())
+                } else {
+                    "F2: RES AUTO OFF".to_string()
+                };
+                draw_selection_label(&mut framebuffer, &resolution_label, 1040, 766, 2, 0x9fc5df);
             }
-            let resolution_label = if dynamic_resolution.enabled {
-                format!("F2: RES AUTO {}%", dynamic_resolution.percentage())
-            } else {
-                "F2: RES AUTO OFF".to_string()
-            };
-            draw_selection_label(&mut framebuffer, &resolution_label, 1040, 766, 2, 0x9fc5df);
         }
 
         let objective = match game_mode {
@@ -9196,6 +10462,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 water_level_state.hull_health as f32 / WATER_SUBMARINE_MAX_HEALTH as f32
             }
             GameMode::CoreGuardian => guardian_fight.shield_ratio(),
+            GameMode::HourglassRescue => hourglass_rescue.shield_ratio(),
+            GameMode::TowerGuard => tower_game.health_ratio(),
+            GameMode::LavaCastle => lava_castle.player_health_ratio(),
+            GameMode::LavaCastleInterior => lava_castle_interior.health_ratio(),
             _ => 1.0,
         };
         let score = match game_mode {
@@ -9225,13 +10495,19 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::CoreGuardian if !guardian_fight.is_victory() => {
                 Some(("JEFE: GUARDIAN DEL NUCLEO", guardian_fight.health_ratio()))
             }
+            GameMode::LavaCastle => {
+                Some(("JEFE: GUARDIAN DE LAVA", lava_castle.boss_health_ratio()))
+            }
             _ => None,
         };
-        // Racing and the shooting/rescue games have purpose-built HUDs.
-        if game_mode != GameMode::Racing
-            && game_mode != GameMode::TowerGuard
-            && game_mode != GameMode::HourglassRescue
-        {
+        if coop_enabled {
+            draw_split_coop_hud(
+                &mut framebuffer,
+                &ship_controller,
+                &coop_controller,
+                collected_dragon_balls,
+            );
+        } else {
             draw_unified_combat_hud(
                 &mut framebuffer,
                 objective,
@@ -9250,24 +10526,6 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     (0.5, 0.5)
                 },
             );
-        }
-        if game_mode == GameMode::WaterLevel && water_level_state.dragon_ball_collected {
-            draw_mission_complete_overlay(
-                &mut framebuffer,
-                water_level_state.mission_complete_timer,
-            );
-        }
-        if game_mode == GameMode::CoreGuardian && guardian_fight.reward_received() {
-            draw_guardian_reward_overlay(
-                &mut framebuffer,
-                guardian_fight.reward_seconds_remaining(),
-            );
-        }
-        if game_mode == GameMode::TowerGuard {
-            tower_game.draw_hud(&mut framebuffer);
-        }
-        if tower_reward_timer > 0.0 {
-            draw_tower_reward_hud(&mut framebuffer, tower_reward_timer);
         }
         if performance_hud {
             let stats = triangle_batch.stats();
@@ -9534,12 +10792,14 @@ mod tests {
     fn vesper_black_hole_has_a_dark_core_and_layered_accretion_disk() {
         let model = make_vesper_black_hole();
         assert!(
-            model.core
+            model
+                .core
                 .faces
                 .iter()
                 .any(|face| face.group == "vesper_black_hole_core")
         );
-        let disk_faces = model.disk
+        let disk_faces = model
+            .disk
             .faces
             .iter()
             .filter(|face| face.group == "accretion_disk")
@@ -9553,9 +10813,13 @@ mod tests {
             face.group == "accretion_filament"
                 && matches!(face.color, MaterialColor::Fixed([r, g, b]) if r > g && g > b)
         }));
-        assert!(model.lensing_arcs.faces.iter().any(|face| {
-            face.group == "lensing_arc_upper"
-        }));
+        assert!(
+            model
+                .lensing_arcs
+                .faces
+                .iter()
+                .any(|face| { face.group == "lensing_arc_upper" })
+        );
     }
 
     #[test]

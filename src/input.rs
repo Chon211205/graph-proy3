@@ -54,8 +54,9 @@ pub fn clear() {
 
 /// Frame-stable Xbox/XInput state. Keyboard input remains available and is
 /// intentionally combined with this state by the game loop.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 pub struct Gamepad {
+    index: u32,
     pub connected: bool,
     pub move_x: f32,
     pub move_y: f32,
@@ -71,6 +72,12 @@ pub struct Gamepad {
     pressed: u16,
 }
 
+impl Default for Gamepad {
+    fn default() -> Self {
+        Self::new(0)
+    }
+}
+
 impl Gamepad {
     pub const DPAD_UP: u16 = 0x0001;
     pub const DPAD_DOWN: u16 = 0x0002;
@@ -81,10 +88,31 @@ impl Gamepad {
     pub const X: u16 = 0x4000;
     pub const Y: u16 = 0x8000;
     pub const START: u16 = 0x0010;
+    pub const SELECT: u16 = 0x0020;
+
+    pub fn new(index: u32) -> Self {
+        Self {
+            index,
+            connected: false,
+            move_x: 0.0,
+            move_y: 0.0,
+            motion_x: 0.0,
+            motion_y: 0.0,
+            accelerate: false,
+            brake: false,
+            fire: false,
+            boost: false,
+            roll_left: false,
+            roll_right: false,
+            buttons: 0,
+            pressed: 0,
+        }
+    }
 
     pub fn update(&mut self) {
-        let Some(raw) = platform_gamepad_state() else {
-            *self = Self::default();
+        let Some(raw) = platform_gamepad_state(self.index) else {
+            let index = self.index;
+            *self = Self::new(index);
             return;
         };
         self.connected = true;
@@ -111,20 +139,19 @@ impl Gamepad {
     }
 
     pub fn horizontal(&self) -> i8 {
-        digital_axis(preferred_motion_axis(self.move_x, self.motion_x))
+        // Steering always comes from the left stick. The right stick is kept
+        // available for camera controls and must never override movement due
+        // to small neutral noise.
+        digital_axis(self.move_x)
     }
 
     pub fn vertical(&self) -> i8 {
-        digital_axis(preferred_motion_axis(self.move_y, self.motion_y))
+        digital_axis(self.move_y)
     }
 
     pub fn motion_active(&self) -> bool {
         self.motion_x.abs() > 0.22 || self.motion_y.abs() > 0.22
     }
-}
-
-fn preferred_motion_axis(stick: f32, motion: f32) -> f32 {
-    if motion.abs() > 0.22 { motion } else { stick }
 }
 
 fn digital_axis(value: f32) -> i8 {
@@ -230,14 +257,17 @@ fn load_xinput() -> Option<XInputGetState> {
 }
 
 #[cfg(windows)]
-fn platform_gamepad_state() -> Option<RawGamepad> {
+fn platform_gamepad_state(index: u32) -> Option<RawGamepad> {
     static GET_STATE: OnceLock<Option<XInputGetState>> = OnceLock::new();
     let mut combined = None;
     if let Some(get_state) = *GET_STATE.get_or_init(load_xinput) {
-        for index in 0..4 {
+        let mut connected = 0;
+        for physical_slot in 0..4 {
             let mut state = XInputState::default();
-            // XInput writes the complete POD state and returns zero on success.
-            if unsafe { get_state(index, &mut state) } == 0 {
+            if unsafe { get_state(physical_slot, &mut state) } != 0 {
+                continue;
+            }
+            if connected == index {
                 merge_raw_gamepad(
                     &mut combined,
                     RawGamepad {
@@ -250,10 +280,15 @@ fn platform_gamepad_state() -> Option<RawGamepad> {
                         right_trigger: state.gamepad.right_trigger,
                     },
                 );
+                break;
             }
+            connected += 1;
         }
     }
-    if let Some(generic) = winmm_gamepad_state() {
+    if let Some(generic) = winmm_gamepad_state(index) {
+        // The same physical device may appear in both APIs. Merging matching
+        // ordinal slots keeps it on one player while allowing an active HID
+        // controller to override an idle virtual XInput device.
         merge_raw_gamepad(&mut combined, generic);
     }
     combined
@@ -281,6 +316,20 @@ struct JoyInfoEx {
 type JoyGetPosEx = unsafe extern "system" fn(u32, *mut JoyInfoEx) -> u32;
 
 #[cfg(windows)]
+#[repr(C)]
+struct JoyCapsW {
+    manufacturer_id: u16,
+    product_id: u16,
+    product_name: [u16; 32],
+    axis_ranges_and_counts: [u32; 19],
+    registry_key: [u16; 32],
+    oem_driver: [u16; 260],
+}
+
+#[cfg(windows)]
+type JoyGetDevCapsW = unsafe extern "system" fn(usize, *mut JoyCapsW, u32) -> u32;
+
+#[cfg(windows)]
 fn load_winmm_joystick() -> Option<JoyGetPosEx> {
     unsafe extern "system" {
         fn LoadLibraryA(name: *const u8) -> *mut c_void;
@@ -296,11 +345,91 @@ fn load_winmm_joystick() -> Option<JoyGetPosEx> {
 }
 
 #[cfg(windows)]
-fn winmm_gamepad_state() -> Option<RawGamepad> {
+fn load_winmm_caps() -> Option<JoyGetDevCapsW> {
+    unsafe extern "system" {
+        fn LoadLibraryA(name: *const u8) -> *mut c_void;
+        fn GetProcAddress(module: *mut c_void, name: *const u8) -> *mut c_void;
+    }
+    let module = unsafe { LoadLibraryA(c"winmm.dll".as_ptr().cast()) };
+    if module.is_null() {
+        return None;
+    }
+    let address = unsafe { GetProcAddress(module, c"joyGetDevCapsW".as_ptr().cast()) };
+    (!address.is_null())
+        .then(|| unsafe { std::mem::transmute::<*mut c_void, JoyGetDevCapsW>(address) })
+}
+
+#[cfg(windows)]
+fn is_dualsense(slot: u32) -> bool {
+    static GET_CAPS: OnceLock<Option<JoyGetDevCapsW>> = OnceLock::new();
+    let Some(get_caps) = *GET_CAPS.get_or_init(load_winmm_caps) else {
+        return false;
+    };
+    let mut caps: JoyCapsW = unsafe { std::mem::zeroed() };
+    if unsafe {
+        get_caps(
+            slot as usize,
+            &mut caps,
+            std::mem::size_of::<JoyCapsW>() as u32,
+        )
+    } != 0
+    {
+        return false;
+    }
+    let end = caps
+        .product_name
+        .iter()
+        .position(|&character| character == 0)
+        .unwrap_or(caps.product_name.len());
+    let name = String::from_utf16_lossy(&caps.product_name[..end]).to_ascii_lowercase();
+    name.contains("dualsense") || name.contains("wireless controller")
+}
+
+fn button_map(dualsense: bool) -> [u16; 12] {
+    if dualsense {
+        // Physical PlayStation order translated to the same semantic layout
+        // used by Xbox: Cross=A, Circle=B, Square=X, Triangle=Y.
+        [
+            Gamepad::X,
+            Gamepad::A,
+            Gamepad::B,
+            Gamepad::Y,
+            0x0100,
+            0x0200,
+            0,
+            0,
+            0x0020,
+            Gamepad::START,
+            0x0040,
+            0x0080,
+        ]
+    } else {
+        // Common DirectInput order also places L2/R2 at buttons 7/8 and
+        // Select/Start at 9/10. Xbox pads normally use the XInput path, so
+        // this fallback follows the native PlayStation face-button order.
+        [
+            Gamepad::X,
+            Gamepad::A,
+            Gamepad::B,
+            Gamepad::Y,
+            0x0100,
+            0x0200,
+            0,
+            0,
+            0x0020,
+            Gamepad::START,
+            0x0040,
+            0x0080,
+        ]
+    }
+}
+
+#[cfg(windows)]
+fn winmm_gamepad_state(index: u32) -> Option<RawGamepad> {
     static GET_POS: OnceLock<Option<JoyGetPosEx>> = OnceLock::new();
     let get_pos = (*GET_POS.get_or_init(load_winmm_joystick))?;
-    let mut combined = None;
-    for index in 0..16 {
+    let mut connected = 0;
+    for physical_slot in 0..16 {
         let mut state = JoyInfoEx {
             size: std::mem::size_of::<JoyInfoEx>() as u32,
             flags: 0x00ff,
@@ -316,26 +445,18 @@ fn winmm_gamepad_state() -> Option<RawGamepad> {
             reserved1: 0,
             reserved2: 0,
         };
-        if unsafe { get_pos(index, &mut state) } != 0 {
+        if unsafe { get_pos(physical_slot, &mut state) } != 0 {
+            continue;
+        }
+        if connected != index {
+            connected += 1;
             continue;
         }
         let mut buttons = 0_u16;
         // Generic DirectInput order: primary buttons 1-4, shoulders 5-6,
         // menu buttons 7-8 and stick buttons 9-12.
-        let map = [
-            Gamepad::A,
-            Gamepad::B,
-            Gamepad::X,
-            Gamepad::Y,
-            0x0100,
-            0x0200,
-            0x0020,
-            Gamepad::START,
-            0x0040,
-            0x0080,
-            0x0040,
-            0x0080,
-        ];
+        let dualsense = is_dualsense(physical_slot);
+        let map = button_map(dualsense);
         for (index, mapped) in map.into_iter().enumerate() {
             if state.buttons & (1 << index) != 0 {
                 buttons |= mapped;
@@ -356,20 +477,41 @@ fn winmm_gamepad_state() -> Option<RawGamepad> {
                 buttons |= Gamepad::DPAD_LEFT;
             }
         }
-        merge_raw_gamepad(
-            &mut combined,
-            RawGamepad {
-                buttons,
-                left_x: centered_axis(state.x),
-                left_y: centered_axis(65_535_u32.saturating_sub(state.y)),
-                motion_x: centered_axis(state.r),
-                motion_y: centered_axis(65_535_u32.saturating_sub(state.u)),
-                left_trigger: 0,
-                right_trigger: 0,
+        let (motion_x, motion_y) = if dualsense {
+            // Native DualSense exposes right-stick X/Y on Z/R and the two
+            // analog triggers on U/V. Y axes are inverted by WinMM.
+            (
+                centered_axis(state.z),
+                centered_axis(65_535_u32.saturating_sub(state.r)),
+            )
+        } else {
+            (
+                centered_axis(state.r),
+                centered_axis(65_535_u32.saturating_sub(state.u)),
+            )
+        };
+        return Some(RawGamepad {
+            buttons,
+            left_x: centered_axis(state.x),
+            left_y: centered_axis(65_535_u32.saturating_sub(state.y)),
+            motion_x,
+            motion_y,
+            // Use the reliable trigger buttons as full-range trigger values.
+            // They must not alias B/A because those buttons also mean
+            // back/confirm in menus and levels.
+            left_trigger: if state.buttons & (1 << 6) != 0 {
+                255
+            } else {
+                0
             },
-        );
+            right_trigger: if state.buttons & (1 << 7) != 0 {
+                255
+            } else {
+                0
+            },
+        });
     }
-    combined
+    None
 }
 
 #[cfg(windows)]
@@ -378,7 +520,7 @@ fn centered_axis(value: u32) -> i16 {
 }
 
 #[cfg(not(windows))]
-fn platform_gamepad_state() -> Option<RawGamepad> {
+fn platform_gamepad_state(_index: u32) -> Option<RawGamepad> {
     None
 }
 
@@ -413,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    fn active_generic_controller_is_not_hidden_by_idle_virtual_controller() {
+    fn active_hid_input_overrides_an_idle_virtual_xinput_slot() {
         let mut combined = Some(RawGamepad {
             buttons: 0,
             left_x: 0,
@@ -443,9 +585,49 @@ mod tests {
     }
 
     #[test]
-    fn motion_axis_takes_priority_when_receiver_exposes_gyro() {
-        assert_eq!(preferred_motion_axis(0.8, 0.0), 0.8);
-        assert_eq!(preferred_motion_axis(0.8, -0.6), -0.6);
-        assert_eq!(preferred_motion_axis(0.8, 0.1), 0.8);
+    fn local_players_keep_independent_controller_slots() {
+        let first = Gamepad::new(0);
+        let second = Gamepad::new(1);
+        assert_eq!(first.index, 0);
+        assert_eq!(second.index, 1);
+        assert!(!first.connected && !second.connected);
+    }
+
+    #[test]
+    fn dualsense_face_buttons_match_xbox_actions() {
+        let playstation = button_map(true);
+        assert_eq!(playstation[0], Gamepad::X); // Square = Xbox X / fire
+        assert_eq!(playstation[1], Gamepad::A); // Cross = Xbox A / accept
+        assert_eq!(playstation[2], Gamepad::B); // Circle = Xbox B / back
+        assert_eq!(playstation[3], Gamepad::Y); // Triangle = Xbox Y / action
+        assert_eq!(playstation[9], Gamepad::START); // Options = Menu
+        assert_eq!(playstation[6], 0); // L2 is a trigger, not a menu button
+        assert_eq!(playstation[7], 0); // R2 is a trigger, not a menu button
+    }
+
+    #[test]
+    fn directinput_triggers_can_never_open_pause() {
+        for map in [button_map(false), button_map(true)] {
+            assert_ne!(map[6], Gamepad::START); // L2
+            assert_ne!(map[7], Gamepad::START); // R2
+            assert_eq!(map[9], Gamepad::START); // Options/Menu
+        }
+    }
+
+    #[test]
+    fn generic_directinput_square_fires_like_dualsense_square() {
+        assert_eq!(button_map(false)[0], Gamepad::X);
+        assert_eq!(button_map(true)[0], Gamepad::X);
+    }
+
+    #[test]
+    fn right_stick_noise_never_moves_the_ship() {
+        let mut pad = Gamepad::new(0);
+        pad.move_x = 0.0;
+        pad.move_y = 0.0;
+        pad.motion_x = 0.85;
+        pad.motion_y = -0.85;
+        assert_eq!(pad.horizontal(), 0);
+        assert_eq!(pad.vertical(), 0);
     }
 }
