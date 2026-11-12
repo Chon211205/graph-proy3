@@ -133,13 +133,14 @@ pub(crate) fn draw_nebula(
         // These are fixed directions in each system's distant sky.
         Galaxy::Home => (0, std::f32::consts::PI),
         Galaxy::Vesper => (1, -std::f32::consts::FRAC_PI_2),
-        Galaxy::Nova => return,
+        Galaxy::Nova => (2, std::f32::consts::FRAC_PI_4),
     };
-    static NEBULAS: OnceLock<[Option<NebulaTexture>; 2]> = OnceLock::new();
+    static NEBULAS: OnceLock<[Option<NebulaTexture>; 3]> = OnceLock::new();
     let nebulae = NEBULAS.get_or_init(|| {
         [
             NebulaTexture::load("assets/space/nebula_home.png"),
             NebulaTexture::load("assets/space/nebula_vesper.png"),
+            NebulaTexture::load("assets/space/nebula_nova.png"),
         ]
     });
     let Some(nebula) = nebulae[nebula_index].as_ref() else {
@@ -493,11 +494,81 @@ fn make_dust_belt(palette: [[u8; 3]; 3]) -> Model {
     Model::new(vertices, faces)
 }
 
+pub(crate) fn asteroid_position(
+    asteroid: &Asteroid,
+    center: Vec3,
+    base_radius: f32,
+    time: f32,
+) -> Vec3 {
+    let angle = asteroid.orbit_phase + time * asteroid.orbit_speed;
+    let (sin, cos) = angle.sin_cos();
+    let radius = asteroid.orbit_fraction * base_radius;
+    center.add(Vec3::new(
+        cos * radius,
+        sin * radius * 0.055 + asteroid.vertical_offset,
+        sin * radius,
+    ))
+}
+
+/// Sweep the ship's movement segment against the visible asteroid field so
+/// high speed cannot tunnel through rocks between rendered frames.
+pub(crate) fn asteroid_collision_position(
+    previous: Vec3,
+    current: Vec3,
+    ship_radius: f32,
+    galaxy: Galaxy,
+    center: Vec3,
+    base_radius: f32,
+    time: f32,
+) -> Option<Vec3> {
+    let movement = current.sub(previous);
+    let movement_length_squared = movement.dot(movement);
+    let mut earliest: Option<(f32, Vec3)> = None;
+
+    for asteroid in asteroids(galaxy) {
+        let rock = asteroid_position(asteroid, center, base_radius, time);
+        let t = if movement_length_squared > 0.0001 {
+            rock.sub(previous).dot(movement) / movement_length_squared
+        } else {
+            0.0
+        }
+        .clamp(0.0, 1.0);
+        let closest = previous.add(movement.mul(t));
+        let delta = closest.sub(rock);
+        let distance_squared = delta.dot(delta);
+        let combined_radius = ship_radius.max(1.0) + asteroid.collision_radius;
+        if distance_squared >= combined_radius * combined_radius {
+            continue;
+        }
+        if earliest.is_some_and(|(best_t, _)| t >= best_t) {
+            continue;
+        }
+        let distance = distance_squared.sqrt();
+        let normal = if distance > 0.001 {
+            delta.mul(1.0 / distance)
+        } else {
+            let heading = current.sub(rock).normalize();
+            if heading.dot(heading) > 0.5 {
+                heading
+            } else {
+                let prior = previous.sub(rock).normalize();
+                if prior.dot(prior) > 0.5 {
+                    prior
+                } else {
+                    Vec3::new(1.0, 0.0, 0.0)
+                }
+            }
+        };
+        earliest = Some((t, closest.add(normal.mul(combined_radius + 0.4))));
+    }
+    earliest.map(|(_, resolved)| resolved)
+}
+
 pub(crate) fn draw_dust(framebuffer: &mut Framebuffer, travel: f32, galaxy: Galaxy) {
     let tint = match galaxy {
         Galaxy::Home => [94_u32, 136_u32, 204_u32],
         Galaxy::Vesper => [160, 125, 222],
-        Galaxy::Nova => [88, 200, 170],
+        Galaxy::Nova => [220, 116, 130],
     };
     let center_x = framebuffer.width as f32 * 0.5;
     let center_y = framebuffer.height as f32 * 0.48;

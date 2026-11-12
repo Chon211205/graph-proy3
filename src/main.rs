@@ -3097,7 +3097,7 @@ fn draw_skybox(
     let (base, horizon_glow, star_tint) = match galaxy {
         Galaxy::Home => ([4.0, 7.0, 20.0], [8.0, 11.0, 24.0], None),
         Galaxy::Vesper => ([7.0, 3.0, 25.0], [18.0, 11.0, 48.0], Some([130, 198, 255])),
-        Galaxy::Nova => ([2.0, 15.0, 18.0], [6.0, 48.0, 42.0], Some([105, 255, 205])),
+        Galaxy::Nova => ([12.0, 5.0, 13.0], [28.0, 10.0, 22.0], Some([255, 154, 178])),
     };
     for y in 0..framebuffer.height {
         let t = y as f32 / framebuffer.height as f32;
@@ -3129,9 +3129,14 @@ fn draw_skybox(
                 let red = ((old >> 16) & 255) as f32;
                 let green = ((old >> 8) & 255) as f32;
                 let blue = (old & 255) as f32;
-                framebuffer.pixels[index] = (((red + 80.0 * glow) as u32) << 16)
-                    | (((green + 30.0 * glow) as u32) << 8)
-                    | (blue + 130.0 * glow) as u32;
+                let (core_red, core_green, core_blue) = if galaxy == Galaxy::Nova {
+                    (150.0, 30.0, 54.0)
+                } else {
+                    (80.0, 30.0, 130.0)
+                };
+                framebuffer.pixels[index] = (((red + core_red * glow) as u32) << 16)
+                    | (((green + core_green * glow) as u32) << 8)
+                    | (blue + core_blue * glow) as u32;
             }
         }
     }
