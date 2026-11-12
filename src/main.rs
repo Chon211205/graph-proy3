@@ -7120,7 +7120,7 @@ fn draw_selection_label(
     scale: i32,
     color: u32,
 ) {
-    let width = text.len() as i32 * 6 * scale - scale;
+    let width = text.chars().count() as i32 * 6 * scale - scale;
     let start_x = center_x - width / 2;
     for (character_index, character) in text.chars().enumerate() {
         let rows = match character {
@@ -7163,6 +7163,7 @@ fn draw_selection_label(
             ':' => [0, 4, 4, 0, 4, 4, 0],
             '/' => [1, 1, 2, 4, 8, 16, 16],
             '-' => [0, 0, 0, 31, 0, 0, 0],
+            '·' => [0, 0, 0, 4, 0, 0, 0],
             _ => [0; 7],
         };
         let character_x = start_x + character_index as i32 * 6 * scale;
@@ -7743,7 +7744,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     println!("W/S o flechas: subir/bajar | Espacio: acelerar | Ctrl: frenar");
     println!("A/D: direccion | Q/E: alabeo | Enter: disparar/cargar | R: reiniciar | P: captura");
     println!("F4: iluminacion avanzada (desactivada por defecto para mejor rendimiento)");
-    println!("1: warp al planeta acuatico | Shift: velocidad de luz");
+    println!("1: warp al Abismo Azul | Shift: velocidad de luz");
     println!("Backspace: abandonar la zona orbital");
     println!("Enter cerca del planeta: iniciar nivel submarino");
     println!(
@@ -8290,14 +8291,14 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             && crate::input::pressed(Key::Key1)
         {
             place_ship_near_water_planet(&mut ship_controller, world_time);
-            println!("Warp completado: planeta acuatico");
+            println!("Warp completado: Abismo Azul");
         }
         if game_mode == GameMode::FreeWorld
             && active_galaxy == Galaxy::Home
             && crate::input::pressed(Key::Key2)
         {
             place_ship_near_spiky_planet(&mut ship_controller, world_time);
-            println!("Warp completado: planeta rosado | Enter: Guardián del Núcleo");
+            println!("Warp completado: Nova Rosa | Enter: Guardián del Núcleo");
         }
 
         if game_mode == GameMode::FreeWorld
@@ -9342,11 +9343,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 } else if ship.planet_locked {
                     if ship.race_planet_locked {
                         window.set_title(
-                            "Planeta de carreras | Enter: Jardin Rust | Backspace: salir de orbita",
+                            "Jardines de Oxido | Enter: iniciar carrera | Backspace: salir de orbita",
                         );
                     } else if ship.spiky_planet_locked {
                         window.set_title(
-                            "Planeta rosado | Enter: Guardián del Núcleo | Backspace: salir",
+                            "Nova Rosa | Enter: Guardián del Núcleo | Backspace: salir",
                         );
                     } else if active_galaxy == Galaxy::Vesper {
                         let planet_name = match vesper_orbit_index.unwrap_or(0) {
@@ -9367,7 +9368,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             .set_title("Planeta Castillo | En orbita | Backspace: salir de orbita");
                     } else {
                         window.set_title(
-                            "Planeta acuatico | Enter: iniciar nivel | Backspace: salir",
+                            "Abismo Azul | Enter: iniciar nivel | Backspace: salir",
                         );
                     }
                 } else {
@@ -10472,7 +10473,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 if active_galaxy == Galaxy::Home && game_mode == GameMode::FreeWorld {
                     draw_selection_label(
                         &mut framebuffer,
-                        "SISTEMA SOLAR  3: PLANETA DE CARRERAS  ENTER EN ORBITA: JARDIN RUST",
+                        "SISTEMA SOLAR  3: JARDINES DE OXIDO  ENTER EN ORBITA: GRAN PREMIO",
                         600,
                         738,
                         1,
@@ -10508,8 +10509,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::WaterLevel if water_level_state.stage() == WaterStage::RewardChamber => {
                 "RECUPERA LA ESFERA DE 4 ESTRELLAS"
             }
-            GameMode::WaterLevel => "AVANZA POR LAS RUINAS ACUATICAS",
-            GameMode::Racing => "COMPLETA EL CIRCUITO JARDIN RUST",
+            GameMode::WaterLevel => "AVANZA POR EL ABISMO AZUL",
+            GameMode::Racing => "COMPLETA EL CIRCUITO JARDINES DE OXIDO",
             GameMode::CoreGuardian if guardian_fight.is_exposed() => "ATACA EL NUCLEO EXPUESTO",
             GameMode::CoreGuardian => "SOBREVIVE Y ABRE EL NUCLEO",
             GameMode::TowerGuard => "DEFIENDE LA TORRE",

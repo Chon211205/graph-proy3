@@ -3,8 +3,8 @@ use std::{fs::File, sync::OnceLock};
 use minifb::{Key, Window};
 
 use crate::{
-    HEIGHT, WIDTH, draw_selection_label as text, draw_selection_panel as panel, draw_skybox,
-    framebuffer::Framebuffer, minigame_audio::MusicPlayer,
+    draw_selection_label as text, draw_selection_panel as panel, draw_skybox,
+    framebuffer::Framebuffer, minigame_audio::MusicPlayer, HEIGHT, WIDTH,
 };
 
 static MENU_BACKGROUND: OnceLock<Option<Vec<u32>>> = OnceLock::new();
@@ -126,8 +126,8 @@ pub fn instructions(window: &mut Window, frame: &mut Framebuffer) -> Result<(), 
             "MANTEN ENTER PARA CARGAR",
         ];
         let right = [
-            "1: IR AL PLANETA ACUATICO",
-            "ENTER EN ORBITA: NIVEL ACUATICO",
+            "1: IR AL ABISMO AZUL",
+            "ENTER EN ORBITA: ABISMO AZUL",
             "BACKSPACE: SALIR DE ORBITA/NIVEL",
             "R: REINICIAR POSICION",
             "T: BUZZ / RAYO NAVE-CARRO",
