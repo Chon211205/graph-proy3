@@ -7734,6 +7734,9 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         GameMode::FreeWorld
     };
     let mut active_galaxy = Galaxy::Home;
+    // The guest is a separate local session: its portal travel must never
+    // change the galaxy shown to player one.
+    let mut coop_active_galaxy = Galaxy::Home;
     let mut vesper_orbit_index: Option<usize> = None;
     let mut galaxy_transition: Option<GalaxyTransit> = None;
     if start_underwater {
@@ -8214,29 +8217,31 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             && coop_controller.ship.planet_locked
             && gamepad_two.pressed(crate::input::Gamepad::A)
         {
-            if active_galaxy == Galaxy::Home && coop_controller.ship.race_planet_locked {
+            if coop_active_galaxy == Galaxy::Home && coop_controller.ship.race_planet_locked {
                 if let Some((_, car_spec)) = race_vehicles[selected_ship] {
                     coop_controller = ShipController::new(car_spec);
                     if coop_race_track.enter(&mut coop_controller, selected_ship, &race_vehicles) {
                         coop_game_mode = GameMode::Racing;
                     }
                 }
-            } else if active_galaxy == Galaxy::Home && coop_controller.ship.spiky_planet_locked {
+            } else if coop_active_galaxy == Galaxy::Home && coop_controller.ship.spiky_planet_locked
+            {
                 coop_guardian_fight = CoreGuardian::new();
                 coop_game_mode = GameMode::CoreGuardian;
-            } else if active_galaxy == Galaxy::Home && !coop_controller.ship.race_planet_locked {
+            } else if coop_active_galaxy == Galaxy::Home && !coop_controller.ship.race_planet_locked
+            {
                 coop_controller = ShipController::new(level_ship_spec);
                 coop_water_level_state = WaterLevelState::new();
                 coop_bubble_emitter.clear();
                 coop_game_mode = GameMode::WaterLevel;
-            } else if active_galaxy == Galaxy::Vesper && coop_vesper_orbit_index == Some(0) {
+            } else if coop_active_galaxy == Galaxy::Vesper && coop_vesper_orbit_index == Some(0) {
                 coop_hourglass_rescue = hourglass_rescue::HourglassRescue::new();
                 coop_hourglass_rescue.place_ship_at_start(&mut coop_controller.ship);
                 coop_game_mode = GameMode::HourglassRescue;
-            } else if active_galaxy == Galaxy::Vesper && coop_vesper_orbit_index == Some(1) {
+            } else if coop_active_galaxy == Galaxy::Vesper && coop_vesper_orbit_index == Some(1) {
                 coop_tower_game = tower_guard::TowerGame::new(&tower_sprites);
                 coop_game_mode = GameMode::TowerGuard;
-            } else if active_galaxy == Galaxy::Nova {
+            } else if coop_active_galaxy == Galaxy::Nova {
                 coop_lava_castle.enter(&mut coop_controller);
                 coop_game_mode = GameMode::LavaCastle;
             }
@@ -8635,10 +8640,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     && !black_hole_absorption_active
                 {
                     ship_controller.update(&input, delta_time);
-                    if coop_enabled && coop_game_mode == GameMode::FreeWorld {
-                        coop_controller.update(&coop_input, delta_time);
-                        coop_controller.rebase_far_flight();
-                    }
+                }
+                // P2's free-flight simulation is deliberately outside P1's
+                // transition lockout: each viewport owns its travel state.
+                if coop_enabled && coop_game_mode == GameMode::FreeWorld {
+                    coop_controller.update(&coop_input, delta_time);
+                    coop_controller.rebase_far_flight();
                 }
                 let light_speed =
                     window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
@@ -8861,8 +8868,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 }
                 distance += movement;
 
-                if coop_enabled && coop_game_mode == GameMode::FreeWorld && !portal_approach_active
-                {
+                if coop_enabled && coop_game_mode == GameMode::FreeWorld {
                     let coop_ship = &mut coop_controller.ship;
                     let coop_previous = coop_ship.position;
                     let coop_movement = coop_ship.speed * delta_time;
@@ -8877,7 +8883,36 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         coop_vesper_orbit_index = None;
                     }
 
-                    match active_galaxy {
+                    // P2 owns this portal transition.  It is intentionally
+                    // immediate so P1's cinematic transition remains local
+                    // to the left viewport.
+                    let coop_portal = wormhole_position(coop_active_galaxy);
+                    let coop_offset = coop_ship.position.sub(coop_portal);
+                    let coop_near_nova = coop_active_galaxy == Galaxy::Vesper
+                        && coop_ship
+                            .position
+                            .sub(nova_portal_position())
+                            .dot(coop_ship.position.sub(nova_portal_position()))
+                            <= 42.0 * 42.0;
+                    if !coop_ship.planet_locked
+                        && (coop_offset.dot(coop_offset) <= 42.0 * 42.0 || coop_near_nova)
+                    {
+                        coop_active_galaxy = if coop_near_nova {
+                            Galaxy::Nova
+                        } else {
+                            coop_active_galaxy.portal_destination()
+                        };
+                        let exit = match coop_active_galaxy {
+                            Galaxy::Vesper => Vec3::new(-420.0, 0.0, 0.0),
+                            Galaxy::Nova => Vec3::new(0.0, 20.0, -150.0),
+                            Galaxy::Home => Vec3::new(150.0, 0.0, 80.0),
+                        };
+                        coop_ship.position = wormhole_position(coop_active_galaxy).add(exit);
+                        coop_ship.speed = coop_ship.spec.cruise_speed;
+                        coop_vesper_orbit_index = None;
+                    }
+
+                    match coop_active_galaxy {
                         Galaxy::Home => {
                             let empty_colliders: [ObjectCollider; 0] = [];
                             let water_center = water_planet_position(world_time);
@@ -9005,7 +9040,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     }
 
                     if !coop_ship.planet_locked {
-                        let asteroid_field = match active_galaxy {
+                        let asteroid_field = match coop_active_galaxy {
                             Galaxy::Home => Some((Vec3::new(SUN_POSITION_X, 20.0, 0.0), 350.0)),
                             Galaxy::Vesper => Some((VESPER_SYSTEM_CENTER, 350.0)),
                             Galaxy::Nova => Some((Vec3::new(0.0, 70.0, 0.0), 300.0)),
@@ -9015,7 +9050,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                                 coop_previous,
                                 coop_ship.position,
                                 coop_ship.spec.collision_radius,
-                                active_galaxy,
+                                coop_active_galaxy,
                                 center,
                                 radius,
                                 world_time,
@@ -9218,8 +9253,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             sun_center,
                             &home_orbit_rings,
                             &wormhole,
-                            wormhole_position(active_galaxy),
-                            active_galaxy,
+                            wormhole_position(coop_active_galaxy),
+                            coop_active_galaxy,
                             &vesper_planets,
                             &vesper_black_hole,
                             &vesper_orbit_rings,
@@ -9735,7 +9770,32 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         coop_ship.orbit_plane_normal = None;
                         coop_vesper_orbit_index = None;
                     }
-                    match active_galaxy {
+                    let coop_portal = wormhole_position(coop_active_galaxy);
+                    let coop_offset = coop_ship.position.sub(coop_portal);
+                    let coop_near_nova = coop_active_galaxy == Galaxy::Vesper
+                        && coop_ship
+                            .position
+                            .sub(nova_portal_position())
+                            .dot(coop_ship.position.sub(nova_portal_position()))
+                            <= 42.0 * 42.0;
+                    if !coop_ship.planet_locked
+                        && (coop_offset.dot(coop_offset) <= 42.0 * 42.0 || coop_near_nova)
+                    {
+                        coop_active_galaxy = if coop_near_nova {
+                            Galaxy::Nova
+                        } else {
+                            coop_active_galaxy.portal_destination()
+                        };
+                        let exit = match coop_active_galaxy {
+                            Galaxy::Vesper => Vec3::new(-420.0, 0.0, 0.0),
+                            Galaxy::Nova => Vec3::new(0.0, 20.0, -150.0),
+                            Galaxy::Home => Vec3::new(150.0, 0.0, 80.0),
+                        };
+                        coop_ship.position = wormhole_position(coop_active_galaxy).add(exit);
+                        coop_ship.speed = coop_ship.spec.cruise_speed;
+                        coop_vesper_orbit_index = None;
+                    }
+                    match coop_active_galaxy {
                         Galaxy::Home => {
                             let water_center = water_planet_position(world_time);
                             let spiky_center = spiky_planet_position(world_time);
@@ -9846,7 +9906,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         ),
                     }
                     if !coop_ship.planet_locked {
-                        let (center, radius) = match active_galaxy {
+                        let (center, radius) = match coop_active_galaxy {
                             Galaxy::Home => (Vec3::new(SUN_POSITION_X, 20.0, 0.0), 350.0),
                             Galaxy::Vesper => (VESPER_SYSTEM_CENTER, 350.0),
                             Galaxy::Nova => (Vec3::new(0.0, 70.0, 0.0), 300.0),
@@ -9855,7 +9915,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                             previous_position,
                             coop_ship.position,
                             coop_ship.spec.collision_radius,
-                            active_galaxy,
+                            coop_active_galaxy,
                             center,
                             radius,
                             world_time,
@@ -9895,8 +9955,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         sun_center,
                         &home_orbit_rings,
                         &wormhole,
-                        wormhole_position(active_galaxy),
-                        active_galaxy,
+                        wormhole_position(coop_active_galaxy),
+                        coop_active_galaxy,
                         &vesper_planets,
                         &vesper_black_hole,
                         &vesper_orbit_rings,
