@@ -156,6 +156,10 @@ impl HourglassRescue {
         }
     }
 
+    pub fn is_paused(&self) -> bool {
+        self.phase == Phase::Paused
+    }
+
     pub fn reset(&mut self, ship: &mut Ship) {
         *self = Self::new();
         self.place_ship_at_start(ship);
@@ -284,8 +288,19 @@ impl HourglassRescue {
         Action::Continue
     }
 
+    #[cfg(test)]
     pub fn draw_hud(&self, frame: &mut Framebuffer, ship: &Ship) {
-        hud::draw(self, frame, ship);
+        hud::draw(self, frame, ship, 70, false);
+    }
+
+    pub fn draw_hud_with_audio(
+        &self,
+        frame: &mut Framebuffer,
+        ship: &Ship,
+        volume: u32,
+        muted: bool,
+    ) {
+        hud::draw(self, frame, ship, volume, muted);
     }
 
     pub fn update_enemies(

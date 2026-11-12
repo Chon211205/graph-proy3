@@ -6,6 +6,7 @@ mod input;
 mod lava_castle;
 mod lava_castle_interior;
 mod menu;
+mod minigame_audio;
 mod obj_loader;
 mod race_track;
 mod ship;
@@ -714,6 +715,24 @@ enum GameMode {
     TowerGuard,
     LavaCastle,
     LavaCastleInterior,
+}
+
+impl GameMode {
+    fn music_track(self) -> Option<minigame_audio::Track> {
+        use minigame_audio::Track;
+        match self {
+            Self::CoreGuardian => Some(Track::CoreGuardian),
+            Self::WaterLevel => Some(Track::Aquatic),
+            Self::Racing => Some(Track::Racing),
+            Self::TowerGuard => Some(Track::TowerGuard),
+            Self::HourglassRescue => Some(Track::Hourglass),
+            _ => None,
+        }
+    }
+
+    fn is_planet_minigame(self) -> bool {
+        self.music_track().is_some()
+    }
 }
 
 struct WaterLevelState {
@@ -7279,6 +7298,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         ))
     })?;
     let tower_audio = tower_guard::TowerAudio::load();
+    let mut minigame_music = minigame_audio::MusicPlayer::new();
     let buzz_variants = [
         load_obj("assets/vehicles/buzz/buzz_nave_detallada.obj")?,
         load_obj("assets/vehicles/buzz/buzz_carro_detallado.obj")?,
@@ -7351,7 +7371,14 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         (2, 0)
     } else {
         loop {
-            if menu::show(&mut window, &mut framebuffer, false)? == menu::Action::Quit {
+            if menu::show(
+                &mut window,
+                &mut framebuffer,
+                false,
+                false,
+                &mut minigame_music,
+            )? == menu::Action::Quit
+            {
                 return Ok(false);
             }
             if let Some(index) =
@@ -7555,6 +7582,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let mut motion_was_active = false;
 
     while window.is_open() {
+        minigame_music.update(game_mode.music_track());
         gamepad.update();
         if gamepad.connected != gamepad_was_connected {
             if gamepad.connected {
@@ -7588,9 +7616,24 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 || gamepad.pressed(crate::input::Gamepad::START))
         {
             race_track.pause();
-            match menu::show(&mut window, &mut framebuffer, true)? {
+            match menu::show(
+                &mut window,
+                &mut framebuffer,
+                true,
+                true,
+                &mut minigame_music,
+            )? {
                 menu::Action::Quit => return Ok(false),
                 menu::Action::Play => race_track.resume(),
+                menu::Action::ExitToSpace => {
+                    game_mode = GameMode::FreeWorld;
+                    ship_controller = ShipController::new(ship_spec);
+                    race_track.leave(&mut ship_controller, race_planet_position(world_time));
+                    window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
+                    previous = Instant::now();
+                    crate::input::clear();
+                    continue;
+                }
                 menu::Action::Hangar => {
                     if let Some((new_selection, _)) = select_ship(
                         &mut window,
@@ -7626,9 +7669,30 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         {
             tower_game.pause();
             window.set_cursor_visibility(true);
-            match menu::show(&mut window, &mut framebuffer, true)? {
+            match menu::show(
+                &mut window,
+                &mut framebuffer,
+                true,
+                true,
+                &mut minigame_music,
+            )? {
                 menu::Action::Quit => return Ok(false),
                 menu::Action::Play => tower_game.resume(),
+                menu::Action::ExitToSpace => {
+                    tower_audio.stop_music();
+                    tower_game.resume();
+                    game_mode = GameMode::FreeWorld;
+                    launch_ship_from_planet(
+                        &mut ship_controller,
+                        vesper_planet_position(1, world_time),
+                        vesper_planets[1].radius,
+                    );
+                    window.set_cursor_visibility(true);
+                    window.set_title("Galaxia Vesper | Vuelo libre 3D");
+                    previous = Instant::now();
+                    crate::input::clear();
+                    continue;
+                }
                 menu::Action::Hangar => {
                     if let Some((new_selection, new_form)) = select_ship(
                         &mut window,
@@ -7665,8 +7729,38 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             && game_mode != GameMode::HourglassRescue
             && (crate::input::pressed(Key::Escape) || gamepad.pressed(crate::input::Gamepad::START))
         {
-            match menu::show(&mut window, &mut framebuffer, true)? {
+            match menu::show(
+                &mut window,
+                &mut framebuffer,
+                true,
+                game_mode.is_planet_minigame(),
+                &mut minigame_music,
+            )? {
                 menu::Action::Quit => return Ok(false),
+                menu::Action::ExitToSpace => {
+                    let leaving = game_mode;
+                    game_mode = GameMode::FreeWorld;
+                    match leaving {
+                        GameMode::CoreGuardian => {
+                            launch_ship_after_guardian_exit(&mut ship_controller, world_time);
+                        }
+                        GameMode::WaterLevel => {
+                            bubble_emitter.clear();
+                            ship_controller = ShipController::new(ship_spec);
+                            launch_ship_from_planet(
+                                &mut ship_controller,
+                                water_planet_position(world_time),
+                                WATER_PLANET_RADIUS,
+                            );
+                        }
+                        _ => {}
+                    }
+                    window.set_cursor_visibility(true);
+                    window.set_title("Sistema solar | Vuelo libre 3D | F11: fullscreen");
+                    previous = Instant::now();
+                    crate::input::clear();
+                    continue;
+                }
                 menu::Action::Hangar => {
                     if let Some((new_selection, new_form)) = select_ship(
                         &mut window,
@@ -8682,6 +8776,23 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 ));
             }
             GameMode::HourglassRescue => {
+                if hourglass_rescue.is_paused() {
+                    if crate::input::pressed(Key::Equal)
+                        || crate::input::pressed(Key::NumPadPlus)
+                        || crate::input::pressed(Key::RightBracket)
+                    {
+                        minigame_music.adjust(true);
+                    }
+                    if crate::input::pressed(Key::Minus)
+                        || crate::input::pressed(Key::NumPadMinus)
+                        || crate::input::pressed(Key::LeftBracket)
+                    {
+                        minigame_music.adjust(false);
+                    }
+                    if crate::input::pressed(Key::M) {
+                        minigame_music.toggle_mute();
+                    }
+                }
                 let restart_pressed =
                     crate::input::pressed(Key::R) || gamepad.pressed(crate::input::Gamepad::Y);
                 let rescue_input = hourglass_rescue::Input {
@@ -8894,7 +9005,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 0xffffff,
             );
         } else if game_mode == GameMode::HourglassRescue {
-            hourglass_rescue.draw_hud(&mut framebuffer, &ship_controller.ship);
+            hourglass_rescue.draw_hud_with_audio(
+                &mut framebuffer,
+                &ship_controller.ship,
+                minigame_music.volume_percent(),
+                minigame_music.muted(),
+            );
         } else if game_mode != GameMode::TowerGuard {
             let form = if game_mode == GameMode::Racing {
                 race_vehicles[selected_ship]

@@ -4,7 +4,7 @@ use minifb::{Key, Window};
 
 use crate::{
     HEIGHT, WIDTH, draw_selection_label as text, draw_selection_panel as panel, draw_skybox,
-    framebuffer::Framebuffer,
+    framebuffer::Framebuffer, minigame_audio::MusicPlayer,
 };
 
 static MENU_BACKGROUND: OnceLock<Option<Vec<u32>>> = OnceLock::new();
@@ -54,6 +54,7 @@ pub enum Action {
     Play,
     Hangar,
     Quit,
+    ExitToSpace,
 }
 
 pub(crate) fn draw_backdrop(frame: &mut Framebuffer) {
@@ -177,11 +178,22 @@ pub fn show(
     window: &mut Window,
     frame: &mut Framebuffer,
     paused: bool,
+    planet_minigame: bool,
+    music: &mut MusicPlayer,
 ) -> Result<Action, minifb::Error> {
     crate::input::clear();
     window.update();
     let options: &[&str] = if paused {
-        &["CONTINUAR", "CAMBIAR NAVE", "INSTRUCCIONES", "SALIR"]
+        if planet_minigame {
+            &[
+                "CONTINUAR",
+                "CAMBIAR NAVE",
+                "INSTRUCCIONES",
+                "VOLVER AL ESPACIO",
+            ]
+        } else {
+            &["CONTINUAR", "CAMBIAR NAVE", "INSTRUCCIONES", "SALIR"]
+        }
     } else {
         &["JUGAR", "INSTRUCCIONES", "SALIR"]
     };
@@ -189,6 +201,23 @@ pub fn show(
     let mut gamepad = crate::input::Gamepad::default();
     while window.is_open() {
         gamepad.update();
+        if paused {
+            if crate::input::pressed(Key::Equal)
+                || crate::input::pressed(Key::NumPadPlus)
+                || crate::input::pressed(Key::RightBracket)
+            {
+                music.adjust(true);
+            }
+            if crate::input::pressed(Key::Minus)
+                || crate::input::pressed(Key::NumPadMinus)
+                || crate::input::pressed(Key::LeftBracket)
+            {
+                music.adjust(false);
+            }
+            if crate::input::pressed(Key::M) {
+                music.toggle_mute();
+            }
+        }
         window.set_title(if paused {
             "Pausa | Flechas: elegir | Enter: confirmar"
         } else {
@@ -214,6 +243,7 @@ pub fn show(
                 "JUGAR" | "CONTINUAR" => return Ok(Action::Play),
                 "CAMBIAR NAVE" => return Ok(Action::Hangar),
                 "SALIR" => return Ok(Action::Quit),
+                "VOLVER AL ESPACIO" => return Ok(Action::ExitToSpace),
                 _ => instructions(window, frame)?,
             }
         }
@@ -250,14 +280,48 @@ pub fn show(
                 }
             }
         }
-        left_text(
-            frame,
-            "UP DOWN / W S  ELEGIR     ENTER  CONFIRMAR",
-            84,
-            710,
-            1,
-            0xf0eee7,
-        );
+        if paused {
+            let audio_status = if music.muted() {
+                "SILENCIADA"
+            } else {
+                "ACTIVA"
+            };
+            left_text(
+                frame,
+                &format!("MUSICA {audio_status}  {}%", music.volume_percent()),
+                84,
+                704,
+                2,
+                0x42dff0,
+            );
+            left_text(
+                frame,
+                "- / [ BAJAR     + / ] SUBIR     M SILENCIAR",
+                84,
+                744,
+                1,
+                0xf0eee7,
+            );
+            if planet_minigame {
+                left_text(
+                    frame,
+                    "VOLVER AL ESPACIO: RETOMAR EL VUELO LIBRE",
+                    84,
+                    774,
+                    1,
+                    0xffd447,
+                );
+            }
+        } else {
+            left_text(
+                frame,
+                "UP DOWN / W S  ELEGIR     ENTER  CONFIRMAR",
+                84,
+                710,
+                1,
+                0xf0eee7,
+            );
+        }
         crate::input::clear();
         window.update_with_buffer(&frame.pixels, WIDTH, HEIGHT)?;
     }
