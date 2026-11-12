@@ -1,6 +1,7 @@
 mod core_guardian;
 mod framebuffer;
 mod galaxy;
+mod black_hole;
 mod hourglass_rescue;
 mod input;
 mod lava_castle;
@@ -3782,51 +3783,7 @@ fn make_wormhole_sphere(radius: f32, stacks: usize, slices: usize) -> Model {
 }
 
 fn make_vesper_black_hole() -> Model {
-    let mut core = make_sphere(22.0, 18, 32, false);
-    for face in &mut core.faces {
-        face.shader = SurfaceShader::Flat;
-        face.color = MaterialColor::Fixed([1, 0, 5]);
-        face.material = "vesper_black_hole_core".to_string();
-        face.group = "vesper_black_hole_core".to_string();
-    }
-
-    let mut vertices = core.vertices;
-    let mut faces = core.faces;
-    let segments = 96;
-    let bands = [
-        (24.0, 34.0, [255, 211, 150], [238, 83, 255]),
-        (34.0, 48.0, [238, 83, 255], [129, 37, 255]),
-        (48.0, 67.0, [129, 37, 255], [52, 76, 238]),
-        (67.0, 92.0, [52, 76, 238], [38, 13, 112]),
-    ];
-    for (band, (inner, outer, inner_color, outer_color)) in bands.into_iter().enumerate() {
-        let base = vertices.len();
-        for segment in 0..segments {
-            let angle = TAU * segment as f32 / segments as f32;
-            let (sin, cos) = angle.sin_cos();
-            let ripple = (angle * 5.0 + band as f32 * 1.7).sin() * (0.35 + band as f32 * 0.12);
-            vertices.push(Vec3::new(cos * inner, ripple, sin * inner));
-            vertices.push(Vec3::new(cos * outer, ripple * 1.35, sin * outer));
-        }
-        for segment in 0..segments {
-            let next = (segment + 1) % segments;
-            let a = base + segment * 2;
-            let b = base + next * 2;
-            let c = a + 1;
-            let d = b + 1;
-            let flare = (segment + band * 11) % 13 < 3;
-            for (indices, color) in [
-                ([a, b, c], if flare { inner_color } else { outer_color }),
-                ([c, b, d], if flare { outer_color } else { inner_color }),
-            ] {
-                let mut face = Face::new(indices, "vesper_accretion_disk", "accretion_disk");
-                face.shader = SurfaceShader::Flat;
-                face.color = MaterialColor::Fixed(color);
-                faces.push(face);
-            }
-        }
-    }
-    Model::new(vertices, faces)
+    black_hole::build_model()
 }
 
 fn make_home_orbit_rings() -> Model {
@@ -9514,12 +9471,14 @@ mod tests {
             .iter()
             .filter(|face| face.group == "accretion_disk")
             .count();
-        assert_eq!(disk_faces, 4 * 96 * 2);
+        assert_eq!(disk_faces, 7 * 192 * 2);
         assert!(model.faces.iter().any(|face| {
-            face.group == "accretion_disk" && face.color == MaterialColor::Fixed([255, 211, 150])
+            face.group == "accretion_plasma_stream"
+                && face.color == MaterialColor::Fixed([255, 200, 116])
         }));
         assert!(model.faces.iter().any(|face| {
-            face.group == "accretion_disk" && face.color == MaterialColor::Fixed([38, 13, 112])
+            face.group == "accretion_disk"
+                && matches!(face.color, MaterialColor::Fixed([r, g, b]) if r > g && g > b)
         }));
     }
 
