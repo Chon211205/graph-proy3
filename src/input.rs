@@ -396,8 +396,8 @@ fn button_map(dualsense: bool) -> [u16; 12] {
             Gamepad::Y,
             0x0100,
             0x0200,
-            Gamepad::B,
-            Gamepad::A,
+            0,
+            0,
             0x0020,
             Gamepad::START,
             0x0040,
@@ -414,8 +414,8 @@ fn button_map(dualsense: bool) -> [u16; 12] {
             Gamepad::Y,
             0x0100,
             0x0200,
-            Gamepad::B,
-            Gamepad::A,
+            0,
+            0,
             0x0020,
             Gamepad::START,
             0x0040,
@@ -496,11 +496,19 @@ fn winmm_gamepad_state(index: u32) -> Option<RawGamepad> {
             left_y: centered_axis(65_535_u32.saturating_sub(state.y)),
             motion_x,
             motion_y,
-            // Native WinMM reports DualSense trigger axes differently across
-            // USB and Bluetooth (often half-pressed at rest). L2/R2 are also
-            // exposed as reliable digital buttons, so use those instead.
-            left_trigger: 0,
-            right_trigger: 0,
+            // Use the reliable trigger buttons as full-range trigger values.
+            // They must not alias B/A because those buttons also mean
+            // back/confirm in menus and levels.
+            left_trigger: if state.buttons & (1 << 6) != 0 {
+                255
+            } else {
+                0
+            },
+            right_trigger: if state.buttons & (1 << 7) != 0 {
+                255
+            } else {
+                0
+            },
         });
     }
     None
@@ -593,8 +601,8 @@ mod tests {
         assert_eq!(playstation[2], Gamepad::B); // Circle = Xbox B / back
         assert_eq!(playstation[3], Gamepad::Y); // Triangle = Xbox Y / action
         assert_eq!(playstation[9], Gamepad::START); // Options = Menu
-        assert_eq!(playstation[6], Gamepad::B); // L2 = brake
-        assert_eq!(playstation[7], Gamepad::A); // R2 = accelerate
+        assert_eq!(playstation[6], 0); // L2 is a trigger, not a menu button
+        assert_eq!(playstation[7], 0); // R2 is a trigger, not a menu button
     }
 
     #[test]
