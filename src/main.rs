@@ -5534,7 +5534,7 @@ fn render_scene(
             &vesper_black_hole.core,
             batch,
             &camera,
-            |vertex| vertex.add(VESPER_SYSTEM_CENTER),
+            |vertex| vertex.mul(black_hole::VISUAL_SCALE).add(VESPER_SYSTEM_CENTER),
             None,
             None,
         );
@@ -5544,6 +5544,7 @@ fn render_scene(
             &camera,
             |vertex| {
                 black_hole::differential_disk_transform(vertex, world_time)
+                    .mul(black_hole::VISUAL_SCALE)
                     .add(VESPER_SYSTEM_CENTER)
             },
             Some(world_time),
@@ -5555,6 +5556,7 @@ fn render_scene(
             &camera,
             |vertex| {
                 black_hole::differential_disk_transform(vertex, world_time)
+                    .mul(black_hole::VISUAL_SCALE)
                     .add(VESPER_SYSTEM_CENTER)
             },
             Some(world_time),
@@ -5570,7 +5572,7 @@ fn render_scene(
             &vesper_black_hole.lensing_arcs,
             batch,
             &camera,
-            arc_transform,
+            |vertex| black_hole::scale_about_center(arc_transform(vertex), VESPER_SYSTEM_CENTER),
             Some(world_time),
             None,
         );

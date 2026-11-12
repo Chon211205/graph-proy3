@@ -2,6 +2,7 @@ use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3};
 use std::f32::consts::{PI, TAU};
 
 pub(crate) const CORE_RADIUS: f32 = 22.0;
+pub(crate) const VISUAL_SCALE: f32 = 1.22;
 const DISK_INNER_RADIUS: f32 = 22.45;
 const DISK_OUTER_RADIUS: f32 = 78.0;
 const DISK_ANGULAR_SEGMENTS: usize = 256;
@@ -329,6 +330,10 @@ pub(crate) fn differential_disk_transform(vertex: Vec3, time: f32) -> Vec3 {
         vertex.y,
         vertex.x * sin + vertex.z * cos,
     )
+}
+
+pub(crate) fn scale_about_center(position: Vec3, center: Vec3) -> Vec3 {
+    center.add(position.sub(center).mul(VISUAL_SCALE))
 }
 
 pub(crate) fn camera_arc_transform(
