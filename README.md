@@ -1,197 +1,164 @@
 # Aventura espacial
 
-## Planeta de carreras: Gran Premio Orbital
+Proyecto de exploración espacial y minijuegos, desarrollado en Rust. El jugador elige una nave, recorre galaxias en vuelo libre, entra en órbita para descubrir misiones y puede volver al espacio al salir de cada nivel.
 
-En el sistema solar inicial encontrarás el planeta de carreras con su cinturón a cuadros. Acércate hasta entrar en órbita y pulsa **Enter** para correr **Gran Premio Orbital**. La tecla **3** te lleva junto al planeta para entrar más rápido. La carrera carga el modelo OBJ del carro asociado a la nave seleccionada, cuenta regresiva, circuito cerrado, tres rivales, checkpoints ordenados y tres vueltas.
+## Requisitos y ejecución
 
-El escenario tiene carretera oscura, pianos rojos y blancos, bandas turbo, barreras, vegetación alienígena, árboles grandes, helechos, arcos musgosos, colinas y un planeta anillado al fondo. El circuito y su decoración se generan una vez desde los módulos de `src/race_track/`; se usa el renderizador de software del proyecto.
+- Rust y Cargo con soporte para la edición 2024.
+- Windows es la plataforma recomendada. La música de los minijuegos usa Windows MCI; en otros sistemas esa capa queda en silencio.
+- Las dependencias directas son minifb para la ventana y png para cargar imágenes. La geometría 3D, el framebuffer y el rasterizador son propios del proyecto.
+- Ejecuta desde la raíz del repositorio, porque el juego carga los recursos desde rutas relativas.
 
-Hay variantes carro para ASTRA, Swordfish II, Buzz Lightyear y Rayo McQueen. Arwing y Kirby todavía no tienen modelo carro, así que el juego no los sustituye por un modelo genérico. Los archivos que faltan son `assets/vehicles/arwing/arwing2_carro.obj` y `assets/vehicles/kirby/kirby_carro.obj`.
+    cargo run --locked
 
-| Tecla | Acción en la carrera |
+Cargo descarga las dependencias en la primera compilación. El perfil de desarrollo usa optimización ligera para mantener ágil el renderizado por CPU.
+
+## Recorrido
+
+### Menú y hangar
+
+En el menú principal puedes empezar, consultar las instrucciones o salir. El hangar ofrece seis naves:
+
+- Arwing
+- Kirby UFO
+- ASTRA
+- Swordfish II
+- Buzz Lightyear
+- Rayo McQueen
+
+Usa A/D o las flechas izquierda/derecha para elegir una nave, V para alternar sus variantes disponibles y Enter para iniciar. Las variantes espaciales, de carro y submarinas dependen de cada nave.
+
+### Vuelo libre y galaxias
+
+Explora tres regiones conectadas por agujeros de gusano:
+
+- Sistema solar de origen: el Sol y los planetas principales.
+- Vesper: una región con agujero negro, planetas y misiones.
+- Nova: la galaxia final, con el Castillo de Lava y su santuario.
+
+Los portales permiten viajar entre regiones y usar la transición de hipervelocidad. Las galaxias también incluyen nebulosas, estrellas, cinturones y asteroides, y encuentros de naves con intercambios de disparos. El vuelo incluye impulso de velocidad de luz, armas, escudo, colisiones y entrada en órbita.
+
+### Planetas y misiones
+
+Las misiones se inician al acercarse y entrar en órbita. La nave elegida y el progreso de la aventura se conservan al regresar al vuelo libre.
+
+| Región / planeta | Modo |
 | --- | --- |
-| W / arriba | Acelerar |
-| S / abajo | Frenar o ir en reversa |
-| A/D o flechas izquierda/derecha | Girar |
-| Espacio | Freno de mano y derrape |
-| Shift | Consumir reserva de turbo |
-| R | Volver al último checkpoint |
-| P / Esc | Pausar o continuar |
-| Enter | Reintentar al terminar |
-| Backspace | Salir del planeta y volver al espacio libre |
+| Jardines de Óxido | Gran Premio Orbital |
+| Nova Rosa | Guardián del Núcleo |
+| Abismo Azul | Ruinas Acuáticas |
+| Reloj de Arena | Rescate a Contratiempo |
+| Casa Torre | Torre: Última Guardia |
+| Castillo de Lava | Combate contra el guardián |
+| Santuario de Nova | Nivel final y sello |
 
-Shift consume la reserva y se recarga al soltarlo; derrapar de forma controlada y cruzar una banda turbo da una recarga breve. Los resultados indican posición, tiempo total y mejor vuelta. Backspace regresa al espacio libre. La carrera no incluye el menú principal ni la música del proyecto de referencia; la lógica, IA y geometría están adaptadas a la estructura y al renderizador de este proyecto.
+La guía Nexo presenta la señal y el objetivo del planeta. Las misiones forman una aventura conectada por la búsqueda de siete esferas; completar objetivos desbloquea nuevas etapas. Backspace permite salir de un minijuego al vuelo espacial. Según el modo, Enter confirma o reinicia desde la pantalla de resultados.
 
-Juego 3D en Rust con renderizado por software. Ejecuta los comandos desde la raíz del repositorio para encontrar `assets/`.
+### Modos de juego
 
-```powershell
-cargo run --locked
-```
+- Gran Premio Orbital: carrera 3D con la variante de carro de la nave, circuito cerrado, checkpoints, turbo, derrape, rivales y cuatro vueltas.
+- Ruinas Acuáticas: recorrido submarino con formaciones enemigas, obstáculos, combate contra el jefe tiburón y santuario de recompensa.
+- Guardián del Núcleo: combate espacial contra un jefe en el planeta rosado, con disparos, objetivos, obstáculos y fases.
+- Torre: Última Guardia: galería de tiro con cámara fija, mira, grupos de enemigos, jefes, munición limitada y resultados.
+- Rescate a Contratiempo: vuelo de rescate con cápsulas, inversión de gravedad, enemigos, recursos de tiempo y límite de misión.
+- Castillo de Lava y Santuario de Nova: combate contra el guardián y etapa interior final.
 
-Se necesita Rust con soporte para edición 2024 y las herramientas nativas de compilación de las dependencias. La primera ejecución descarga y compila las dependencias de Cargo.
-
-## Menús
-
-- Menú principal: **Jugar**, **Instrucciones**, **Salir**.
-- Flechas arriba/abajo o W/S y Enter para elegir una opción.
-- Hangar: A/D o flechas izquierda/derecha para elegir entre Arwing, Kirby, ASTRA, Swordfish II y Buzz Lightyear. Enter inicia la partida; Esc vuelve al menú.
-- En el hangar, V alterna las formas disponibles: todas las naves tienen modo espacial y submarino; ASTRA, Swordfish II y Buzz también tienen modo carro.
-- Esc pausa y permite continuar, cambiar de nave, consultar las instrucciones o salir. Cambiar de nave comienza una partida nueva.
-- F1 muestra los controles durante la partida; Enter/Esc vuelve. La simulación se detiene en pausa y en la ayuda.
+Los modos tienen pausa, interfaz y resultados propios. Las pistas musicales de los minijuegos se repiten; desde la pausa puedes ajustar el volumen con +/− o silenciar con M.
 
 ## Controles
 
+### Vuelo libre
+
+| Teclas | Acción |
+| --- | --- |
+| W / S o ↑ / ↓ | Subir / bajar |
+| A / D o ← / → | Girar |
+| Q / E | Alabeo |
+| Espacio / Ctrl | Acelerar / frenar |
+| Shift | Impulso de velocidad de luz |
+| Enter | Disparar; mantener para cargar cuando esté disponible |
+| 1 / 2 / 3 | Atajos para acercarse a zonas de misión |
+| Enter cerca de un planeta | Entrar en la misión disponible |
+| Backspace | Salir de la zona orbital al espacio |
+| T | Alternar nave/carro para Buzz o Rayo McQueen cuando está disponible |
+| R | Reiniciar posición o segmento, según el modo |
+
+### Carrera
+
+| Teclas | Acción |
+| --- | --- |
+| W / ↑ | Acelerar |
+| S / ↓ | Frenar o reversa |
+| A/D o ←/→ | Girar |
+| Espacio | Derrapar |
+| Shift | Usar turbo |
+| R | Recuperar el último checkpoint |
+| P / Esc | Pausar |
+| Enter | Reintentar desde resultados |
+| Backspace | Salir al vuelo libre |
+
+### Ruinas Acuáticas
+
+W/S o ↑/↓ controlan la altura; A/D y ←/→ ajustan la posición lateral. Espacio dispara, Enter dispara o carga según el arma y Backspace vuelve al espacio.
+
+### Guardián del Núcleo
+
+W/A/S/D o las flechas mueven la nave; Espacio o Enter dispara. P/Esc pausa y Backspace sale al espacio.
+
+### Torre: Última Guardia
+
+El mouse o las flechas mueven la mira; clic izquierdo o Espacio dispara. R recarga durante los jefes y P/Esc pausa. En resultados, Enter reintenta y Backspace vuelve al espacio.
+
+### Rescate a Contratiempo
+
+W/S o ↑/↓ controlan la altura y A/D giran. Espacio acelera, Ctrl frena, Shift activa el impulso, Enter dispara y E rescata una cápsula cercana. R reinicia; P/Esc pausa y Backspace vuelve al espacio. P/Esc pausa y Backspace vuelve al vuelo libre.
+
+### Opciones globales
+
 | Tecla | Acción |
 | --- | --- |
-| W/S o arriba/abajo | Subir/bajar |
-| A/D | Girar |
-| Q/E | Alabeo |
-| Espacio / Ctrl | Acelerar / frenar |
-| Shift | Velocidad de luz en vuelo libre |
-| Enter | Disparar; mantener para cargar |
-| 1 | Transportarse cerca del planeta acuático |
-| 3 | Transportarse cerca del planeta de carreras |
-| Enter estando en órbita | Entrar al nivel submarino |
-| Backspace | Abandonar órbita o volver del nivel al espacio |
-| T | Alternar la apariencia nave/carro de Buzz o Rayo McQueen en vuelo libre |
-| R | Reiniciar posición o recorrido submarino |
-| F11 | Alternar pantalla completa |
-| F3 | Mostrar/ocultar métricas de rendimiento |
-| P | Guardar `captura.png` |
+| Esc | Pausar o volver, según la pantalla |
+| F1 | Abrir instrucciones |
+| F2 | Alternar resolución dinámica |
+| F3 | Mostrar/ocultar métricas compactas de rendimiento |
+| F4 | Alternar iluminación avanzada |
+| F11 | Alternar pantalla completa cuando el modo lo admite |
+| P | Guardar una captura como captura.png |
+| C | Activar o salir del cooperativo local cuando está disponible |
 
-Completa el recorrido submarino esquivando obstáculos. Buzz cambia automáticamente a submarino en ese nivel y recupera su forma anterior al salir. La forma carro es una transformación visual con los controles del vuelo libre; no incorpora un circuito terrestre ni física de conducción.
+En pausa, usa +/− para ajustar la música y M para silenciarla. Los controles específicos del modo también se muestran en el título de la ventana y en su interfaz.
 
-El recorrido submarino sigue la estructura **Ruinas Acuáticas**: caverna de
-entrada, corredor de ruinas, campo minado, túnel de alta velocidad con anillos
-de impulso, arena abierta y combate final contra un tiburón mecánico. El avance
-se detiene en la última arena hasta destruir al jefe con **Enter**; los disparos
-cargados causan más daño.
+## Estructura del proyecto
 
-Después del jefe se abre una séptima sección: el santuario final. Una esfera
-del dragón naranja de cuatro estrellas flota sobre un pedestal energético. Hay
-que acercarse para recogerla; hasta entonces, la salida y el final del nivel
-permanecen bloqueados.
+- src/main.rs: inicio, estados globales, vuelo, órbitas y bucle principal.
+- src/framebuffer.rs y el rasterizador en src/main.rs: dibujo 3D por software.
+- src/obj_loader.rs y src/ship.rs: carga OBJ/MTL, materiales y configuración de naves.
+- src/galaxy.rs, src/space_decor.rs y src/space_battle.rs: portales, decoración espacial y encuentros entre naves.
+- src/story_guide.rs: señales de misión y guía Nexo.
+- src/race_track/: circuito, conducción, progreso, rivales, escena e interfaz.
+- src/core_guardian.rs y src/core_guardian/: minijuego del Guardián del Núcleo.
+- src/tower_guard/: rondas, enemigos, jefes, impactos, escena, sprites, interfaz y audio.
+- src/hourglass_rescue.rs y src/hourglass_rescue/: vuelo, cápsulas, escena, interfaz, resultados y audio.
+- src/lava_castle.rs y src/lava_castle_interior.rs: encuentros y nivel final.
+- assets/: modelos, materiales, imágenes, sonidos, música y recursos de interfaz.
+- scripts/: creación, preparación, optimización y vista previa de recursos.
 
-El santuario es una cámara cerrada con suelo, techo, paredes y un único acceso.
-La compuerta permanece bloqueada durante el combate y la explosión del tiburón;
-después se eleva durante 1.8 segundos y permite entrar al cuarto de recompensa.
-Al recoger la esfera, el submarino queda inmóvil y aparece la pantalla de
-**MISIÓN CUMPLIDA** durante 3.4 segundos. Al terminar, el jugador regresa
-automáticamente al vuelo libre junto al planeta acuático.
+## Recursos 3D y Blender
 
-Los enemigos avanzan en formaciones de cuña, diamante, línea y muro de minas.
-Tiburones y medusas disparan por turnos contra el submarino; el jefe lanza
-ráfagas triples. El casco soporta seis impactos y, al agotarse, devuelve al
-jugador al tramo anterior con una breve protección de reaparición.
+Los OBJ/MTL son los formatos de carga del juego. Varios recursos también incluyen archivos BLEND editables y scripts Blender para recrearlos o exportarlos. Blender es opcional para ejecutar el juego; solo se necesita para editar o generar esos recursos.
 
-Todos los modos de juego comparten un HUD de combate: escudo, objetivo
-contextual, puntuación, altitud, impulso, carga del bláster, retícula, radar y
-barra de vida para los jefes. Vuelo libre, Ruinas Acuáticas, Jardín Rust y el
-Guardián del Núcleo también reutilizan la apariencia y los colores del bláster
-de la nave inicial seleccionada. En el combate del Guardián se usa además la
-misma mecánica: una pulsación corta dispara el tiro doble normal y mantener para
-soltar después genera un proyectil cargado más grande, luminoso y potente.
+Ejemplos de scripts disponibles:
 
-## Rayo McQueen
+    blender --background --python scripts/create_sun_blender.py
+    blender --background --python scripts/create_racing_planet_blender.py
+    blender --background --python scripts/create_tower_house_planet_blender.py
+    blender --background --python scripts/create_lava_guardian_blender.py
 
-En el hangar, selecciona Rayo McQueen y pulsa **V** para alternar nave/carro/submarino. **Enter** inicia con la forma de Rayo que estés viendo; si eliges submarino, empiezas directamente en el nivel acuático. Durante el vuelo libre, **T** alterna nave/carro conservando posición y velocidad. El carro usa los controles de vuelo existentes, sin física terrestre.
+Las imágenes originales y las referencias de personajes se mantienen en sus carpetas de recursos; los scripts de preparación generan sprites listos para el juego cuando corresponde. Consulta los README específicos dentro de assets para las instrucciones detalladas de cada conjunto.
 
-Desde el espacio, **1** te acerca al planeta acuático. Ya en órbita, **Enter** inicia el nivel y transforma a Rayo en submarino. **Backspace** vuelve al espacio y recupera la forma anterior; también se recupera al completar el recorrido. Si empezaste directamente en submarino, regresarás en forma de nave.
+## Notas de implementación
 
-El carro `assets/vehicles/mcqueen/mcqueen_carro.obj` tiene carrocería roja, rayos y número 95 amarillos, ojos azules y cuatro ruedas negras con llantas rojas. El submarino `assets/vehicles/mcqueen/mcqueen_submarino.obj` mantiene esa paleta e incorpora periscopio, aletas, flotadores, faros y dos hélices con aros protectores. El juego define los colores en su renderizador.
-
-## Modelos de Buzz
-
-Los tres modelos originales inspirados en Buzz usan blanco, verde lima, morado y detalles rojos, cabina azul y botones de colores. Están en `assets/vehicles/buzz/buzz_*.obj`; sus materiales permiten ver la misma paleta en herramientas externas y en el juego.
-
-Se pueden reconstruir, sin paquetes adicionales, con:
-
-```powershell
-python scripts/generate_buzz.py
-```
-
-Pruebas de entrada y de carga de los modelos:
-
-```powershell
-cargo test --locked
-```
-
-## Modelado con Blender mediante MCP
-
-El sol detallado se conserva como `assets/planets/sol_detallado.blend` y se
-exporta a OBJ para el juego. Para reconstruirlo con Blender 4.x:
-
-```powershell
-blender --background --python scripts/create_sun_blender.py
-```
-
-El planeta de carreras también conserva su archivo Blender editable y se puede
-regenerar con:
-
-```powershell
-blender --background --python scripts/create_racing_planet_blender.py
-```
-
-En la galaxia Vesper, la antigua caracola espiral fue reemplazada por el
-planeta-casa de torre. Su fuente editable se guarda como
-`assets/planets/caracola.blend`; el nombre se conserva para no romper la carga
-del juego. Para regenerar el BLEND, OBJ y MTL:
-
-```powershell
-blender --background --python scripts/create_tower_house_planet_blender.py
-```
-
-Los enemigos de **Ruinas Acuáticas** también tienen una fuente Blender editable:
-la mina globo blindada, el tiburón dron (usado además como jefe) y la medusa
-robótica. Para regenerar sus OBJ y MTL optimizados:
-
-```powershell
-blender --background --python scripts/create_aquatic_enemies_blender.py
-```
-
-`blender_mcp/` permite que un cliente MCP controle Blender para crear modelos a
-partir de cubos, esferas, cilindros, conos y toros, inspeccionar la escena y
-exportar OBJ/MTL directamente a `assets/`. La comunicacion es local
-(`127.0.0.1:9876`) y Blender solo acepta el conjunto de comandos definido por el
-complemento; no expone ejecucion arbitraria de Python.
-
-1. Instala Blender 4.x y, en **Edit > Preferences > Add-ons > Install from
-   Disk**, selecciona `blender_mcp/addon.py`. Activa **Local MCP Bridge**.
-2. Crea un entorno virtual e instala el SDK oficial:
-
-   ```powershell
-   py -3.11 -m venv .venv
-   .\.venv\Scripts\python -m pip install -r blender_mcp\requirements.txt
-   ```
-
-3. Copia `blender_mcp/mcp-config.example.json` a la configuracion de tu cliente
-   MCP, sustituye las rutas de ejemplo por rutas absolutas y usa el Python del
-   entorno virtual como `command`.
-4. Reinicia el cliente MCP y comprueba la conexion con `blender_status`.
-
-Las herramientas disponibles permiten limpiar e inspeccionar la escena, crear
-una primitiva, transformar un objeto, construir hasta 500 piezas de una vez,
-guardar el `.blend` y exportar `.obj`. Por seguridad, las dos ultimas operaciones
-solo escriben dentro de `assets/`.
-
-Si se define `BLENDER_MCP_TOKEN`, debe tener el mismo valor tanto en el entorno
-que inicia Blender como en la entrada `env` del servidor MCP.
-
-Pruebas del puente (no requieren Blender):
-
-```powershell
-python -m unittest discover -s tests -v
-```
-
-### Interceptor azul de referencia
-
-El modelo `assets/vehicles/arwing/arwing2.obj` incluye materiales MTL para el
-juego y visores OBJ. Para obtener los materiales PBR completos en Blender
-(metal pintado, laca, cristal y emisión), ejecuta desde la raíz:
-
-```powershell
-blender --background --python scripts/setup_interceptor_blender.py
-```
-
-El script importa el OBJ, crea shaders Principled BSDF, aplica micro-bisel y
-suavizado, configura Eevee y guarda `assets/vehicles/arwing/arwing2.blend`.
+- La escena principal y los minijuegos usan el renderizador y el framebuffer del proyecto; Blender se utiliza para preparar recursos, no como motor durante la partida.
+- Los modelos y texturas se cargan desde disco al iniciar y se reutilizan durante el juego.
+- El cooperativo local está disponible en los modos que lo admiten; los menús indican la opción y los controles correspondientes.
+- No se requiere una instalación separada de Raylib. Las dependencias Rust del proyecto están declaradas en Cargo.toml.
