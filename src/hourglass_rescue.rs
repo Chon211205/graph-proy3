@@ -14,7 +14,7 @@ use crate::obj_loader::Vec3;
 use crate::ship::{Projectile, Ship};
 
 use audio::{Audio, Cue};
-use scene::{CAPSULE_COUNT, CAPSULE_POSITIONS, Scene};
+use scene::{Scene, CAPSULE_COUNT, CAPSULE_POSITIONS};
 
 const ENEMY_SPAWNS: [Vec3; scene::ENEMY_COUNT] = [
     Vec3::new(-35.0, 30.0, -155.0),
@@ -402,6 +402,10 @@ impl HourglassRescue {
 
     pub fn rescued_count(&self) -> u8 {
         self.rescued
+    }
+
+    pub fn mission_won(&self) -> bool {
+        self.phase == Phase::Won
     }
 
     pub fn shield_ratio(&self) -> f32 {
