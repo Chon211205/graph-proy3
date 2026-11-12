@@ -6572,100 +6572,132 @@ fn draw_unified_combat_hud(
     boss: Option<(&str, f32)>,
     aim_position: (f32, f32),
 ) {
-    hud_rect(framebuffer, 18, 16, 300, 84);
-    draw_selection_label(framebuffer, "ESCUDO", 98, 27, 2, 0xffffff);
-    hud_bar(framebuffer, 78, 57, 220, 18, shield_ratio, 0x22e8f4);
-    draw_selection_label(framebuffer, "VIDAS 3", 72, 79, 1, 0xbfefff);
+    let width = framebuffer.width as f32;
+    let height = framebuffer.height as f32;
+    let unit = width.min(height);
+    let scale = ((height / 900.0).round() as i32).clamp(1, 2);
+    let x = |ratio: f32| (ratio * width).round() as usize;
+    let y = |ratio: f32| (ratio * height).round() as usize;
+    let label = |frame: &mut Framebuffer, text: &str, xr: f32, yr: f32, color: u32| {
+        draw_selection_label(frame, text, x(xr) as i32, y(yr) as i32, scale, color);
+    };
+    let panel = |frame: &mut Framebuffer, l: f32, t: f32, r: f32, b: f32| {
+        hud_rect(frame, x(l), y(t), x(r - l).max(1), y(b - t).max(1));
+    };
+    let bar = |frame: &mut Framebuffer, l: f32, t: f32, r: f32, b: f32, ratio: f32, color| {
+        hud_bar(
+            frame,
+            x(l),
+            y(t),
+            x(r - l).max(1),
+            y(b - t).max(3),
+            ratio,
+            color,
+        );
+    };
 
-    hud_rect(framebuffer, 365, 10, 470, 86);
-    draw_selection_label(framebuffer, "OBJETIVO", 600, 20, 2, 0xffffff);
-    draw_selection_label(framebuffer, objective, 600, 53, 1, 0xcaf5ff);
+    // Compact corner cards leave the center and horizon open for navigation.
+    panel(framebuffer, 0.018, 0.020, 0.226, 0.091);
+    label(framebuffer, "ESCUDO", 0.055, 0.034, 0xffffff);
+    bar(framebuffer, 0.032, 0.060, 0.211, 0.073, shield_ratio, 0x22e8f4);
+    label(framebuffer, "VIDAS 3", 0.055, 0.081, 0xbfefff);
 
-    hud_rect(framebuffer, 930, 18, 252, 76);
-    draw_selection_label(framebuffer, "PUNTAJE", 1000, 29, 2, 0xffffff);
-    draw_selection_label(framebuffer, &format!("{:07}", score), 1080, 56, 2, 0xe9f8ff);
+    panel(framebuffer, 0.255, 0.020, 0.745, 0.091);
+    label(framebuffer, "OBJETIVO", 0.500, 0.034, 0xffffff);
+    label(framebuffer, objective, 0.500, 0.069, 0xcaf5ff);
 
-    hud_rect(framebuffer, 18, 238, 175, 104);
-    draw_selection_label(framebuffer, "ALTITUD", 84, 251, 2, 0xffffff);
-    draw_selection_label(
+    panel(framebuffer, 0.774, 0.020, 0.982, 0.091);
+    label(framebuffer, "PUNTAJE", 0.878, 0.034, 0xffffff);
+    label(framebuffer, &format!("{:07}", score), 0.878, 0.068, 0xe9f8ff);
+
+    panel(framebuffer, 0.018, 0.858, 0.184, 0.980);
+    label(framebuffer, "ALTITUD", 0.101, 0.883, 0xffffff);
+    label(
         framebuffer,
         &format!("{:+05.0} M", altitude),
-        105,
-        286,
-        2,
+        0.101,
+        0.936,
         0xc8f5ff,
     );
 
-    hud_rect(framebuffer, 1012, 112, 170, 92);
-    draw_selection_label(framebuffer, "IMPULSO", 1095, 124, 2, 0xffffff);
-    hud_bar(framebuffer, 1032, 157, 130, 15, boost_ratio, 0x20dcf2);
-    draw_selection_label(
+    panel(framebuffer, 0.797, 0.826, 0.982, 0.982);
+    label(framebuffer, "IMPULSO", 0.889, 0.842, 0xffffff);
+    bar(framebuffer, 0.814, 0.862, 0.965, 0.872, boost_ratio, 0x20dcf2);
+    label(
         framebuffer,
         &format!("{:03}%", (boost_ratio * 100.0) as u32),
-        1095,
-        178,
-        2,
+        0.889,
+        0.888,
         0xdafcff,
     );
+    label(framebuffer, "BLASTER", 0.889, 0.914, 0xffffff);
+    bar(framebuffer, 0.814, 0.934, 0.965, 0.944, charge_ratio, 0x26e7f2);
+    label(framebuffer, "ENTER: DISPARAR", 0.889, 0.963, 0xcaf5ff);
 
-    hud_rect(framebuffer, 928, 650, 254, 92);
-    draw_selection_label(framebuffer, "BLASTER", 1010, 663, 2, 0xffffff);
-    hud_bar(framebuffer, 955, 695, 205, 15, charge_ratio, 0x26e7f2);
-    draw_selection_label(
-        framebuffer,
-        "ENTER: CARGAR / DISPARAR",
-        1055,
-        718,
-        1,
-        0xcaf5ff,
-    );
-
-    // Central lock-on reticle.
-    let cx = (aim_position.0.clamp(0.08, 0.92) * framebuffer.width as f32) as usize;
-    let cy = (aim_position.1.clamp(0.12, 0.82) * framebuffer.height as f32) as usize;
-    for offset in 0..34 {
-        if offset < 16 || offset > 27 {
-            framebuffer.pixels[(cy - 34) * framebuffer.width + cx - 34 + offset] = 0x56eaff;
-            framebuffer.pixels[(cy + 34) * framebuffer.width + cx + 34 - offset] = 0x56eaff;
-            framebuffer.pixels[(cy - 34 + offset) * framebuffer.width + cx + 34] = 0x56eaff;
-            framebuffer.pixels[(cy + 34 - offset) * framebuffer.width + cx - 34] = 0x56eaff;
-        }
-    }
-    for x in cx - 9..=cx + 9 {
-        framebuffer.pixels[cy * framebuffer.width + x] = 0xff685c;
-    }
-    for y in cy - 9..=cy + 9 {
-        framebuffer.pixels[y * framebuffer.width + cx] = 0xff685c;
-    }
-
-    hud_rect(framebuffer, 485, 650, 230, 92);
-    draw_selection_label(framebuffer, "RADAR", 600, 660, 1, 0xbff6ff);
-    for ring in [18_i32, 32, 45] {
-        for degree in (0..360).step_by(6) {
+    panel(framebuffer, 0.405, 0.858, 0.595, 0.980);
+    label(framebuffer, "RADAR", 0.500, 0.875, 0xbff6ff);
+    let radar_x = (0.5 * width) as i32;
+    let radar_y = (0.931 * height) as i32;
+    let radar_radius = (unit * 0.047).clamp(16.0, 38.0) as i32;
+    for ring in [0.42_f32, 0.70, 1.0] {
+        let radius = radar_radius as f32 * ring;
+        for degree in (0..360).step_by(8) {
             let angle = degree as f32 * PI / 180.0;
-            let x = 600 + (angle.cos() * ring as f32) as i32;
-            let y = 704 + (angle.sin() * ring as f32 * 0.55) as i32;
-            if x >= 0 && y >= 0 && x < framebuffer.width as i32 && y < framebuffer.height as i32 {
-                framebuffer.pixels[y as usize * framebuffer.width + x as usize] = 0x258eb5;
+            let rx = radar_x + (angle.cos() * radius) as i32;
+            let ry = radar_y + (angle.sin() * radius * 0.55) as i32;
+            if rx >= 0 && ry >= 0 && rx < framebuffer.width as i32 && ry < framebuffer.height as i32 {
+                framebuffer.pixels[ry as usize * framebuffer.width + rx as usize] = 0x258eb5;
             }
         }
     }
     for contact in 0..contacts.min(7) {
         let angle = contact as f32 * 2.31 + 0.4;
-        let x = 600 + (angle.cos() * (14.0 + contact as f32 * 4.0)) as i32;
-        let y = 704 + (angle.sin() * (9.0 + contact as f32 * 2.0)) as i32;
+        let contact_x = radar_x + (angle.cos() * radar_radius as f32 * 0.68) as i32;
+        let contact_y = radar_y + (angle.sin() * radar_radius as f32 * 0.37) as i32;
         for dy in -2..=2 {
             for dx in -2..=2 {
-                framebuffer.pixels[(y + dy) as usize * framebuffer.width + (x + dx) as usize] =
-                    0xff554b;
+                let px = contact_x + dx;
+                let py = contact_y + dy;
+                if px >= 0 && py >= 0 && px < framebuffer.width as i32 && py < framebuffer.height as i32 {
+                    framebuffer.pixels[py as usize * framebuffer.width + px as usize] = 0xff554b;
+                }
             }
         }
     }
 
+    // Small, centered reticle scales with the viewport and remains inside it.
+    let arm = (unit * 0.022).clamp(10.0, 22.0) as i32;
+    let cx = (aim_position.0.clamp(0.08, 0.92) * width) as i32;
+    let cy = (aim_position.1.clamp(0.12, 0.82) * height) as i32;
+    for offset in 0..=arm {
+        if offset < arm * 48 / 100 || offset > arm * 78 / 100 {
+            for (px, py) in [
+                (cx - arm + offset, cy - arm),
+                (cx + arm - offset, cy + arm),
+                (cx + arm, cy - arm + offset),
+                (cx - arm, cy + arm - offset),
+            ] {
+                if px >= 0 && py >= 0 && px < framebuffer.width as i32 && py < framebuffer.height as i32 {
+                    framebuffer.pixels[py as usize * framebuffer.width + px as usize] = 0x56eaff;
+                }
+            }
+        }
+    }
+    for offset in -5..=5 {
+        let px = cx + offset;
+        let py = cy + offset;
+        if px >= 0 && px < framebuffer.width as i32 {
+            framebuffer.pixels[cy as usize * framebuffer.width + px as usize] = 0xff685c;
+        }
+        if py >= 0 && py < framebuffer.height as i32 {
+            framebuffer.pixels[py as usize * framebuffer.width + cx as usize] = 0xff685c;
+        }
+    }
+
     if let Some((name, health)) = boss {
-        hud_rect(framebuffer, 245, 748, 710, 48);
-        draw_selection_label(framebuffer, name, 405, 758, 1, 0xffffff);
-        hud_bar(framebuffer, 430, 773, 490, 13, health, 0xff4d47);
+        panel(framebuffer, 0.30, 0.105, 0.70, 0.158);
+        label(framebuffer, name, 0.50, 0.117, 0xffffff);
+        bar(framebuffer, 0.32, 0.140, 0.68, 0.151, health, 0xff4d47);
     }
 }
 
