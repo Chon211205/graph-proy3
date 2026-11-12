@@ -3,7 +3,7 @@ use std::f32::consts::TAU;
 
 const CORE_RADIUS: f32 = 22.0;
 const DISK_OUTER_RADIUS: f32 = 78.0;
-const DISK_SEGMENTS: usize = 192;
+const DISK_SEGMENTS: usize = 256;
 
 /// Builds the Vesper black hole from a pitch-black event horizon, a hot inner
 /// photon ring and a turbulent, warm accretion disk. Geometry stays immutable;
@@ -13,6 +13,7 @@ pub(crate) fn build_model() -> Model {
     let mut faces = Vec::new();
     append_sphere(&mut vertices, &mut faces, CORE_RADIUS, 24, 48);
     append_accretion_disk(&mut vertices, &mut faces);
+    append_lensed_photon_ring(&mut vertices, &mut faces);
     append_plasma_streams(&mut vertices, &mut faces);
     Model::new(vertices, faces)
 }
@@ -49,7 +50,7 @@ fn append_sphere(
                 "vesper_black_hole_core",
             );
             face.shader = SurfaceShader::Flat;
-            face.color = MaterialColor::Fixed([0, 0, 1]);
+            face.color = MaterialColor::Fixed([0, 0, 0]);
             faces.push(face);
             let mut face = Face::new(
                 [a + 1, b, b + 1],
@@ -57,37 +58,40 @@ fn append_sphere(
                 "vesper_black_hole_core",
             );
             face.shader = SurfaceShader::Flat;
-            face.color = MaterialColor::Fixed([0, 0, 1]);
+            face.color = MaterialColor::Fixed([0, 0, 0]);
             faces.push(face);
         }
     }
 }
 
 fn append_accretion_disk(vertices: &mut Vec<Vec3>, faces: &mut Vec<Face>) {
-    // Narrow thermal layers retain the recognizable disk silhouette without
-    // the broad purple spokes that made the previous ring look like a platform.
+    // Broad, turbulent thermal zones keep the disk from reading as a stack of
+    // perfect rings. The innermost zone is a narrow, almost white photon rim.
     let bands = [
-        (22.2, 24.2, [255, 245, 207]),
-        (24.2, 27.0, [255, 213, 132]),
-        (27.0, 31.0, [255, 164, 76]),
-        (31.0, 39.0, [247, 103, 43]),
-        (39.0, 50.0, [201, 55, 30]),
-        (50.0, 63.0, [132, 31, 28]),
-        (63.0, DISK_OUTER_RADIUS, [65, 17, 24]),
+        (22.15, 24.0, [255, 244, 197]),
+        (24.0, 29.5, [255, 190, 91]),
+        (29.5, 41.0, [255, 112, 44]),
+        (41.0, 57.0, [191, 50, 31]),
+        (57.0, DISK_OUTER_RADIUS, [82, 20, 32]),
     ];
 
     for (band_index, (inner, outer, base_color)) in bands.into_iter().enumerate() {
         let start = vertices.len();
         for segment in 0..DISK_SEGMENTS {
             let angle = TAU * segment as f32 / DISK_SEGMENTS as f32;
-            let turbulence = (angle * 5.0 + band_index as f32 * 1.9).sin() * 0.23
-                + (angle * 11.0 - band_index as f32 * 0.7).cos() * 0.11;
-            let warp = (angle * 2.0 + band_index as f32 * 0.8).sin()
-                * (1.0 - inner / DISK_OUTER_RADIUS)
-                * 0.8;
+            let turbulence = (angle * 4.7 + band_index as f32 * 1.9).sin() * 0.48
+                + (angle * 13.0 - band_index as f32 * 0.7).cos() * 0.26
+                + (angle * 27.0 + band_index as f32 * 2.1).sin() * 0.10;
+            let radial_warp = 1.0 - inner / DISK_OUTER_RADIUS;
+            // Tilt and twist the disk so its far side appears to rise around
+            // the event horizon instead of forming a flat plate.
+            let warp = (angle * 1.7 + band_index as f32 * 0.55).sin()
+                * radial_warp
+                * 2.8
+                + (angle * 4.0 - band_index as f32).cos() * radial_warp * 0.7;
             for (radius, side) in [(inner + turbulence, 0.0), (outer + turbulence, 1.0)] {
-                let flare = ((angle * 3.0 + band_index as f32).sin().max(0.0)) * 0.32;
-                let y = warp + side * 0.15 + flare * (1.0 - band_index as f32 * 0.09);
+                let flare = ((angle * 3.0 + band_index as f32).sin().max(0.0)) * 0.52;
+                let y = warp + side * 0.22 + flare * (1.0 - band_index as f32 * 0.12);
                 vertices.push(Vec3::new(angle.cos() * radius, y, angle.sin() * radius));
             }
         }
@@ -96,6 +100,12 @@ fn append_accretion_disk(vertices: &mut Vec<Vec3>, faces: &mut Vec<Face>) {
             let next = (segment + 1) % DISK_SEGMENTS;
             let a = start + segment * 2;
             let b = start + next * 2;
+            // Broken outer filaments and a bright approaching side add motion
+            // and asymmetry without adding per-frame simulation cost.
+            let breakup = (angle_hash(segment, band_index) * 12.0).sin();
+            if band_index >= 3 && breakup > 0.82 {
+                continue;
+            }
             let color = turbulent_color(base_color, segment, band_index);
             push_flat_face(faces, [a, b, a + 1], color, "accretion_disk");
             push_flat_face(faces, [a + 1, b, b + 1], color, "accretion_disk");
@@ -103,28 +113,60 @@ fn append_accretion_disk(vertices: &mut Vec<Vec3>, faces: &mut Vec<Face>) {
     }
 }
 
+fn append_lensed_photon_ring(vertices: &mut Vec<Vec3>, faces: &mut Vec<Face>) {
+    // A thin, hot crescent sits just outside the horizon. The vertical wave
+    // makes it peek above the far-side edge like a gravitationally lensed rim.
+    const SEGMENTS: usize = 256;
+    let start = vertices.len();
+    for segment in 0..SEGMENTS {
+        let angle = TAU * segment as f32 / SEGMENTS as f32;
+        let (sin, cos) = angle.sin_cos();
+        let radius = 23.25 + (angle * 5.0).sin() * 0.10;
+        let lift = (angle.sin().max(0.0)).powf(1.7) * 3.1;
+        for r in [radius - 0.42, radius + 0.42] {
+            vertices.push(Vec3::new(cos * r, lift + (angle * 3.0).sin() * 0.22, sin * r));
+        }
+    }
+    for segment in 0..SEGMENTS {
+        let next = (segment + 1) % SEGMENTS;
+        let a = start + segment * 2;
+        let b = start + next * 2;
+        let c = if angle_hash(segment, 0).sin() > -0.25 {
+            [255, 237, 174]
+        } else {
+            [255, 145, 63]
+        };
+        push_flat_face(faces, [a, b, a + 1], c, "photon_ring");
+        push_flat_face(faces, [a + 1, b, b + 1], c, "photon_ring");
+    }
+}
+
 fn append_plasma_streams(vertices: &mut Vec<Vec3>, faces: &mut Vec<Face>) {
-    // Fine curved streaks travel with the disk. They add motion and texture
-    // when the model rotates, while keeping the black center unobstructed.
-    const STREAMS: usize = 10;
-    const STEPS: usize = 42;
+    // Short, tapered spiral filaments break up the continuous annulus and
+    // suggest hot matter being dragged around the horizon.
+    const STREAMS: usize = 16;
+    const STEPS: usize = 36;
     let palette = [
-        [255, 200, 116],
-        [255, 137, 62],
-        [213, 66, 34],
-        [255, 224, 171],
-        [177, 41, 31],
+        [255, 218, 151],
+        [255, 155, 76],
+        [239, 81, 43],
+        [255, 235, 196],
+        [151, 40, 31],
     ];
 
     for stream in 0..STREAMS {
         let start = vertices.len();
         let phase = TAU * stream as f32 / STREAMS as f32;
+        let arc = 2.6 + (stream % 4) as f32 * 0.48;
         for step in 0..=STEPS {
             let t = step as f32 / STEPS as f32;
-            let angle = phase + t * TAU * (1.05 + (stream % 3) as f32 * 0.14);
-            let center_radius = 28.0 + t * (DISK_OUTER_RADIUS - 30.0);
-            let width = (0.9 * (1.0 - t) + 0.16).max(0.16);
-            let y = 0.65 + (angle * 2.4 + phase).sin() * (1.0 + t * 2.2);
+            let angle = phase + t * arc;
+            let center_radius = 25.0 + t * (DISK_OUTER_RADIUS - 29.0)
+                + (t * TAU * 2.0 + phase).sin() * 1.25;
+            let width = (0.95 * (1.0 - t).powf(0.7) + 0.09).max(0.09);
+            let y = 0.5
+                + (angle * 2.4 + phase).sin() * (0.9 + t * 2.5)
+                + (angle * 5.1).cos() * 0.35;
             for offset in [-width, width] {
                 let radius = center_radius + offset;
                 vertices.push(Vec3::new(angle.cos() * radius, y, angle.sin() * radius));
@@ -143,10 +185,16 @@ fn append_plasma_streams(vertices: &mut Vec<Vec3>, faces: &mut Vec<Face>) {
 
 fn turbulent_color(base: [u8; 3], segment: usize, band: usize) -> [u8; 3] {
     let angle = TAU * segment as f32 / DISK_SEGMENTS as f32;
-    let variation = 0.70
-        + (angle * 7.0 + band as f32 * 1.4).sin().max(0.0) * 0.24
-        + (angle * 17.0 - band as f32 * 0.9).cos().abs() * 0.10;
+    let turbulence = (angle * 8.0 + band as f32 * 1.3).sin() * 0.13
+        + (angle * 19.0 - band as f32 * 0.9).cos() * 0.09
+        + (angle * 37.0 + band as f32 * 2.7).sin() * 0.055;
+    let doppler = 0.68 + 0.50 * ((angle - 0.85).cos() * 0.5 + 0.5);
+    let variation = (0.91 + turbulence).clamp(0.58, 1.15) * doppler;
     base.map(|channel| (channel as f32 * variation).clamp(0.0, 255.0) as u8)
+}
+
+fn angle_hash(segment: usize, band: usize) -> f32 {
+    TAU * ((segment * 73 + band * 151) % DISK_SEGMENTS) as f32 / DISK_SEGMENTS as f32
 }
 
 fn push_flat_face(faces: &mut Vec<Face>, indices: [usize; 3], color: [u8; 3], group: &str) {

@@ -9471,11 +9471,12 @@ mod tests {
             .iter()
             .filter(|face| face.group == "accretion_disk")
             .count();
-        assert_eq!(disk_faces, 7 * 192 * 2);
+        assert!(disk_faces > 4 * 256 * 2);
         assert!(model.faces.iter().any(|face| {
             face.group == "accretion_plasma_stream"
-                && face.color == MaterialColor::Fixed([255, 200, 116])
+                && face.color == MaterialColor::Fixed([255, 218, 151])
         }));
+        assert!(model.faces.iter().any(|face| face.group == "photon_ring"));
         assert!(model.faces.iter().any(|face| {
             face.group == "accretion_disk"
                 && matches!(face.color, MaterialColor::Fixed([r, g, b]) if r > g && g > b)
