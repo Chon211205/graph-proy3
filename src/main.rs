@@ -433,6 +433,25 @@ fn upscale_scene(source: &Framebuffer, target: &mut Framebuffer) {
     }
 }
 
+fn upscale_split_scene(left: &Framebuffer, right: &Framebuffer, target: &mut Framebuffer) {
+    let split = target.width / 2;
+    for y in 0..target.height {
+        let source_y = y * left.height / target.height;
+        for x in 0..target.width {
+            let (source, local_x, viewport_width) = if x < split {
+                (left, x, split)
+            } else {
+                (right, x - split, target.width - split)
+            };
+            let source_x = local_x * source.width / viewport_width.max(1);
+            target.pixels[y * target.width + x] =
+                source.pixels[source_y.min(source.height - 1) * source.width + source_x.min(source.width - 1)];
+        }
+        target.pixels[y * target.width + split.saturating_sub(1)] = 0x46e6ff;
+        target.pixels[y * target.width + split.min(target.width - 1)] = 0x46e6ff;
+    }
+}
+
 struct HybridRayTracing {
     history: Vec<u32>,
     width: usize,
@@ -6713,6 +6732,55 @@ fn draw_unified_combat_hud(
     }
 }
 
+fn draw_split_coop_hud(
+    framebuffer: &mut Framebuffer,
+    first: &ShipController,
+    second: &ShipController,
+) {
+    let half = framebuffer.width / 2;
+    let scale = ((framebuffer.height as f32 / 900.0).round() as i32).clamp(1, 2);
+    for (index, controller) in [first, second].into_iter().enumerate() {
+        let left = index * half;
+        let center = left + half / 2;
+        hud_rect(framebuffer, left + 14, 16, 190.min(half - 28), 58);
+        draw_selection_label(
+            framebuffer,
+            if index == 0 { "JUGADOR 1" } else { "JUGADOR 2" },
+            (left + 105.min(half / 2)) as i32,
+            25,
+            scale,
+            if index == 0 { 0x56eaff } else { 0xffd15c },
+        );
+        draw_selection_label(
+            framebuffer,
+            &format!("ENERGIA {:03}%", (controller.turbo_power(controller.ship.speed) * 100.0) as u32),
+            (left + 105.min(half / 2)) as i32,
+            49,
+            scale,
+            0xffffff,
+        );
+        hud_rect(framebuffer, left + 14, framebuffer.height - 66, half.saturating_sub(28), 50);
+        draw_selection_label(
+            framebuffer,
+            "EXPLORA Y COOPERA  //  C: SALIR",
+            center as i32,
+            framebuffer.height as i32 - 49,
+            scale,
+            0xcaf5ff,
+        );
+        let cy = framebuffer.height as i32 / 2;
+        let cx = center as i32;
+        for offset in -10_i32..=10 {
+            if offset.abs() > 3 {
+                let x = cx + offset;
+                let y = cy + offset;
+                framebuffer.pixels[cy as usize * framebuffer.width + x as usize] = 0x56eaff;
+                framebuffer.pixels[y as usize * framebuffer.width + cx as usize] = 0x56eaff;
+            }
+        }
+    }
+}
+
 fn draw_mission_complete_overlay(framebuffer: &mut Framebuffer, remaining: f32) {
     let fade = ((WATER_MISSION_COMPLETE_TIME - remaining) / 0.55).clamp(0.0, 1.0);
     for pixel in &mut framebuffer.pixels {
@@ -7491,6 +7559,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     let (initial_render_width, initial_render_height) = dynamic_resolution.dimensions();
     let mut scene_framebuffer = Framebuffer::new(initial_render_width, initial_render_height);
     let mut triangle_batch = TriangleBatch::new(initial_render_width, initial_render_height);
+    let mut coop_framebuffer = Framebuffer::new(initial_render_width, initial_render_height);
+    let mut coop_triangle_batch = TriangleBatch::new(initial_render_width, initial_render_height);
     let mut hybrid_ray_tracing = HybridRayTracing::new();
     let level_colliders = build_level_colliders(&water_level);
     let water_level_spatial = LevelSpatialIndex::new(&water_level, level_colliders);
@@ -7580,6 +7650,12 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
     } else {
         ship_spec
     });
+    let mut coop_controller = ShipController::new(ship_spec);
+    coop_controller.ship.position = ship_controller.ship.position.add(Vec3::new(8.0, 0.0, 0.0));
+    let mut coop_enabled = false;
+    let mut coop_planet_lod_states = [PlanetLodState::default(); 3];
+    let mut coop_vesper_lod_states = [PlanetLodState::default(); 2];
+    let mut coop_castle_lod_state = PlanetLodState::default();
     let mut game_mode = if start_underwater {
         GameMode::WaterLevel
     } else {
@@ -7851,6 +7927,18 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             menu::instructions(&mut window, &mut framebuffer)?;
             previous = Instant::now();
             continue;
+        }
+        if game_mode == GameMode::FreeWorld && crate::input::pressed(Key::C) {
+            coop_enabled = !coop_enabled;
+            if coop_enabled {
+                coop_controller = ShipController::new(ship_spec);
+                coop_controller.ship.position =
+                    ship_controller.ship.position.add(Vec3::new(8.0, 0.0, 0.0));
+                coop_controller.ship.yaw = ship_controller.ship.yaw;
+                window.set_title("Cooperativo local | P1: WASD | P2: IJKL | C: salir");
+            } else {
+                window.set_title("Sistema solar | Vuelo libre 3D | C: cooperativo");
+            }
         }
         if matches!(selected_ship, 4 | 5)
             && game_mode == GameMode::FreeWorld
@@ -8157,6 +8245,14 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 || gamepad.brake,
             firing: (window.is_key_down(Key::Enter) || gamepad.fire) && !entered_level,
         };
+        let coop_input = ShipInput {
+            pitch: window.is_key_down(Key::K) as i8 - window.is_key_down(Key::I) as i8,
+            yaw: window.is_key_down(Key::L) as i8 - window.is_key_down(Key::J) as i8,
+            roll: window.is_key_down(Key::O) as i8 - window.is_key_down(Key::U) as i8,
+            accelerating: window.is_key_down(Key::N),
+            braking: window.is_key_down(Key::M),
+            firing: window.is_key_down(Key::H),
+        };
 
         if let Some(run) = benchmark.as_ref() {
             match run.scene.as_str() {
@@ -8219,6 +8315,15 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                     && !black_hole_absorption_active
                 {
                     ship_controller.update(&input, delta_time);
+                    if coop_enabled {
+                        coop_controller.update(&coop_input, delta_time);
+                        let (coop_forward, _, _) = coop_controller.ship.movement_basis();
+                        coop_controller.ship.position = coop_controller
+                            .ship
+                            .position
+                            .add(coop_forward.mul(coop_controller.ship.speed * delta_time));
+                        coop_controller.rebase_far_flight();
+                    }
                 }
                 let light_speed =
                     window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
@@ -8583,6 +8688,50 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                         tower_reward_position,
                     )),
                 );
+                if coop_enabled {
+                    coop_triangle_batch.begin_frame();
+                    let coop_turbo = coop_controller.turbo_power(coop_controller.ship.speed);
+                    render_scene(
+                        active_model,
+                        ship_center,
+                        &turbo_plume,
+                        &laser_bolt,
+                        &coop_controller.projectiles,
+                        &planet,
+                        planet_center,
+                        planet_scale,
+                        &spiky_planet,
+                        spiky_planet_center,
+                        spiky_planet_scale,
+                        &sun,
+                        sun_center,
+                        &home_orbit_rings,
+                        &wormhole,
+                        wormhole_position(active_galaxy),
+                        active_galaxy,
+                        &vesper_planets,
+                        &vesper_black_hole,
+                        &vesper_orbit_rings,
+                        &castle_planet,
+                        &race_track.planet,
+                        &choices,
+                        &ambient_battle,
+                        [&planet_lods[0], &planet_lods[1], &planet_lods[2]],
+                        &mut coop_planet_lod_states,
+                        &mut coop_vesper_lod_states,
+                        &mut coop_castle_lod_state,
+                        &mut coop_framebuffer,
+                        &mut coop_triangle_batch,
+                        &coop_controller.ship,
+                        world_time,
+                        0.0,
+                        coop_turbo,
+                        false,
+                        coop_controller.charge_ratio(),
+                        true,
+                        None,
+                    );
+                }
                 if solar_explosion_timer > 0.0 {
                     let camera = chase_camera(&ship_controller.ship, false);
                     draw_solar_ship_explosion(
@@ -8998,7 +9147,11 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         }
         let post_ms = post_start.elapsed().as_secs_f32() * 1_000.0;
         let copy_start = Instant::now();
-        upscale_scene(&scene_framebuffer, &mut framebuffer);
+        if coop_enabled && game_mode == GameMode::FreeWorld {
+            upscale_split_scene(&scene_framebuffer, &coop_framebuffer, &mut framebuffer);
+        } else {
+            upscale_scene(&scene_framebuffer, &mut framebuffer);
+        }
         let copy_ms = copy_start.elapsed().as_secs_f32() * 1_000.0;
         // All gameplay modes use the shared HUD below. Keep the legacy
         // renderers isolated while their mode-specific data is migrated.
@@ -9240,7 +9393,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             }
             _ => None,
         };
-        draw_unified_combat_hud(
+        if coop_enabled && game_mode == GameMode::FreeWorld {
+            draw_split_coop_hud(&mut framebuffer, &ship_controller, &coop_controller);
+        } else {
+            draw_unified_combat_hud(
             &mut framebuffer,
             objective,
             shield_ratio,
@@ -9257,7 +9413,8 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             } else {
                 (0.5, 0.5)
             },
-        );
+            );
+        }
         if performance_hud {
             let stats = triangle_batch.stats();
             let displayed_lods = if active_galaxy == Galaxy::Vesper {
