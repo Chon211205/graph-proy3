@@ -39,7 +39,7 @@ use ship::{
     MCQUEEN_CAR_SPEC, MCQUEEN_SPEC, MCQUEEN_SUBMARINE_SPEC, Projectile, Ship, ShipController,
     ShipInput, ShipSpec,
 };
-use triangle::{ScreenVertex, draw_triangle_shaded_region};
+use triangle::{ScreenVertex, draw_triangle_alpha_region, draw_triangle_shaded_region};
 
 const WIDTH: usize = 1200;
 const HEIGHT: usize = 800;
@@ -3782,8 +3782,8 @@ fn make_wormhole_sphere(radius: f32, stacks: usize, slices: usize) -> Model {
     model
 }
 
-fn make_vesper_black_hole() -> Model {
-    black_hole::build_model()
+fn make_vesper_black_hole() -> black_hole::BlackHole {
+    black_hole::build()
 }
 
 fn make_home_orbit_rings() -> Model {
@@ -4606,6 +4606,7 @@ fn move_around_planet(
 
 enum TriangleStyle {
     Flat(u32),
+    BlackHolePlasma { color: u32, alpha: u8 },
     Smooth {
         color: [u8; 3],
         brightness: [f32; 3],
@@ -4946,6 +4947,12 @@ impl TriangleBatch {
                                 c,
                                 |_, _, _, _, _| *color,
                             ),
+                            TriangleStyle::BlackHolePlasma { color, alpha } => {
+                                draw_triangle_alpha_region(
+                                    tile_pixels, tile_depth, width, height, region_y, a, b, c,
+                                    *color, *alpha,
+                                )
+                            }
                             TriangleStyle::Smooth { color, brightness } => {
                                 draw_triangle_shaded_region(
                                     tile_pixels,
@@ -5226,6 +5233,42 @@ fn queue_model_with_scratch<F>(
         let c = project(v2);
         let shader = face.shader;
         let flat_color = color_for_material(face.color, effect_spec);
+        let is_black_hole_face = matches!(
+            face.group.as_str(),
+            "accretion_disk"
+                | "accretion_filament"
+                | "lensing_arc_upper"
+                | "lensing_arc_lower"
+                | "lensing_arc_upper_glow"
+                | "lensing_arc_lower_glow"
+        );
+        if is_black_hole_face {
+            let p0 = model.vertices[i0];
+            let p1 = model.vertices[i1];
+            let p2 = model.vertices[i2];
+            let center = p0.add(p1).add(p2).mul(1.0 / 3.0);
+            let radius = (center.x * center.x + center.z * center.z).sqrt();
+            let alpha = match face.group.as_str() {
+                "accretion_disk" => crate::black_hole::disk_alpha(radius),
+                "accretion_filament" => crate::black_hole::filament_alpha(radius),
+                _ => crate::black_hole::lensing_arc_alpha(&face.material),
+            };
+            let angle = center.z.atan2(center.x);
+            let pulse = 0.94
+                + 0.06
+                    * (water_time.unwrap_or_default() * 0.8 + angle * 3.0 - radius * 0.025)
+                        .sin();
+            let color = flat_color
+                .map(|channel| (channel as f32 * pulse).clamp(0.0, 255.0) as u8);
+            batch.commands.push(TriangleCommand {
+                vertices: [a, b, c],
+                style: TriangleStyle::BlackHolePlasma {
+                    color: pack(color, 1.0),
+                    alpha,
+                },
+            });
+            continue;
+        }
 
         if shader != SurfaceShader::Flat {
             let p0 = model.vertices[i0];
@@ -5313,7 +5356,7 @@ fn render_scene(
     wormhole_center: Vec3,
     galaxy: Galaxy,
     vesper_planets: &[VesperPlanet; 2],
-    vesper_black_hole: &Model,
+    vesper_black_hole: &black_hole::BlackHole,
     vesper_orbit_rings: &Model,
     castle_planet: &VesperPlanet,
     race_planet: &Model,
@@ -5487,19 +5530,47 @@ fn render_scene(
             None,
             None,
         );
-        let (disk_sin, disk_cos) = (world_time * 0.22).sin_cos();
         queue_model(
-            vesper_black_hole,
+            &vesper_black_hole.core,
+            batch,
+            &camera,
+            |vertex| vertex.add(VESPER_SYSTEM_CENTER),
+            None,
+            None,
+        );
+        queue_model(
+            &vesper_black_hole.disk,
             batch,
             &camera,
             |vertex| {
-                Vec3::new(
-                    vertex.x * disk_cos - vertex.z * disk_sin,
-                    vertex.y,
-                    vertex.x * disk_sin + vertex.z * disk_cos,
-                )
-                .add(VESPER_SYSTEM_CENTER)
+                black_hole::differential_disk_transform(vertex, world_time)
+                    .add(VESPER_SYSTEM_CENTER)
             },
+            Some(world_time),
+            None,
+        );
+        queue_model(
+            &vesper_black_hole.filaments,
+            batch,
+            &camera,
+            |vertex| {
+                black_hole::differential_disk_transform(vertex, world_time)
+                    .add(VESPER_SYSTEM_CENTER)
+            },
+            Some(world_time),
+            None,
+        );
+        let arc_transform = black_hole::camera_arc_transform(
+            VESPER_SYSTEM_CENTER,
+            camera.position,
+            camera.right,
+            Vec3::new(0.0, 1.0, 0.0),
+        );
+        queue_model(
+            &vesper_black_hole.lensing_arcs,
+            batch,
+            &camera,
+            arc_transform,
             Some(world_time),
             None,
         );
@@ -9461,25 +9532,27 @@ mod tests {
     fn vesper_black_hole_has_a_dark_core_and_layered_accretion_disk() {
         let model = make_vesper_black_hole();
         assert!(
-            model
+            model.core
                 .faces
                 .iter()
                 .any(|face| face.group == "vesper_black_hole_core")
         );
-        let disk_faces = model
+        let disk_faces = model.disk
             .faces
             .iter()
             .filter(|face| face.group == "accretion_disk")
             .count();
-        assert!(disk_faces > 4 * 256 * 2);
-        assert!(model.faces.iter().any(|face| {
-            face.group == "accretion_plasma_stream"
-                && face.color == MaterialColor::Fixed([255, 218, 151])
-        }));
-        assert!(model.faces.iter().any(|face| face.group == "photon_ring"));
-        assert!(model.faces.iter().any(|face| {
+        assert_eq!(disk_faces, 48 * 256 * 2);
+        assert!(model.disk.faces.iter().any(|face| {
             face.group == "accretion_disk"
                 && matches!(face.color, MaterialColor::Fixed([r, g, b]) if r > g && g > b)
+        }));
+        assert!(model.filaments.faces.iter().any(|face| {
+            face.group == "accretion_filament"
+                && matches!(face.color, MaterialColor::Fixed([r, g, b]) if r > g && g > b)
+        }));
+        assert!(model.lensing_arcs.faces.iter().any(|face| {
+            face.group == "lensing_arc_upper"
         }));
     }
 

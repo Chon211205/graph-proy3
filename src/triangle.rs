@@ -52,6 +52,69 @@ pub fn draw_triangle_shaded_region<F>(
 ) where
     F: Fn(f32, f32, f32, i32, i32) -> u32,
 {
+    draw_triangle_shaded_region_internal(
+        pixels,
+        depth,
+        width,
+        total_height,
+        region_y,
+        a,
+        b,
+        c,
+        shader,
+        None,
+        true,
+    );
+}
+
+/// Draws a translucent triangle with depth testing but without updating the
+/// depth buffer. Kept separate so transparent black-hole plasma cannot change
+/// the normal rendering behavior of other materials.
+pub fn draw_triangle_alpha_region(
+    pixels: &mut [u32],
+    depth: &mut [f32],
+    width: usize,
+    total_height: usize,
+    region_y: usize,
+    a: ScreenVertex,
+    b: ScreenVertex,
+    c: ScreenVertex,
+    color: u32,
+    alpha: u8,
+) {
+    if alpha == 0 {
+        return;
+    }
+    draw_triangle_shaded_region_internal(
+        pixels,
+        depth,
+        width,
+        total_height,
+        region_y,
+        a,
+        b,
+        c,
+        |_, _, _, _, _| color,
+        Some(alpha),
+        false,
+    );
+}
+
+fn draw_triangle_shaded_region_internal<F>(
+    pixels: &mut [u32],
+    depth: &mut [f32],
+    width: usize,
+    total_height: usize,
+    region_y: usize,
+    a: ScreenVertex,
+    b: ScreenVertex,
+    c: ScreenVertex,
+    shader: F,
+    alpha: Option<u8>,
+    write_depth: bool,
+) where
+    F: Fn(f32, f32, f32, i32, i32) -> u32,
+{
     debug_assert_eq!(pixels.len(), depth.len());
     debug_assert_eq!(pixels.len() % width, 0);
     let region_height = pixels.len() / width;
@@ -100,8 +163,22 @@ pub fn draw_triangle_shaded_region<F>(
                     // Front-to-back command ordering makes this reject most
                     // hidden fragments before procedural color work begins.
                     let color = shader(w0, w1, w2, x, y);
-                    depth[index] = z;
-                    pixels[index] = color;
+                    if let Some(alpha) = alpha {
+                        let alpha = alpha as u32;
+                        let inverse_alpha = 255 - alpha;
+                        let background = pixels[index];
+                        let blend = |shift: u32| {
+                            let foreground = (color >> shift) & 255;
+                            let background = (background >> shift) & 255;
+                            (foreground * alpha + background * inverse_alpha) / 255
+                        };
+                        pixels[index] = (blend(16) << 16) | (blend(8) << 8) | blend(0);
+                    } else {
+                        pixels[index] = color;
+                    }
+                    if write_depth {
+                        depth[index] = z;
+                    }
                 }
             }
             w0 += w0_dx;
@@ -209,5 +286,59 @@ mod tests {
             },
         );
         assert_eq!(shaded_fragments.get(), 0);
+    }
+
+    #[test]
+    fn translucent_triangle_blends_without_occluding_later_geometry() {
+        let mut framebuffer = Framebuffer::new(8, 8);
+        let triangle = [
+            ScreenVertex {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
+            ScreenVertex {
+                x: 6.0,
+                y: 1.0,
+                z: 1.0,
+            },
+            ScreenVertex {
+                x: 1.0,
+                y: 6.0,
+                z: 1.0,
+            },
+        ];
+        draw_triangle(
+            &mut framebuffer,
+            triangle[0],
+            triangle[1],
+            triangle[2],
+            0x0000ff,
+        );
+        let depth_before = framebuffer.buffers_mut().1[2 * 8 + 2];
+        let (pixels, depth) = framebuffer.buffers_mut();
+        draw_triangle_alpha_region(
+            pixels,
+            depth,
+            8,
+            8,
+            0,
+            ScreenVertex {
+                z: 2.0,
+                ..triangle[0]
+            },
+            ScreenVertex {
+                z: 2.0,
+                ..triangle[1]
+            },
+            ScreenVertex {
+                z: 2.0,
+                ..triangle[2]
+            },
+            0xff0000,
+            128,
+        );
+        assert_eq!(framebuffer.buffers_mut().1[2 * 8 + 2], depth_before);
+        assert_eq!(framebuffer.pixels[2 * 8 + 2], 0x80007f);
     }
 }
