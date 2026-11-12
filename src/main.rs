@@ -6645,9 +6645,15 @@ fn draw_unified_combat_hud(
 
     // Compact corner cards leave the center and horizon open for navigation.
     panel(framebuffer, 0.018, 0.020, 0.226, 0.091);
-    label(framebuffer, "ESCUDO", 0.055, 0.034, 0xffffff);
+    label(framebuffer, "INTEGRIDAD", 0.072, 0.034, 0xffffff);
     bar(framebuffer, 0.032, 0.060, 0.211, 0.073, shield_ratio, 0x22e8f4);
-    label(framebuffer, "VIDAS 3", 0.055, 0.081, 0xbfefff);
+    label(
+        framebuffer,
+        &format!("{:03}%", (shield_ratio.clamp(0.0, 1.0) * 100.0) as u32),
+        0.055,
+        0.081,
+        0xbfefff,
+    );
 
     panel(framebuffer, 0.018, 0.858, 0.318, 0.980);
     label(framebuffer, "OBJETIVO", 0.168, 0.883, 0xffffff);
@@ -6658,7 +6664,7 @@ fn draw_unified_combat_hud(
     label(framebuffer, &format!("{:07}", score), 0.878, 0.068, 0xe9f8ff);
 
     panel(framebuffer, 0.797, 0.826, 0.982, 0.982);
-    label(framebuffer, "IMPULSO", 0.889, 0.842, 0xffffff);
+    label(framebuffer, "ENERGIA", 0.889, 0.842, 0xffffff);
     bar(framebuffer, 0.814, 0.862, 0.965, 0.872, boost_ratio, 0x20dcf2);
     label(
         framebuffer,
@@ -6667,7 +6673,7 @@ fn draw_unified_combat_hud(
         0.888,
         0xdafcff,
     );
-    label(framebuffer, "BLASTER", 0.889, 0.914, 0xffffff);
+    label(framebuffer, "ARMA", 0.889, 0.914, 0xffffff);
     bar(framebuffer, 0.814, 0.934, 0.965, 0.944, charge_ratio, 0x26e7f2);
     label(framebuffer, "ENTER: DISPARAR", 0.889, 0.963, 0xcaf5ff);
 
@@ -8994,11 +9000,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
         let copy_start = Instant::now();
         upscale_scene(&scene_framebuffer, &mut framebuffer);
         let copy_ms = copy_start.elapsed().as_secs_f32() * 1_000.0;
-        if game_mode == GameMode::Racing {
-            race_track.hud(&mut framebuffer, &ship_controller);
-        }
-
-        if game_mode == GameMode::CoreGuardian {
+        // All gameplay modes use the shared HUD below. Keep the legacy
+        // renderers isolated while their mode-specific data is migrated.
+        if false {
+            if game_mode == GameMode::CoreGuardian {
             guardian_fight.draw_hud(&mut framebuffer);
             draw_selection_label(&mut framebuffer, "GUARDIAN DEL NUCLEO", 600, 8, 2, 0xffe2ed);
             let message = if guardian_fight.is_victory() {
@@ -9169,6 +9174,7 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 "F2: RES AUTO OFF".to_string()
             };
             draw_selection_label(&mut framebuffer, &resolution_label, 1040, 766, 2, 0x9fc5df);
+            }
         }
 
         let objective = match game_mode {
@@ -9196,6 +9202,10 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
                 water_level_state.hull_health as f32 / WATER_SUBMARINE_MAX_HEALTH as f32
             }
             GameMode::CoreGuardian => guardian_fight.shield_ratio(),
+            GameMode::HourglassRescue => hourglass_rescue.shield_ratio(),
+            GameMode::TowerGuard => tower_game.health_ratio(),
+            GameMode::LavaCastle => lava_castle.player_health_ratio(),
+            GameMode::LavaCastleInterior => lava_castle_interior.health_ratio(),
             _ => 1.0,
         };
         let score = match game_mode {
@@ -9225,50 +9235,29 @@ fn run_game() -> Result<bool, Box<dyn std::error::Error>> {
             GameMode::CoreGuardian if !guardian_fight.is_victory() => {
                 Some(("JEFE: GUARDIAN DEL NUCLEO", guardian_fight.health_ratio()))
             }
+            GameMode::LavaCastle => {
+                Some(("JEFE: GUARDIAN DE LAVA", lava_castle.boss_health_ratio()))
+            }
             _ => None,
         };
-        // Racing and the shooting/rescue games have purpose-built HUDs.
-        if game_mode != GameMode::Racing
-            && game_mode != GameMode::TowerGuard
-            && game_mode != GameMode::HourglassRescue
-        {
-            draw_unified_combat_hud(
-                &mut framebuffer,
-                objective,
-                shield_ratio,
-                score,
-                ship_controller.turbo_power(ship_controller.ship.speed),
-                if game_mode == GameMode::CoreGuardian {
-                    guardian_fight.weapon_charge_ratio()
-                } else {
-                    ship_controller.charge_ratio()
-                },
-                boss_hud,
-                if game_mode == GameMode::CoreGuardian {
-                    guardian_fight.aim_screen_position()
-                } else {
-                    (0.5, 0.5)
-                },
-            );
-        }
-        if game_mode == GameMode::WaterLevel && water_level_state.dragon_ball_collected {
-            draw_mission_complete_overlay(
-                &mut framebuffer,
-                water_level_state.mission_complete_timer,
-            );
-        }
-        if game_mode == GameMode::CoreGuardian && guardian_fight.reward_received() {
-            draw_guardian_reward_overlay(
-                &mut framebuffer,
-                guardian_fight.reward_seconds_remaining(),
-            );
-        }
-        if game_mode == GameMode::TowerGuard {
-            tower_game.draw_hud(&mut framebuffer);
-        }
-        if tower_reward_timer > 0.0 {
-            draw_tower_reward_hud(&mut framebuffer, tower_reward_timer);
-        }
+        draw_unified_combat_hud(
+            &mut framebuffer,
+            objective,
+            shield_ratio,
+            score,
+            ship_controller.turbo_power(ship_controller.ship.speed),
+            if game_mode == GameMode::CoreGuardian {
+                guardian_fight.weapon_charge_ratio()
+            } else {
+                ship_controller.charge_ratio()
+            },
+            boss_hud,
+            if game_mode == GameMode::CoreGuardian {
+                guardian_fight.aim_screen_position()
+            } else {
+                (0.5, 0.5)
+            },
+        );
         if performance_hud {
             let stats = triangle_batch.stats();
             let displayed_lods = if active_galaxy == Galaxy::Vesper {

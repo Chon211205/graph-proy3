@@ -211,6 +211,9 @@ impl TowerGame {
     pub fn score(&self) -> u32 {
         self.kills * 500
     }
+    pub fn health_ratio(&self) -> f32 {
+        self.health.max(0) as f32 / 100.0
+    }
     pub fn pause(&mut self) {
         if self.phase == Phase::Encounter {
             self.phase = Phase::Paused

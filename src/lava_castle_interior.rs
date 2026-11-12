@@ -15,6 +15,11 @@ const CHAMBER_Z: f32 = -470.0;
 // distant rooms remain present through their inexpensive Blender LOD instead of
 // being created abruptly at a hard draw-distance boundary.
 const DETAILED_ZONE_DISTANCE: f32 = 190.0;
+// The interior is a forward-only course. Zones outside this window cannot
+// contribute pixels, but submitting them still transforms thousands of
+// vertices in the software renderer.
+const ZONE_RENDER_AHEAD: f32 = 285.0;
+const ZONE_RENDER_BEHIND: f32 = 82.0;
 const PLAYER_HEALTH: i32 = 6;
 const REWARD_DURATION: f32 = 5.5;
 const REWARD_COLLECT_TIME: f32 = 2.8;
@@ -357,14 +362,24 @@ impl LavaCastleInterior {
         }
         self.enemy_fire_timer -= dt;
         if self.enemy_fire_timer <= 0.0 {
-            let active = self
+            let active_count = self
                 .enemies
                 .iter()
-                .enumerate()
-                .filter(|(_, enemy)| enemy.health > 0 && (player.z - enemy.position.z).abs() < 95.0)
-                .map(|(index, _)| index)
-                .collect::<Vec<_>>();
-            if let Some(&index) = active.get(self.enemy_fire_serial % active.len().max(1)) {
+                .filter(|enemy| enemy.health > 0 && (player.z - enemy.position.z).abs() < 95.0)
+                .count();
+            let selected = (active_count > 0)
+                .then(|| self.enemy_fire_serial % active_count)
+                .and_then(|selected| {
+                    self.enemies
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, enemy)| {
+                            enemy.health > 0 && (player.z - enemy.position.z).abs() < 95.0
+                        })
+                        .nth(selected)
+                        .map(|(index, _)| index)
+                });
+            if let Some(index) = selected {
                 let enemy = &self.enemies[index];
                 self.enemy_shots.push(Projectile {
                     position: enemy.position,
@@ -500,7 +515,11 @@ impl LavaCastleInterior {
         let camera = interior_camera(controller);
         let centers = [START_Z, FURNACE_Z, SANCTUM_Z, CORRIDOR_Z, CHAMBER_Z];
         for (index, center) in centers.into_iter().enumerate() {
-            let distance = (controller.ship.position.z - center).abs();
+            let relative_z = center - controller.ship.position.z;
+            if !zone_is_visible(relative_z) {
+                continue;
+            }
+            let distance = relative_z.abs();
             let zone = if distance < DETAILED_ZONE_DISTANCE {
                 &self.zones[index]
             } else {
@@ -521,7 +540,10 @@ impl LavaCastleInterior {
             controller,
             self.elapsed,
         );
-        self.draw_hud(frame, controller.ship.position.z);
+    }
+
+    pub fn health_ratio(&self) -> f32 {
+        self.health.max(0) as f32 / PLAYER_HEALTH as f32
     }
 
     fn render_fragments(&self, frame: &mut Framebuffer, camera: &Camera) {
@@ -803,6 +825,10 @@ impl LavaCastleInterior {
     }
 }
 
+fn zone_is_visible(relative_z: f32) -> bool {
+    relative_z <= ZONE_RENDER_BEHIND && relative_z >= -ZONE_RENDER_AHEAD
+}
+
 fn zone_name(z: f32) -> &'static str {
     if z > -55.0 {
         "1  START HALL"
@@ -818,16 +844,9 @@ fn zone_name(z: f32) -> &'static str {
 }
 
 fn interior_camera(controller: &ShipController) -> Camera {
-    let (forward, right, up) = controller.ship.camera_basis();
-    Camera {
-        // Keep the ship on the optical axis.  Raising this camera pushed the
-        // player toward the bottom edge even though the on-rails controls were
-        // centered correctly.
-        position: controller.ship.position.sub(forward.mul(18.0)),
-        forward,
-        right,
-        up,
-    }
+    // Keep the exact camera framing used in free flight so the ship and the
+    // shared combat reticle preserve the same screen-space relationship.
+    crate::chase_camera(&controller.ship, false)
 }
 
 fn render_player_and_weapon(
@@ -845,9 +864,7 @@ fn render_player_and_weapon(
         frame,
         camera,
         |v| {
-            let local = v
-                .sub(ship_center)
-                .mul(controller.ship.spec.model_scale * 2.2);
+            let local = v.sub(ship_center).mul(controller.ship.spec.model_scale);
             controller.ship.position.add(
                 controller
                     .ship
@@ -1495,6 +1512,22 @@ mod tests {
     }
 
     #[test]
+    fn renderer_skips_zones_outside_the_forward_view_window() {
+        assert!(zone_is_visible(START_Z - START_Z));
+        assert!(zone_is_visible(FURNACE_Z - START_Z));
+        assert!(zone_is_visible(SANCTUM_Z - START_Z));
+        assert!(!zone_is_visible(CORRIDOR_Z - START_Z));
+        assert!(!zone_is_visible(CHAMBER_Z - START_Z));
+
+        // Once the player reaches the corridor, the starting rooms are behind
+        // the camera while the final chamber is already submitted.
+        assert!(!zone_is_visible(START_Z - CORRIDOR_Z));
+        assert!(!zone_is_visible(FURNACE_Z - CORRIDOR_Z));
+        assert!(zone_is_visible(CORRIDOR_Z - CORRIDOR_Z));
+        assert!(zone_is_visible(CHAMBER_Z - CORRIDOR_Z));
+    }
+
+    #[test]
     fn exactly_three_fragments_are_collectible_once() {
         let mut level = LavaCastleInterior::new();
         let mut controller = ShipController::new(&ARWING_SPEC);
@@ -1572,15 +1605,40 @@ mod tests {
     }
 
     #[test]
-    fn part_two_camera_keeps_ship_in_screen_center() {
+    fn part_two_uses_the_free_world_chase_camera() {
         let mut controller = ShipController::new(&ARWING_SPEC);
         let mut level = LavaCastleInterior::new();
         level.enter(&mut controller);
         let camera = interior_camera(&controller);
-        let ship_from_camera = controller.ship.position.sub(camera.position);
-        assert!(ship_from_camera.dot(camera.right).abs() < 0.001);
-        assert!(ship_from_camera.dot(camera.up).abs() < 0.001);
-        assert!(ship_from_camera.dot(camera.forward) > 0.0);
+        let free_world_camera = crate::chase_camera(&controller.ship, false);
+        assert!(
+            camera
+                .position
+                .sub(free_world_camera.position)
+                .dot(camera.position.sub(free_world_camera.position))
+                < 0.000_001
+        );
+        assert!(
+            camera
+                .forward
+                .sub(free_world_camera.forward)
+                .dot(camera.forward.sub(free_world_camera.forward))
+                < 0.000_001
+        );
+        assert!(
+            camera
+                .right
+                .sub(free_world_camera.right)
+                .dot(camera.right.sub(free_world_camera.right))
+                < 0.000_001
+        );
+        assert!(
+            camera
+                .up
+                .sub(free_world_camera.up)
+                .dot(camera.up.sub(free_world_camera.up))
+                < 0.000_001
+        );
     }
 
     #[test]

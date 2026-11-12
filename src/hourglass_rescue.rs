@@ -404,6 +404,10 @@ impl HourglassRescue {
         self.rescued
     }
 
+    pub fn shield_ratio(&self) -> f32 {
+        self.shields as f32 / 3.0
+    }
+
     fn remaining(&self) -> f32 {
         (MISSION_SECONDS - self.elapsed).max(0.0)
     }

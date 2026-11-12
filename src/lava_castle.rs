@@ -542,7 +542,14 @@ impl LavaCastle {
             None,
             Some(controller.ship.spec),
         );
-        self.draw_hud(frame);
+    }
+
+    pub fn player_health_ratio(&self) -> f32 {
+        self.player_health.max(0) as f32 / PLAYER_MAX_HEALTH as f32
+    }
+
+    pub fn boss_health_ratio(&self) -> f32 {
+        self.boss_health.max(0) as f32 / BOSS_MAX_HEALTH as f32
     }
 
     fn render_reward(&self, frame: &mut Framebuffer, camera: &Camera, dragon_ball: &Model) {
