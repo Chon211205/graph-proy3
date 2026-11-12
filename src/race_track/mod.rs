@@ -8,19 +8,18 @@ mod scenery;
 use std::f32::consts::TAU;
 
 use crate::{
-    draw_projectile_glow,
+    Camera, TriangleBatch, draw_projectile_glow,
     framebuffer::Framebuffer,
-    obj_loader::{load_obj, Model, Vec3},
+    obj_loader::{Model, Vec3, load_obj},
     queue_model, render_ship_components,
     ship::{ShipController, ShipSpec},
-    Camera, TriangleBatch,
 };
 
 use self::{
     course::RaceCourse,
     drive::DriveState,
     progress::{ProgressEvent, RaceProgress},
-    racer::{yaw_from_direction, Rival},
+    racer::{Rival, yaw_from_direction},
     scenery::RaceScenery,
 };
 

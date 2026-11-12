@@ -59,7 +59,11 @@ pub(super) fn draw(game: &HourglassRescue, frame: &mut Framebuffer, scale: i32) 
     );
     draw_selection_label(
         frame,
-        &format!("RELOJES RECOGIDOS  {}/{}", game.clocks_collected, super::CLOCK_COUNT),
+        &format!(
+            "RELOJES RECOGIDOS  {}/{}",
+            game.clocks_collected,
+            super::CLOCK_COUNT
+        ),
         w / 2,
         (h as f32 * 0.58) as i32,
         scale,

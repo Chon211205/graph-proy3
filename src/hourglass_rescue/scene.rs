@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use crate::obj_loader::{load_obj, Face, MaterialColor, Model, SurfaceShader, Vec3};
+use crate::obj_loader::{Face, MaterialColor, Model, SurfaceShader, Vec3, load_obj};
 
 pub(super) const CAPSULE_COUNT: usize = 5;
 pub(super) const ENEMY_COUNT: usize = 3;
@@ -550,10 +550,7 @@ impl Scene {
                     [205, 134, 157],
                 ],
             );
-            builder.apply_shader_since(
-                rock_face_start,
-                SurfaceShader::TimePlanetRockTexture,
-            );
+            builder.apply_shader_since(rock_face_start, SurfaceShader::TimePlanetRockTexture);
         }
 
         // Three distinct clockwork enemies replace the old box-and-crystal
@@ -565,8 +562,7 @@ impl Scene {
         ];
         let mut enemy_faces: [Range<usize>; ENEMY_COUNT] = std::array::from_fn(|_| 0..0);
         for (index, (position, yaw, scale)) in enemy_spawns.iter().copied().enumerate() {
-            enemy_faces[index] =
-                builder.imported_model(&time_enemies[index], position, scale, yaw);
+            enemy_faces[index] = builder.imported_model(&time_enemies[index], position, scale, yaw);
         }
 
         let capsule_faces = std::array::from_fn(|index| {

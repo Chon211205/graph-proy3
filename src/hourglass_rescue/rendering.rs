@@ -1,9 +1,9 @@
 use crate::framebuffer::Framebuffer;
 use crate::obj_loader::{Model, Vec3};
 use crate::ship::{Projectile, Ship};
-use crate::{model_center, render_model, Camera};
+use crate::{Camera, model_center, render_model};
 
-use super::{HourglassRescue, CAPSULE_COUNT, CAPSULE_POSITIONS};
+use super::{CAPSULE_COUNT, CAPSULE_POSITIONS, HourglassRescue};
 
 impl HourglassRescue {
     pub fn render(&self, frame: &mut Framebuffer, ship_model: &Model, ship: &Ship) {
@@ -125,7 +125,9 @@ impl HourglassRescue {
 
         if charge > 0.0 {
             let (forward, right, up) = ship.basis();
-            let center = ship.position.add(forward.mul(ship.spec.muzzle_forward + 0.4));
+            let center = ship
+                .position
+                .add(forward.mul(ship.spec.muzzle_forward + 0.4));
             let scale = 0.35 + charge * 1.15;
             render_model(
                 laser_model,

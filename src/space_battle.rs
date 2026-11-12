@@ -109,7 +109,9 @@ impl SpaceBattle {
 fn direction_angles(direction: Vec3) -> (f32, f32) {
     let direction = direction.normalize();
     (
-        (-direction.z).atan2(-direction.x).rem_euclid(std::f32::consts::TAU),
+        (-direction.z)
+            .atan2(-direction.x)
+            .rem_euclid(std::f32::consts::TAU),
         direction.y.asin(),
     )
 }

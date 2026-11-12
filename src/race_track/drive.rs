@@ -1,6 +1,6 @@
 use crate::{obj_loader::Vec3, ship::Ship};
 
-use super::course::{RaceCourse, HALF_ROAD};
+use super::course::{HALF_ROAD, RaceCourse};
 
 const MAX_SPEED: f32 = 42.0;
 const CRUISE_SPEED: f32 = 37.0;
@@ -205,7 +205,7 @@ impl DriveState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ship::{ShipController, ASTRA_CAR_SPEC};
+    use crate::ship::{ASTRA_CAR_SPEC, ShipController};
 
     #[test]
     fn player_coasts_at_rival_pace_and_throttle_reaches_the_shared_top_speed() {

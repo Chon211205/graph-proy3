@@ -433,14 +433,16 @@ mod tests {
             .count();
         assert!(clean_faces > 0 && asphalt04_faces > 0);
         assert_eq!(clean_faces + asphalt04_faces, course.samples.len() * 2);
-        assert!(course
-            .curbs
-            .iter()
-            .flat_map(|chunk| &chunk.faces)
-            .all(|face| !matches!(
-                face.shader,
-                SurfaceShader::RaceAsphaltClean | SurfaceShader::RaceAsphalt04
-            )));
+        assert!(
+            course
+                .curbs
+                .iter()
+                .flat_map(|chunk| &chunk.faces)
+                .all(|face| !matches!(
+                    face.shader,
+                    SurfaceShader::RaceAsphaltClean | SurfaceShader::RaceAsphalt04
+                ))
+        );
         assert!(!course.curbs.iter().any(|chunk| chunk.faces.is_empty()));
         assert_eq!(
             course

@@ -3,8 +3,8 @@ use std::{fs::File, sync::OnceLock};
 use minifb::{Key, Window};
 
 use crate::{
-    draw_selection_label as text, draw_selection_panel as panel, draw_skybox,
-    framebuffer::Framebuffer, HEIGHT, WIDTH,
+    HEIGHT, WIDTH, draw_selection_label as text, draw_selection_panel as panel, draw_skybox,
+    framebuffer::Framebuffer,
 };
 
 static MENU_BACKGROUND: OnceLock<Option<Vec<u32>>> = OnceLock::new();
@@ -89,10 +89,14 @@ pub fn instructions(window: &mut Window, frame: &mut Framebuffer) -> Result<(), 
     crate::input::clear();
     window.update();
     window.set_title("Instrucciones | Esc o Enter: volver");
+    let mut gamepad = crate::input::Gamepad::default();
     while window.is_open() {
+        gamepad.update();
         if crate::input::pressed(Key::Escape)
             || crate::input::pressed(Key::Enter)
             || crate::input::pressed(Key::F1)
+            || gamepad.pressed(crate::input::Gamepad::A)
+            || gamepad.pressed(crate::input::Gamepad::B)
         {
             break;
         }
@@ -152,6 +156,16 @@ pub fn instructions(window: &mut Window, frame: &mut Framebuffer) -> Result<(), 
             2,
             0xd5deec,
         );
+        if gamepad.connected {
+            text(
+                frame,
+                "CONTROL BLUETOOTH / USB DETECTADO",
+                600,
+                690,
+                2,
+                0x42dff0,
+            );
+        }
         left_text(frame, "ENTER / ESC: VOLVER", 85, 736, 2, 0xffd447);
         crate::input::clear();
         window.update_with_buffer(&frame.pixels, WIDTH, HEIGHT)?;
@@ -172,22 +186,30 @@ pub fn show(
         &["JUGAR", "INSTRUCCIONES", "SALIR"]
     };
     let mut selected = 0;
+    let mut gamepad = crate::input::Gamepad::default();
     while window.is_open() {
+        gamepad.update();
         window.set_title(if paused {
             "Pausa | Flechas: elegir | Enter: confirmar"
         } else {
             "Star Command | Menu principal"
         });
-        if crate::input::pressed(Key::Escape) {
+        if crate::input::pressed(Key::Escape) || gamepad.pressed(crate::input::Gamepad::B) {
             return Ok(if paused { Action::Play } else { Action::Quit });
         }
-        if crate::input::pressed(Key::Up) || crate::input::pressed(Key::W) {
+        if crate::input::pressed(Key::Up)
+            || crate::input::pressed(Key::W)
+            || gamepad.pressed(crate::input::Gamepad::DPAD_UP)
+        {
             selected = (selected + options.len() - 1) % options.len();
         }
-        if crate::input::pressed(Key::Down) || crate::input::pressed(Key::S) {
+        if crate::input::pressed(Key::Down)
+            || crate::input::pressed(Key::S)
+            || gamepad.pressed(crate::input::Gamepad::DPAD_DOWN)
+        {
             selected = (selected + 1) % options.len();
         }
-        if crate::input::pressed(Key::Enter) {
+        if crate::input::pressed(Key::Enter) || gamepad.pressed(crate::input::Gamepad::A) {
             match options[selected] {
                 "JUGAR" | "CONTINUAR" => return Ok(Action::Play),
                 "CAMBIAR NAVE" => return Ok(Action::Hangar),
@@ -197,8 +219,18 @@ pub fn show(
         }
         draw_backdrop(frame);
         brand(frame, false);
+        if gamepad.connected {
+            left_text(
+                frame,
+                "CONTROL BLUETOOTH / USB CONECTADO",
+                82,
+                414,
+                2,
+                0x42dff0,
+            );
+        }
         if paused {
-            left_text(frame, "JUEGO EN PAUSA", 85, 405, 3, 0x91a9bd);
+            left_text(frame, "JUEGO EN PAUSA", 85, 380, 3, 0x91a9bd);
         }
         for (i, label) in options.iter().enumerate() {
             let y = (if paused { 460 } else { 455 }) + i as i32 * 58;
