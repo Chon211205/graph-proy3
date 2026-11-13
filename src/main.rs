@@ -11,6 +11,7 @@ mod minigame_audio;
 mod obj_loader;
 mod race_track;
 mod ship;
+mod space_audio;
 mod space_battle;
 mod space_decor;
 mod story_guide;
@@ -4054,24 +4055,52 @@ fn draw_wormhole_energy(framebuffer: &mut Framebuffer, camera: &Camera, center: 
 }
 
 fn make_turbo_plume(segments: usize) -> Model {
-    let mut vertices = vec![Vec3::new(-1.0, 0.0, 0.0)];
-    for segment in 0..segments {
-        let angle = TAU * segment as f32 / segments as f32;
-        vertices.push(Vec3::new(0.0, angle.cos(), angle.sin()));
-    }
-
+    // A layered, irregular shell reads as a soft volumetric cloud when viewed
+    // from behind the ship, while staying cheap enough for the software renderer.
+    let segments = segments.max(6);
+    let rings: [(f32, f32, u8); 6] = [
+        (-1.0, 0.07, 13),
+        (-0.82, 0.62, 31),
+        (-0.60, 1.05, 46),
+        (-0.37, 1.0, 42),
+        (-0.16, 0.66, 29),
+        (0.0, 0.28, 17),
+    ];
+    let mut vertices = Vec::with_capacity(rings.len() * segments * 2);
     let mut faces = Vec::new();
-    for segment in 0..segments {
-        let next = (segment + 1) % segments;
-        faces.push(Face::new(
-            [0, segment + 1, next + 1],
-            if segment % 2 == 0 {
-                "turbo_core"
-            } else {
-                "turbo_glow"
-            },
-            "turbo",
-        ));
+
+    // The outer haze and brighter inner exhaust are nested translucent shells.
+    // Slight deterministic variation around each ring breaks the rigid cone shape.
+    for (shell, material, radius_scale, alpha_scale) in [
+        (0, "turbo", 1.0_f32, 1.0_f32),
+        (1, "turbo_core", 0.56_f32, 1.2_f32),
+    ] {
+        let base = vertices.len();
+        for (ring_index, (x, radius, _)) in rings.iter().enumerate() {
+            for segment in 0..segments {
+                let angle = TAU * segment as f32 / segments as f32;
+                let wobble = 1.0
+                    + 0.11 * (angle * 3.0 + ring_index as f32 * 1.7 + shell as f32).sin()
+                    + 0.045 * (angle * 5.0 - ring_index as f32 * 0.8).cos();
+                let r = radius * radius_scale * wobble;
+                vertices.push(Vec3::new(*x, angle.cos() * r, angle.sin() * r));
+            }
+        }
+        for ring_index in 0..rings.len() - 1 {
+            let ring_alpha = (rings[ring_index].2 as f32 * alpha_scale).round() as u8;
+            let next_alpha = (rings[ring_index + 1].2 as f32 * alpha_scale).round() as u8;
+            let alpha = ((ring_alpha as u16 + next_alpha as u16) / 2).min(105) as u8;
+            for segment in 0..segments {
+                let next = (segment + 1) % segments;
+                let a = base + ring_index * segments + segment;
+                let b = base + ring_index * segments + next;
+                let c = base + (ring_index + 1) * segments + next;
+                let d = base + (ring_index + 1) * segments + segment;
+                let group = format!("turbo_cloud_{alpha}");
+                faces.push(Face::new([a, b, c], material, group.clone()));
+                faces.push(Face::new([a, c, d], material, group));
+            }
+        }
     }
     Model::new(vertices, faces)
 }
@@ -4626,7 +4655,7 @@ fn move_around_planet(
 
 enum TriangleStyle {
     Flat(u32),
-    BlackHolePlasma {
+    Translucent {
         color: u32,
         alpha: u8,
     },
@@ -4970,7 +4999,7 @@ impl TriangleBatch {
                                 c,
                                 |_, _, _, _, _| *color,
                             ),
-                            TriangleStyle::BlackHolePlasma { color, alpha } => {
+                            TriangleStyle::Translucent { color, alpha } => {
                                 draw_triangle_alpha_region(
                                     tile_pixels,
                                     tile_depth,
@@ -5291,7 +5320,27 @@ fn queue_model_with_scratch<F>(
             let color = flat_color.map(|channel| (channel as f32 * pulse).clamp(0.0, 255.0) as u8);
             batch.commands.push(TriangleCommand {
                 vertices: [a, b, c],
-                style: TriangleStyle::BlackHolePlasma {
+                style: TriangleStyle::Translucent {
+                    color: pack(color, 1.0),
+                    alpha,
+                },
+            });
+            continue;
+        }
+
+        if let Some(alpha) = face
+            .group
+            .strip_prefix("turbo_cloud_")
+            .and_then(|value| value.parse::<u8>().ok())
+        {
+            let center = v0.add(v1).add(v2).mul(1.0 / 3.0);
+            let phase = water_time.unwrap_or_default() * 14.0 + center.y * 8.0 + center.z * 6.0;
+            let pulse = 0.90 + phase.sin() * 0.10;
+            let color = flat_color.map(|channel| (channel as f32 * pulse).clamp(0.0, 255.0) as u8);
+            let alpha = (alpha as f32 * (0.88 + pulse * 0.12)).clamp(0.0, 120.0) as u8;
+            batch.commands.push(TriangleCommand {
+                vertices: [a, b, c],
+                style: TriangleStyle::Translucent {
                     color: pack(color, 1.0),
                     alpha,
                 },
@@ -5883,7 +5932,7 @@ fn render_ship_components(
                         .add(right.mul(vertex.y * plume_radius))
                         .add(up.mul(vertex.z * plume_radius))
                 },
-                None,
+                Some(world_time),
                 Some(ship.spec),
             );
         }
