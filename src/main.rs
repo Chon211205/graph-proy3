@@ -11,6 +11,7 @@ mod minigame_audio;
 mod obj_loader;
 mod race_track;
 mod ship;
+mod space_audio;
 mod space_battle;
 mod space_decor;
 mod story_guide;

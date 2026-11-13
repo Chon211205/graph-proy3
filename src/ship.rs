@@ -679,6 +679,7 @@ impl ShipController {
                     });
                 }
             }
+            crate::space_audio::play_ship_shot();
             self.fire_charge = 0.0;
         }
         self.fire_was_down = firing;

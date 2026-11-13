@@ -295,6 +295,7 @@ impl CoreGuardian {
                 1
             };
             let muzzle_offsets: &[f32] = if charged { &[0.0] } else { &[-0.018, 0.018] };
+            let mut spawned = false;
             for offset in muzzle_offsets {
                 let shot = PlayerShot {
                     x: self.player_x + offset,
@@ -307,9 +308,14 @@ impl CoreGuardian {
                 };
                 if let Some(slot) = self.player_shots.iter_mut().find(|item| !item.alive) {
                     *slot = shot;
+                    spawned = true;
                 } else if self.player_shots.len() < MAX_PLAYER_SHOTS {
                     self.player_shots.push(shot);
+                    spawned = true;
                 }
+            }
+            if spawned {
+                crate::space_audio::play_ship_shot();
             }
             self.fire_charge = 0.0;
         }
