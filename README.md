@@ -2,6 +2,11 @@
 
 Proyecto de exploración espacial y minijuegos, desarrollado en Rust. El jugador elige una nave, recorre galaxias en vuelo libre, entra en órbita para descubrir misiones y puede volver al espacio al salir de cada nivel.
 
+# Integrantes
+- Luis Alfredo Lee Hsu - 241203
+- David Sebastián Lemus Nitsch - 241155
+- Luis Alejandro Hernández Márquez - 241424
+
 ## Requisitos y ejecución
 
 - Rust y Cargo con soporte para la edición 2024.
